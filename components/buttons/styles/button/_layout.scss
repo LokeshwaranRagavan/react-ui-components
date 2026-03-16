@@ -11,22 +11,28 @@
     display: inline-flex;
     text-align: center;
     user-select: none;
-    white-space: nowrap;
+    white-space: normal;
     font-weight: $btn-font-weight;
 
     &.sf-btn-me {
+      font-size: $btn-medium-font-size;
+      border-radius: $btn-medium-radius;
       svg {
         font-size: $btn-svg-font-size;
       }
     }
 
     &.sf-btn-la {
+      font-size: $btn-large-font-size;
+      border-radius: $btn-large-radius;
       svg {
         font-size: $btn-large-svg-font-size;
       }
     }
 
     &.sf-btn-sm {
+      font-size: $btn-small-font-size;
+      border-radius: $btn-small-radius;
       svg {
         font-size: $btn-small-svg-font-size;
       }

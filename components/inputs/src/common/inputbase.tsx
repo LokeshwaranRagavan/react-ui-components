@@ -200,6 +200,7 @@ export const renderFloatLabelElement: (floatLabelType: LabelMode,
             <label
                 className={`${CLASS_NAMES.FLOATTEXT} ${(floatLabelType === 'Always' || (floatLabelType === 'Auto' && (isFocused || inputValue))) ? CLASS_NAMES.LABELTOP : CLASS_NAMES.LABELBOTTOM}`}
                 htmlFor={(id) || ''}
+                id={id ? `label_${id}` : undefined}
             >
                 {placeholder}
             </label>

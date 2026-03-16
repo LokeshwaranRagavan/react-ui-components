@@ -2,35 +2,29 @@
 
 @include export-module('listview-layout') {
   .sf-listview {
-    -webkit-overflow-scrolling: touch;
-    border: $listview-border-size solid $listview-line-color;
-    border-radius: $listview-root-border-radius;
-    display: block;
-    overflow: auto;
-    position: relative;
-    width: 100%;
-  }
+    border-radius: $listview-border-radius;
+    border: $listview-border-size solid $listview-border-color;
+    padding: $listview-padding;
+    flex-direction: column;
+    background-color: $listview-background-color;
 
-  .sf-list-back-icon {
-    cursor: pointer;
-    padding-inline-end: $listview-back-padding-right;
-    margin: $listview-icon-back-margin;
+    .sf-list-container {
+      max-height: inherit;
+    }
+
+    .sf-list-item {
+      padding: $listview-list-item-padding;
+    }
   }
 
   .sf-list-header {
-    align-items: center;
-    display: flex;
     font-weight: $listview-header-font-weight;
     font-size: $listview-header-font-size;
-    border-block-end: $listview-header-border-bottom;
-    padding: $listview-header-text-padding;
-    background-color: $listview-header-bg;
+    line-height: $listview-header-line-height;
+    min-height: $listview-header-min-height;
+    letter-spacing: $listview-header-letter-spacing-wide;
+    padding: $listview-header-padding;
     color: $listview-header-text-color;
-    border-color: $listview-header-border;
-  }
-
-  .sf-list-header-content {
-    cursor: default;
-    text-indent: 0;
+    gap: $listview-header-gap;
   }
 }

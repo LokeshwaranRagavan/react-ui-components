@@ -41,8 +41,6 @@
   }
 
   .sf-radio-label {
-    &:focus,
-    &.sf-focus,
     &:hover {
       .sf-ripple-container {
         background: $radio-btn-checked-ripple-bgcolor;
@@ -89,11 +87,19 @@
         }
       }
     }
+    &:focus-visible {
+      +label {
+        &::before {
+          box-shadow: $radio-keyboard-focus-box-shadow;
+        }
+      }
+    }
   }
 
   .sf-radio-me {
   @include radio-base(
     $radio-btn-font-size,
+    $radio-btn-line-height,
     $radio-btn-padding-left,
     $radio-btn-height,
     $radio-btn-icon-height,
@@ -117,6 +123,7 @@
 .sf-radio-sm {
   @include radio-base(
     $radio-btn-small-font-size,
+    $radio-btn-small-line-height,
     $radio-btn-small-padding,
     $radio-btn-small-height,
     $radio-btn-small-icon-height,
@@ -140,6 +147,7 @@
 .sf-radio-la {
   @include radio-base(
     $radio-btn-large-font-size,
+    $radio-btn-line-height,
     $radio-btn-large-padding,
     $radio-btn-large-height,
     $radio-btn-large-icon-height,

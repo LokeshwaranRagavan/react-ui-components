@@ -52,10 +52,11 @@ export interface ColumnProps<T = unknown> extends CommandColumnProps {
     headerText?: string;
 
     /**
-     * Defines the column width in pixels (e.g., 100) or percentage (e.g., '20%').
+     * Defines the column width in pixels (e.g., 100 or '100').
      * Controls the column's size in the grid layout.
+     * When `width` is `undefined` and column DOM virtualization is enabled, the default width is `'100px'`.
      *
-     * @default ''
+     * @default '' | '100px'
      */
     width?: string | number;
 
@@ -363,6 +364,24 @@ export interface ColumnProps<T = unknown> extends CommandColumnProps {
      * @default {}
      */
     templateSettings?: TemplateParams;
+
+    /**
+     * Enables automatic row height adjustment based on the rendered content of this column.
+     *
+     * When set to `true`, the grid measures the actual height of the column’s rendered
+     * content (including template output) and expands the corresponding row so that no
+     * content is clipped.
+     *
+     * This property is intended for columns that use custom templates where text may wrap
+     * or dynamically expand. To calculate accurate row heights, the grid must render all
+     * columns in the row, which disables column DOM virtualization for that row.
+     *
+     * Use `autoHeight` only on columns whose template content requires height adjustment.
+     * Simple text-wrapped columns should rely on `textWrapSettings` instead.
+     *
+     * @default false
+     */
+    autoHeight?: boolean;
 
     /**
      * Gets the formatter function for the column.
@@ -858,6 +877,15 @@ export interface ColumnFilterParams {
      * @default {}
      */
     params?: Partial<TextBoxProps & NumericTextBoxProps & DatePickerProps & DropDownListProps>;
+
+    /**
+     * Specifies whether the search box in the Excel/CheckBox filter dialog is hidden.
+     * When set to true, hides the search input field that allows users to filter checkbox items.
+     * When set to false or undefined, displays the search box for filtering through available checkbox options.
+     *
+     * @default false
+     */
+    hideSearchbox?: boolean;
 }
 
 /**
@@ -971,12 +999,17 @@ export interface PrepareColumns<T = unknown> {
      * @default []
      */
     uiColumns?: ColumnProps<T>[];
+    visibleColumns?: ColumnProps<T>[];
     /**
      * Specifies if the column renders a checkbox for selection.
      *
      * @default false
      */
     isCheckBoxColumn?: boolean;
+    totalVirtualColumnWidth?: number;
+    columnOffsets?: {[key: number]: number};
+    isCommandEditEnabled?: boolean;
+    isAutoHeightEnabled?: boolean;
 }
 
 /**

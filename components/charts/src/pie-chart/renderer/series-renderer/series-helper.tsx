@@ -2,6 +2,7 @@ import { isNullOrUndefined } from '@syncfusion/react-base';
 import { adjustCornerRadius, degreeToLocation, indexFinder, measureText, stringToNumber } from '../../utils/helper';
 import { PieChartFontProps, PieChartLocationProps, PieChartPointRenderProps } from '../../base/interfaces';
 import { Chart, PieBase, Points, Rect, SeriesProperties } from '../../base/internal-interfaces';
+import { PieSelectionPattern } from '../../base/enum';
 
 /**
  * Represents the index of a specific point within a series in the chart.
@@ -347,22 +348,24 @@ export function getPathArc(
  *
  * @private
  */
-export function applyPointRenderCallback(pointsProps: PieChartPointRenderProps, chart: Chart): string {
+export function applyPointRenderCallback(pointsProps: PieChartPointRenderProps, chart: Chart)
+    : { color: string; pattern: PieSelectionPattern } {
     const defaultProps: PieChartPointRenderProps = {
         xValue: pointsProps.xValue, yValue: pointsProps.yValue,
-        color: pointsProps.color, pointIndex: pointsProps.pointIndex
+        color: pointsProps.color, pointIndex: pointsProps.pointIndex,
+        pattern: pointsProps.pattern
     };
     const callback: ((args: PieChartPointRenderProps) => string) =
         chart.pointRender as ((args: PieChartPointRenderProps) => string);
 
     if (callback && typeof callback === 'function') {
         try {
-            return callback(defaultProps) as string;
+            return { color: callback(defaultProps) as string , pattern: defaultProps.pattern };
         } catch (error) {
-            return defaultProps.color;
+            return { color: defaultProps.color, pattern: defaultProps.pattern };
         }
     }
-    return defaultProps.color;
+    return { color: defaultProps.color, pattern: defaultProps.pattern };
 }
 
 /**
@@ -426,4 +429,17 @@ export function useTextTrim(
         }
     }
     return label;
+}
+
+/**
+ * Rotate different pattern types across slices (like color palettes do for colors)
+ *
+ * @param {number} i - index of patterns in pattern palette array to apply different patterns for visual variety.
+ * @returns {string} returns pattern for each slice.
+ * @private
+ */
+export function patternForIndex(i: number): PieSelectionPattern {
+    const PATTERN_PALETTE: PieSelectionPattern[] = ['DiagonalForward', 'Dots', 'Chessboard', 'Grid', 'DiagonalBackward',
+        'Circle', 'Tile', 'HorizontalStripe', 'VerticalDash', 'HorizontalDash', 'Star', 'Triangle'];
+    return PATTERN_PALETTE[i % PATTERN_PALETTE.length];
 }

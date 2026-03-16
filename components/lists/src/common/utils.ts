@@ -1,8 +1,7 @@
 import { isNullOrUndefined, getValue, extend } from '@syncfusion/react-base';
-import { Query, QueryOptions } from '@syncfusion/react-data';
-import { DataManager } from '@syncfusion/react-data';
+import { DataManager, Query, QueryOptions } from '@syncfusion/react-data';
 import { defaultMappedFields } from './listItems';
-import { FieldsMapping, SortOrder } from './types';
+import { FieldsMapping, GroupedData, SortOrder } from './types';
 
 /**
  * Groups the data source based on the specified fields and sort order.
@@ -10,34 +9,31 @@ import { FieldsMapping, SortOrder } from './types';
  * @param {{Object}[]} dataSource - The data source to group.
  * @param {FieldsMapping} fields - The fields configuration for grouping.
  * @param {SortOrder} sortOrder - Optional sort order for the grouped data.
- * @returns {Object[]} An array of grouped data objects.
+ * @returns {GroupedData[]} An array of grouped data objects.
  */
-export function groupDataSource(
-    dataSource: { [key: string]: Object }[],
-    fields: FieldsMapping,
-    sortOrder: SortOrder = SortOrder.None
-): { [key: string]: Object }[] {
+export function groupDataSource(dataSource: { [key: string]: Object }[], fields: FieldsMapping, sortOrder: SortOrder = SortOrder.None):
+GroupedData[] {
+    const groupedData: GroupedData[] = [];
     const curFields: FieldsMapping = extend({}, defaultMappedFields, fields);
-    let cusQuery: Query = new Query().group(curFields.groupBy as string);
-    cusQuery = addSorting(sortOrder, 'key', cusQuery);
-    const ds: { [key: string]: Object }[] = getData(dataSource, cusQuery);
-    const groupedData: { [key: string]: Object }[] = [];
-    ds.forEach((group: { [key: string]: Object }) => {
-        const groupItem: { [key: string]: Object } = {};
-        groupItem[curFields.text as string] = (group as { key: string } & { [key: string]: Object }).key;
-        groupItem['isHeader'] = true;
-        let newtext: string = curFields.text as string;
-        if (newtext === 'id') {
-            newtext = 'text';
-            Object.assign(groupItem, { 'text': group.key });
-        }
-        groupItem['_id'] = `group-list-item-${(group as { [key: string]: Object }).key ?
-            (group as { [key: string]: Object }).key.toString().trim() : 'undefined'}`;
-        groupItem['items'] = (group as { items: { [key: string]: Object }[] } & { [key: string]: Object }).items;
-        groupedData.push(groupItem);
-        groupedData.push(...(group as { items: { [key: string]: Object }[] } & { [key: string]: Object }).items);
-    });
-
+    if (curFields.groupBy){
+        let cusQuery: Query = new Query().group(String(curFields.groupBy));
+        cusQuery = addSorting(sortOrder, 'key'  , cusQuery);
+        const ds: GroupedData[] = getData(dataSource, cusQuery) as GroupedData[];
+        ds.forEach((group: GroupedData) => {
+            const groupItem: GroupedData = {} as GroupedData;
+            groupItem[String(curFields.text)] = group.key;
+            groupItem.isHeader = true;
+            let newtext: string = String(curFields.text);
+            if (newtext === 'id') {
+                newtext = 'text';
+                Object.assign(groupItem, { 'text': group.key });
+            }
+            groupItem[String(curFields.id)] = `group-list-item-${group.key ? group.key.toString().trim() : 'undefined'}`;
+            groupItem.items = group.items;
+            groupedData.push(groupItem);
+            groupedData.push(...(group.items as GroupedData[]));
+        });
+    }
     return groupedData;
 }
 
@@ -91,10 +87,10 @@ export function getFieldValues(dataItem: { [key: string]: Object } | string | nu
     else if (typeof dataItem === 'string' || typeof dataItem === 'number' || typeof dataItem === 'boolean') {
         const stringValue: string = dataItem.toString();
         fieldData[fields.text || 'text'] = stringValue;
-        fieldData[fields.value || 'value'] = dataItem;
+        fieldData[fields.id || 'id'] = dataItem;
         return fieldData;
     }
-    else if (!isNullOrUndefined((dataItem as { [key: string]: Object }).isHeader)) {
+    else if (!isNullOrUndefined(dataItem.isHeader)) {
         return dataItem;
     }
     else {
@@ -104,15 +100,65 @@ export function getFieldValues(dataItem: { [key: string]: Object } | string | nu
                 const value: { [key: string]: Object } = !isNullOrUndefined(dataField) &&
                     typeof (dataField) === 'string' ? getValue(dataField, dataItem) : undefined;
                 if (!isNullOrUndefined(value) && typeof dataField === 'string' && dataField.trim()) {
-                    fieldData[dataField as string] = value;
+                    fieldData[String(dataField)] = value;
                 }
             }
         }
-        if (!fields.text && fields.value && !isNullOrUndefined(getValue(fields.value, dataItem))) {
-            const valueField: string = fields.value;
-            const valueData: string = getValue(valueField, dataItem);
+        if (!fields.text && fields.id && !isNullOrUndefined(getValue(fields.id, dataItem))) {
+            const idField: string = fields.id;
+            const valueData: string = getValue(idField, dataItem);
             fieldData['text'] = valueData;
         }
     }
     return fieldData;
 }
+
+export const getItemHeight: (container: HTMLElement) => number = (container: HTMLElement): number => {
+    if (!container) { return 40; }
+    const firstItem: HTMLElement | null = container.querySelector('.sf-list-item');
+    const height: number = firstItem ? firstItem.offsetHeight : 0;
+    return (typeof height === 'number' && height > 0) ? height : 40;
+};
+
+export const getItemByIndex: (index: number, container: HTMLElement) => HTMLElement | null =
+    (index: number, container: HTMLElement): HTMLElement | null => {
+        if (!container) { return null; }
+        return container.querySelector(`.sf-list-item[data-index="${index}"]`);
+    };
+
+export const scrollIntoItem: (index: number, container: HTMLElement) => void =
+    (index: number, container: HTMLElement): void => {
+        if (!container || isNullOrUndefined(index)) { return; }
+        requestAnimationFrame(() => {
+            const focused: HTMLElement | null = getItemByIndex(index, container);
+            if (focused) {
+                focused?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+            } else {
+                const itemHeight: number = getItemHeight(container);
+                container.scrollTop = index * itemHeight;
+            }
+        });
+    };
+
+const clamp: (n: number, min: number, max: number) => number = (n: number, min: number, max: number) => {
+    return Math.max(min, Math.min(max, n));
+};
+
+export const computeWindow: (total: number, scrollTop: number, itemSize: number, pageSize: number, overscan: number)
+=> { startIndex: number; endIndex: number; offsetY: number; totalHeight: number; } =
+    (total: number, scrollTop: number, itemSize: number, pageSize: number, overscan: number):
+    { startIndex: number; endIndex: number; offsetY: number; totalHeight: number; } => {
+        const baseIndex: number = Math.floor(scrollTop / Math.max(1, itemSize));
+        const startIndex: number = clamp(baseIndex - overscan, 0, Math.max(0, total));
+        const endIndex: number = clamp(startIndex + pageSize + overscan * 2, 0, total);
+        const offsetY: number = startIndex * itemSize;
+        const totalHeight: number = Math.max(0, total * itemSize);
+
+        return { startIndex, endIndex, offsetY, totalHeight };
+    };
+
+export const isValidLI: (li: Element) => boolean = (li: Element): boolean => {
+    return (
+        li && li.classList.contains('sf-list-item') && !li.classList.contains('sf-list-group-item') &&
+        !li.classList.contains('sf-disabled') && !li.classList.contains('sf-display-none'));
+};

@@ -1,5 +1,14 @@
 # Changelog
 
+## 33.1.44 (2026-03-16)
+
+### Common 
+
+#### Features
+
+- Introduced the `Animation` component, now including built‑in animations such as `Fade`, `Zoom`, `Slide`, and `Flip` to deliver smoother transitions and an improved user experience.
+- Introduced new `Draggable` and `Droppable` components, enabling intuitive and flexible drag‑and‑drop interactions within the UI.
+
 ## 32.2.3 (2026-02-05)
 
 ### Common 

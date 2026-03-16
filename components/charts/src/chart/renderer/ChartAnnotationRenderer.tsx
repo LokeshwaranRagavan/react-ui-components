@@ -1,26 +1,8 @@
 import * as React from 'react';
-import {
-    useEffect,
-    useLayoutEffect,
-    useMemo,
-    useState
-} from 'react';
-import {
-    DateFormatOptions,
-    HorizontalAlignment,
-    VerticalAlignment,
-    getDateParser,
-    getDateFormat,
-    SanitizeHtmlHelper
-} from '@syncfusion/react-base';
+import { useEffect, useLayoutEffect, useMemo, useState} from 'react';
+import {DateFormatOptions, HorizontalAlignment, VerticalAlignment, getDateParser, getDateFormat, SanitizeHtmlHelper} from '@syncfusion/react-base';
 import { DataUtil } from '@syncfusion/react-data';
-import {
-    AxisModel,
-    Chart,
-    ChartSizeProps,
-    Rect,
-    SeriesProperties
-} from '../chart-area/chart-interfaces';
+import { AxisModel, Chart, ChartSizeProps, Rect, SeriesProperties} from '../chart-area/chart-interfaces';
 import { ChartAnnotationProps, ChartLocationProps, SeriesAccessibility } from '../base/interfaces';
 import { useLayout } from '../layout/LayoutContext';
 import { withIn, logBase, getPoint, stringToNumber } from '../utils/helper';

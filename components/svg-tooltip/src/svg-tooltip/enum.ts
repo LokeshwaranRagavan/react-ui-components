@@ -38,7 +38,15 @@ export type TooltipTheme =
   /** Material design theme. */
   | 'Material'
   /** Dark variant of Material design theme. */
-  | 'MaterialDark';
+  | 'MaterialDark'
+  /** Tailwind design theme */
+  | 'Tailwind'
+  /** Dark variant of Tailwind design theme. */
+  | 'TailwindDark'
+  /** Boostrap design theme. */
+  | 'Bootstrap'
+  /** Dark variant of Boostrap design theme. */
+  | 'BootstrapDark';
 
 /**
  * Defines the placement options for tooltips.

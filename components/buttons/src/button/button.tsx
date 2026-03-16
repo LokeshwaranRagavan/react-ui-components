@@ -156,12 +156,8 @@ export const Button: React.ForwardRefExoticComponent<IButtonProps & React.RefAtt
             element: buttonRef.current
         }), [publicAPI]);
 
-        const ButtonFontSizeClass: string = size && size.toLowerCase() === 'small'
-            ? 'sf-font-size-12' : size && size.toLowerCase() === 'large' ? 'sf-font-size-16' : 'sf-font-size-14';
-
         const classNames: string = [
-            'sf-btn sf-control sf-align-center sf-radius-12',
-            ButtonFontSizeClass,
+            'sf-btn sf-control sf-align-center',
             iconPosition && (iconPosition === Position.Top || iconPosition === Position.Bottom) ? 'sf-btn-vertical' : 'sf-btn-horizontal',
             className,
             dir === 'rtl' ? 'sf-rtl' : '',

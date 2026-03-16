@@ -24,6 +24,15 @@ Ideal for react applications requiring structured data presentation, real-time i
 - **[Paging](https://react.syncfusion.com/react-ui/data-grid/paging):**
   Manages large volumes of data using built-in pagination. Supports both client-side and server-side paging strategies to ensure scalable performance and efficient data navigation in distributed environments.
 
+- **[DOM Virtualization & Virtual Scrolling](https://react.syncfusion.com/react-ui/data-grid/scrolling/virtual-scroll/):**
+  Enables efficient rendering of large datasets with improved performance and responsiveness through intelligent DOM virtualization and virtual scrolling techniques.
+
+- **[Excel Mode & CheckBox Filtering](https://react.syncfusion.com/react-ui/data-grid/filtering/checkbox-filtering/):**
+  Provides advanced filtering options with intuitive, checkbox-based selection for precise data segmentation. Includes Excel-mode filtering for enhanced user experience.
+
+- **[Checkbox Selection](https://react.syncfusion.com/react-ui/data-grid/selection/checkbox-selection/):**
+  Supports multi-row selection, allowing users to select multiple rows efficiently using checkboxes integrated within the grid interface.
+
 - **[Customization](https://react.syncfusion.com/react-ui/data-grid/columns/cell-customization):**
   Allows custom cell rendering, conditional styling, and layout adjustments. Enables integration with design systems and branding guidelines, supporting tailored visual experiences and functional enhancements.
 

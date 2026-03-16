@@ -1,5 +1,5 @@
 import { memo, useRef, useEffect, useCallback, forwardRef, useMemo, useState, useImperativeHandle, CSSProperties, JSX, RefAttributes, ReactElement, RefObject } from 'react';
-import { Form, FormField, FormState, FormValueType, IFormValidator, ValidationRules } from '@syncfusion/react-inputs';
+import { Form, FormField, FormState, FormValueType, IFormValidator } from '@syncfusion/react-inputs';
 import { EditCell, ValidationTooltips } from '../index';
 import { EditCellRef, InlineEditFormProps, InlineEditFormRef, UseEditResult } from '../../types/edit.interfaces';
 import { useGridComputedProvider, useGridMutableProvider } from '../../contexts';
@@ -54,9 +54,10 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
         const formRef: React.RefObject<IFormValidator> = useRef<IFormValidator>(null);
         const editCellRefs: React.RefObject<{ [field in keyof T]?: EditCellRef }> = useRef<{ [field in keyof T]?: EditCellRef }>({});
         const { rowHeight, id, getVisibleColumns, serviceLocator, editModule, contentPanelRef, contentTableRef,
-            height } = useGridComputedProvider<T>();
-        const { colElements: ColElements, cssClass, focusModule, commandColumnModule } = useGridMutableProvider<T>();
-        const { commandEdit } = commandColumnModule;
+            height, scrollModule, contentScrollRef } = useGridComputedProvider<T>();
+        const { colElements: ColElements, cssClass, focusModule, commandColumnModule, offsetX, virtualSettings, columnOffsets } =
+            useGridMutableProvider<T>();
+        const { commandEdit, commandEditInlineFormRef } = commandColumnModule;
         const formatter: IValueFormatter = serviceLocator?.getService<IValueFormatter>('valueFormatter');
         const localization: IL10n = serviceLocator?.getService<IL10n>('localization');
 
@@ -75,7 +76,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
          * Enhanced FormValidator integration with comprehensive validation rule mapping
          * This creates a proper ValidationRules object for the FormValidator component
          */
-        const formValidationRules: ValidationRules = useFormValidationRules(columns);
+        const { rules: formValidationRules, columns: validationNonRenderedColumn } = useFormValidationRules(columns);
         const isNewSessionRef: React.RefObject<boolean> = useRef(false);
 
         // Track Tab direction for proper focus management after save
@@ -156,6 +157,16 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                         }
                     }, 0);
                 });
+            } else if (firstEditableColumn && !editCellRefs.current[firstEditableColumn.field]) {
+                const colIndex: number = getVisibleColumns?.()?.indexOf(firstEditableColumn);
+                if (colIndex) {
+                    contentScrollRef.scrollLeft = columnOffsets[colIndex as number];
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            editCellRefs.current?.[firstEditableColumn.field]?.focus();
+                        });
+                    });
+                }
             }
         }, [columns, isAddOperation]);
 
@@ -163,7 +174,11 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
          * Enhanced FormValidator validation state management
          * This tracks the FormValidator's internal validation state properly
          */
-        const [formState, setFormState] = useState<FormState | null>(null);
+        const [formState, setFormState] = useState<FormState | null>(validationErrors && Object.keys(validationErrors)?.length &&
+            virtualSettings.enableRow ? (commandEdit.current ?
+                { ...commandEditInlineFormRef?.current?.[rowUid as string]?.current?.formState } :
+                {...editModule?.getCurrentFormState()}) : null);
+        const isSubmitValidationScrollRequired: RefObject<boolean> = useRef<boolean>(false);
 
         /**
          * Validate the form using FormValidator component
@@ -173,11 +188,31 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
             if (formRef.current) {
                 // Trigger FormValidator validation
                 const isFormValid: boolean = formRef.current.validate();
+                isSubmitValidationScrollRequired.current = !isFormValid;
                 return isFormValid;
             }
             // Fallback to existing validation errors check when FormValidator is not available
             return Object.keys(validationErrors).length === 0;
         }, [validationErrors]);
+
+        useMemo(() => {
+            if (formState?.errors) {
+                const firstErrorField: string = Object.keys(formState?.errors)?.[0];
+                if (firstErrorField && isSubmitValidationScrollRequired.current && validationNonRenderedColumn.size &&
+                    validationNonRenderedColumn.has(firstErrorField)) {
+                    const colIndex: number = getVisibleColumns?.()?.indexOf(validationNonRenderedColumn.get(firstErrorField));
+                    if (colIndex) {
+                        contentScrollRef.scrollLeft = columnOffsets[colIndex as number];
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                editCellRefs.current?.[firstErrorField as string]?.focus();
+                            });
+                        });
+                    }
+                }
+                isSubmitValidationScrollRequired.current = false;
+            }
+        }, [formState?.errors]);
 
         /**
          * Get all edit cell refs
@@ -194,11 +229,11 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
         }, []);
 
         /**
-         * Get current form data
+         * Get current form internal parsed data
          */
         const getCurrentData: () => T = useCallback(() => {
-            return formState?.values as T;
-        }, [formState]);
+            return internalData as T;
+        }, [internalData]);
 
         /**
          * Handle field value change with proper data isolation
@@ -323,7 +358,13 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
         const renderEditCells: React.JSX.Element[] = useMemo(() => {
             if (!formState) { return null; }
 
-            return columns.map((column: ColumnProps<T>, index: number) => {
+            const startVirtualIndex: number = scrollModule?.virtualColumnInfo.startIndex;
+            const endVirtualIndex: number = scrollModule?.virtualColumnInfo.endIndex;
+            const visibleColumns: ColumnProps[] = getVisibleColumns();
+            const finalColumns: ColumnProps[] = virtualSettings.enableColumn ?
+                (scrollModule?.virtualColumnInfo?.columns?.length ? scrollModule?.virtualColumnInfo?.columns :
+                    (visibleColumns.length ? visibleColumns : columns).slice(startVirtualIndex, endVirtualIndex)) : columns;
+            const renderedCells: React.JSX.Element[] = finalColumns.map((column: ColumnProps<T>, index: number) => {
                 // For add operations, primary key fields should be editable
                 // For edit operations, primary key fields should be disabled
                 // Also check column/field visiibility and the disabled prop for showAddNewRow functionality
@@ -349,7 +390,6 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                     );
                 }
                 const commandColumn: boolean = !isNullOrUndefined(column.getCommandItems);
-
                 if (!isEditable) {
                     return column.visible ? (
                         <td
@@ -373,7 +413,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                                         column={{ ...column, allowEdit: false }}
                                         value={getObject(column.field, formState?.values) ?? formState?.values?.[column.field]}
                                         data={internalData as T}
-                                        error={formState?.errors[column.field]}
+                                        error={formState?.errors?.[column.field]}
                                         onChange={(value: unknown) => handleFieldChange(
                                             column, value as ValueType, formatter, internalData,
                                             setInternalData, formState, stableOnFieldChange)}
@@ -419,7 +459,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                                 column={column}
                                 value={getObject(column.field, formState?.values) ?? formState?.values?.[column.field]}
                                 data={internalData}
-                                error={formState?.errors[column.field]}
+                                error={formState?.errors?.[column.field]}
                                 onChange={(value: unknown) => handleFieldChange(
                                     column, value as ValueType, formatter, internalData,
                                     setInternalData, formState, stableOnFieldChange)}
@@ -443,8 +483,23 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                     ></td>
                 );
             });
-        }, [columns, internalData, validationErrors, isAddOperation, disabled, handleFieldChange,
-            handleFieldBlur, handleEnter, handleEscape, storeEditCellRef, formState
+
+            // Render hidden FormFields for non-rendered virtual columns with validation rules
+            // This ensures validation runs on all fields with validation rules, even if they're not visible
+            const hiddenValidationFields: React.JSX.Element[] = [];
+            if (virtualSettings.enableColumn && validationNonRenderedColumn.size > 0) {
+                Array.from(validationNonRenderedColumn.entries()).forEach(([field, _column]: [string, ColumnProps<T>]) => {
+                    hiddenValidationFields.push(
+                        <FormField key={`hidden-validation-${field}`} name={field}>
+                            <></>
+                        </FormField>
+                    );
+                });
+            }
+
+            return [...renderedCells, ...hiddenValidationFields];
+        }, [columns, internalData, validationErrors, isAddOperation, disabled, handleFieldChange, offsetX,
+            handleFieldBlur, handleEnter, handleEscape, storeEditCellRef, formState, virtualSettings
         ]);
 
         // Render custom edit template if provided
@@ -457,7 +512,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                             rules={formValidationRules}
                             initialValues={internalData as Record<string, FormValueType>}
                             validateOnChange={!(isAddOperation && editModule?.isShowAddNewRowActive) || (isAddOperation &&
-                            formState && Object.keys(formState.errors).length > 0)}
+                            formState && formState.errors && Object.keys(formState.errors).length > 0)}
                             onFormStateChange={setFormState}
                             className={'sf-grid-edit-form' + (cssClass !== '' ? ' ' + cssClass : '')}
                             id={`grid-edit-form-${editRowIndex}`}
@@ -478,7 +533,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                                     setInternalData={setInternalData}
                                 />
                             </div>
-                            {formState && Object.keys(formState.errors).length > 0 && (
+                            {formState && formState.errors && Object.keys(formState.errors).length > 0 && (
                                 <ValidationTooltips formState={formState} editCellRefs={editCellRefs} />
                             )}
                         </Form>
@@ -537,7 +592,10 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
          * Enhanced focus management for proper auto-focus behavior
          * Only focus on initial mount and when starting a new edit session
          */
-        const hasInitialFocusAttempted: React.RefObject<boolean> = useRef(false);
+        const hasInitialFocusAttempted: React.RefObject<boolean> =
+            useRef(virtualSettings.enableRow &&
+                !isNullOrUndefined(commandColumnModule?.commandEditInlineFormRef?.current?.[rowUid as string] ??
+                commandColumnModule?.commandAddInlineFormRef?.current?.[rowUid as string]));
         const focusTimeoutRef: React.RefObject<NodeJS.Timeout | null> = useRef<NodeJS.Timeout | null>(null);
 
         useEffect(() => {
@@ -582,14 +640,36 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
          * Memoized colgroup element to prevent unnecessary re-renders
          * Contains column definitions for the table
          */
-        const colGroupContent: JSX.Element = useMemo<JSX.Element>(() => (
-            <colgroup
-                key={`${id}-${isAddOperation ? 'add' : 'edit'}-colgroup`}
-                id={`${id}-${isAddOperation ? 'add' : 'edit'}-colgroup`}
-            >
-                {ColElements.length ? ColElements : null}
-            </colgroup>
-        ), [ColElements, id, isAddOperation]);
+        const colGroupContent: JSX.Element = useMemo(() => {
+            let visibleCols: JSX.Element[] = [];
+
+            if (!virtualSettings.enableRow && !virtualSettings.enableColumn) {
+                visibleCols = ColElements;
+            } else {
+                const startIndex: number = scrollModule?.virtualColumnInfo?.startIndex ?? 0;
+                const endIndex: number = scrollModule?.virtualColumnInfo?.endIndex ?? ColElements?.length;
+                for (let i: number = startIndex; i < endIndex; i++) {
+                    const col: JSX.Element = ColElements?.[i as number];
+                    visibleCols.push(col);
+                }
+            }
+
+            return (
+                <colgroup
+                    key={`content-${id}-colgroup`}
+                    id={`content-${id}-colgroup`}
+                >
+                    {visibleCols}
+                </colgroup>
+            );
+        }, [
+            ColElements,
+            id,
+            offsetX,
+            virtualSettings.enableColumn,
+            scrollModule?.virtualColumnInfo?.startIndex,
+            scrollModule?.virtualColumnInfo?.endIndex
+        ]);
 
         return rowUid ? (
             <tr
@@ -597,7 +677,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                 className={'sf-grid-content-row ' + (rowUid.includes('grid-add-row') ? 'sf-grid-add-row' : 'sf-grid-edit-row')}
                 aria-rowindex={editRowIndex + 1}
                 data-uid={rowUid}
-                style={{ height: `${rowHeight}px` }}
+                style={{ height: `${rowObject?.height ?? rowHeight}px` }}
             >
                 <td colSpan={getVisibleColumns?.().length}>
                     <Form
@@ -605,7 +685,7 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                         rules={formValidationRules}
                         initialValues={internalData as Record<string, FormValueType>}
                         validateOnChange={!(isAddOperation && editModule?.isShowAddNewRowActive) || (isAddOperation &&
-                            formState && Object.keys(formState.errors).length > 0)}
+                            formState && formState.errors && Object.keys(formState.errors).length > 0)}
                         onFormStateChange={(args: FormState) => {
                             setFormState(args);
                         }}
@@ -624,14 +704,14 @@ export const InlineEditForm: <T>(props: InlineEditFormProps<T> & RefAttributes<I
                             <tbody role='rowgroup'>
                                 <tr
                                     role='row'
-                                    style={{ height: `${rowHeight}px` }}
+                                    style={{ height: `${rowObject?.height ?? rowHeight}px` }}
                                 >
                                     {renderEditCells}
                                 </tr>
                             </tbody>
                         </table>
 
-                        {formState && Object.keys(formState.errors).length > 0 && (
+                        {formState && formState.errors && Object.keys(formState.errors).length > 0 && (
                             <ValidationTooltips formState={formState} editCellRefs={editCellRefs} rowRef={rowRef} />
                         )}
                     </Form>
@@ -770,7 +850,7 @@ export const handleFieldBlurFn: <T>(column: ColumnProps<T>, value: ValueType | R
         setInternalData({ ...editedData });
 
         if (!(isAddOperation && editModule.isShowAddNewRowActive) ||
-            (isAddOperation && formState && Object.keys(formState.errors).length > 0)) {
+            (isAddOperation && formState && formState.errors && Object.keys(formState.errors).length > 0)) {
             // Always trigger FormValidator blur validation
             // This is essential for proper validation behavior
             formState?.onBlur?.(column.field);

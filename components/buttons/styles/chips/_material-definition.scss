@@ -6,6 +6,7 @@ $chip-padding: $spacing-5 $spacing-10 !default;
 $chip-has-icon-padding-block: $spacing-3 !default;
 $chip-margin: $spacing-4 !default;
 $chip-border-size: 1px !default;
+$chip-letter-spacing: $letter-spacing-wide !default;
 $chip-selection-bg-color: $content-bg-color-pressed !default;
 
 $chip-disabled-text-color: $content-text-color-disabled !default;
@@ -17,7 +18,7 @@ $chip-font-size: $font-size-sm !default;
 $chip-line-height: $line-height-sm !default;
 $chip-font-weight: $font-weight-medium !default;
 
-$chip-avatar-border-radius: $radius-12!default;
+$chip-avatar-border-radius: $radius-12 !default;
 $chip-avatar-size: $spacing-24 !default;
 $chip-avatar-margin: calc(var(--sf-spacing) * -0.375) $spacing-4 !default;
 $chip-avatar-content-font-size: $font-size-sm !default;
@@ -28,7 +29,7 @@ $chip-leading-icon-border-radius: $radius-full !default;
 $chip-delete-icon-border-radius: $radius-full !default;
 $chip-leading-icon-size: $spacing-24 !default;
 $chip-leading-icon-margin: calc(var(--sf-spacing) * -0.375) $spacing-4 !default;
-$chip-multi-selection-icon-margin: calc(var(--sf-spacing) * -0.375) $spacing-4  !default;
+$chip-multi-selection-icon-margin: calc(var(--sf-spacing) * -0.375) $spacing-4 !default;
 $chip-multi-selection-icon-transition: width 300ms, margin 300ms cubic-bezier(.4, 0, .2, 1) !default;
 $chip-delete-icon-font-size: $font-size-base !default;
 $chip-delete-icon-size: $spacing-18 !default;
@@ -36,81 +37,226 @@ $chip-trailing-url-size: $spacing-22 !default;
 $chip-trailing-url-margin: $spacing-8 calc(var(--sf-spacing) * -0.375) !default;
 $chip-delete-icon-margin: $spacing-8 calc(var(--sf-spacing) * -0.125) !default;
 $chip-outline-active-border-width: 1px !default;
+$chip-keyboard-focus-box-shadow: $shadow-focus-ring1 !default;
+
+// ===== CHIP COLORS - STANDARD VARIANTS =====
+// Default variant
+$chip-default-bg-color: $transparent !default;
+$chip-default-font-color: rgb($content-text-color-alt1) !default;
+$chip-default-avatar-bg-color: rgb($primary-light) !default;
+$chip-default-avatar-font-color: rgb($secondary-text-color) !default;
+$chip-default-hover-bg-color: $content-bg-color-hover !default;
+$chip-default-hover-font-color: rgb($content-text-color-alt1) !default;
+$chip-default-focus-bg-color: $content-bg-color-pressed !default;
+$chip-default-focus-font-color: rgb($secondary-text-color) !default;
+$chip-default-active-bg-color: $content-bg-color-pressed !default;
+$chip-default-active-font-color: rgb($secondary-text-color-pressed) !default;
+$chip-default-pressed-bg-color: $content-bg-color-pressed !default;
+$chip-default-pressed-font-color: rgb($secondary-text-color-pressed) !default;
+$chip-default-focus-active-bg-color: $secondary-border-color-pressed !default;
+$chip-default-focus-active-font-color: rgb($secondary-text-color-hover) !default;
+
+// Primary variant
+$chip-primary-bg-color: rgb($primary) !default;
+$chip-primary-font-color: rgb($primary-text-color) !default;
+$chip-primary-avatar-bg-color: rgb($primary) !default;
+$chip-primary-avatar-font-color: rgb($primary-text-color) !default;
+$chip-primary-hover-bg-color: $primary-bg-color-hover !default;
+$chip-primary-focus-bg-color: $primary-bg-color-hover !default;
+$chip-primary-active-bg-color: $primary-bg-color-pressed !default;
+$chip-primary-pressed-bg-color: $primary-bg-color-pressed !default;
+$chip-primary-focus-active-bg-color: $primary-bg-color-pressed !default;
+
+// Success variant
+$chip-success-bg-color: rgb($success-bg-color) !default;
+$chip-success-font-color: rgb($success-text) !default;
+$chip-success-avatar-bg-color: rgb($success-bg-color) !default;
+$chip-success-avatar-font-color: rgb($success-text) !default;
+$chip-success-hover-bg-color: $success-bg-color-hover !default;
+$chip-success-focus-bg-color: $success-bg-color-hover !default;
+$chip-success-active-bg-color: $success-bg-color-pressed !default;
+$chip-success-pressed-bg-color: $success-bg-color-pressed !default;
+$chip-success-focus-active-bg-color: $success-bg-color-pressed !default;
+
+// Info variant
+$chip-info-bg-color: rgb($info-bg-color) !default;
+$chip-info-font-color: rgb($info-text) !default;
+$chip-info-avatar-bg-color: rgb($info-bg-color) !default;
+$chip-info-avatar-font-color: rgb($info-text) !default;
+$chip-info-hover-bg-color: $info-bg-color-hover !default;
+$chip-info-focus-bg-color: $info-bg-color-hover !default;
+$chip-info-active-bg-color: $info-bg-color-pressed !default;
+$chip-info-pressed-bg-color: $info-bg-color-pressed !default;
+$chip-info-focus-active-bg-color: $info-bg-color-pressed !default;
+
+// Warning variant
+$chip-warning-bg-color: rgb($warning-bg-color) !default;
+$chip-warning-font-color: rgb($warning-text) !default;
+$chip-warning-avatar-bg-color: rgb($warning-bg-color) !default;
+$chip-warning-avatar-font-color: rgb($warning-text) !default;
+$chip-warning-hover-bg-color: $warning-bg-color-hover !default;
+$chip-warning-focus-bg-color: $warning-bg-color-hover !default;
+$chip-warning-active-bg-color: $warning-bg-color-pressed !default;
+$chip-warning-pressed-bg-color: $warning-bg-color-pressed !default;
+$chip-warning-focus-active-bg-color: $warning-bg-color-pressed !default;
+
+// Error variant
+$chip-error-bg-color: rgb($error-bg-color) !default;
+$chip-error-font-color: rgb($error-text) !default;
+$chip-error-avatar-bg-color: rgb($error-bg-color) !default;
+$chip-error-avatar-font-color: rgb($error-text) !default;
+$chip-error-hover-bg-color: $error-bg-color-hover !default;
+$chip-error-focus-bg-color: $error-bg-color-hover !default;
+$chip-error-active-bg-color: $error-bg-color-pressed !default;
+$chip-error-pressed-bg-color: $error-bg-color-pressed !default;
+$chip-error-focus-active-bg-color: $error-bg-color-pressed !default;
+
+// ===== CHIP COLORS - OUTLINE VARIANTS =====
+// Default outline variant
+$chip-outline-default-bg-color: transparent !default;
+$chip-outline-default-font-color: rgb($content-text-color-alt1) !default;
+$chip-outline-default-avatar-bg-color: $secondary-bg-color !default;
+$chip-outline-default-avatar-font-color: rgb($secondary-text-color) !default;
+$chip-outline-default-hover-bg-color: $content-bg-color-hover !default;
+$chip-outline-default-hover-font-color: rgb($secondary-text-color-hover) !default;
+$chip-outline-default-focus-bg-color: $secondary-bg-color !default;
+$chip-outline-default-focus-font-color: rgb($secondary-text-color) !default;
+$chip-outline-default-active-bg-color: $secondary-border-color-pressed !default;
+$chip-outline-default-active-font-color: rgb($secondary-text-color-pressed) !default;
+$chip-outline-default-pressed-bg-color: $content-bg-color-pressed !default;
+$chip-outline-default-pressed-font-color: rgb($content-text-color-alt1) !default;
+$chip-outline-default-focus-active-bg-color: $secondary-border-color-pressed !default;
+$chip-outline-default-focus-active-font-color: rgb($secondary-text-color-pressed) !default;
+
+// Primary outline variant
+$chip-outline-primary-bg-color: transparent !default;
+$chip-outline-primary-font-color: rgb($primary) !default;
+$chip-outline-primary-avatar-bg-color: rgb($primary) !default;
+$chip-outline-primary-avatar-font-color: rgb($primary-text-color) !default;
+$chip-outline-primary-hover-bg-color: rgb($primary, $opacity8) !default;
+$chip-outline-primary-focus-bg-color: rgb($primary, $opacity12) !default;
+$chip-outline-primary-active-bg-color: rgb($primary, $opacity16) !default;
+$chip-outline-primary-pressed-bg-color: rgb($primary, $opacity16) !default;
+$chip-outline-primary-focus-active-bg-color: rgb($primary, $opacity16) !default;
+
+// Success outline variant
+$chip-outline-success-bg-color: transparent !default;
+$chip-outline-success-font-color: rgb($success-bg-color) !default;
+$chip-outline-success-avatar-bg-color: rgb($success) !default;
+$chip-outline-success-avatar-font-color: rgb($success-text) !default;
+$chip-outline-success-hover-bg-color: rgb($success-bg-color, $opacity8) !default;
+$chip-outline-success-focus-bg-color: rgb($success-bg-color, $opacity12) !default;
+$chip-outline-success-active-bg-color: rgb($success-bg-color, $opacity16) !default;
+$chip-outline-success-pressed-bg-color: rgb($success-bg-color, $opacity16) !default;
+$chip-outline-success-focus-active-bg-color: rgb($success-bg-color, $opacity16) !default;
+
+// Info outline variant
+$chip-outline-info-bg-color: transparent !default;
+$chip-outline-info-font-color: rgb($info-bg-color) !default;
+$chip-outline-info-avatar-bg-color: rgb($info) !default;
+$chip-outline-info-avatar-font-color: rgb($info-text) !default;
+$chip-outline-info-hover-bg-color: rgb($info-bg-color, $opacity8) !default;
+$chip-outline-info-focus-bg-color: rgb($info-bg-color, $opacity12) !default;
+$chip-outline-info-active-bg-color: rgb($info-bg-color, $opacity16) !default;
+$chip-outline-info-pressed-bg-color: rgb($info-bg-color, $opacity12) !default;
+$chip-outline-info-focus-active-bg-color: rgb($info-bg-color, $opacity16) !default;
+
+// Warning outline variant
+$chip-outline-warning-bg-color: transparent !default;
+$chip-outline-warning-font-color: rgb($warning-bg-color) !default;
+$chip-outline-warning-avatar-bg-color: rgb($warning) !default;
+$chip-outline-warning-avatar-font-color: rgb($warning-text) !default;
+$chip-outline-warning-hover-bg-color: rgb($warning-bg-color, $opacity8) !default;
+$chip-outline-warning-focus-bg-color: rgb($warning-bg-color, $opacity12) !default;
+$chip-outline-warning-active-bg-color: rgb($warning-bg-color, $opacity16) !default;
+$chip-outline-warning-pressed-bg-color: rgb($warning-bg-color, $opacity16) !default;
+$chip-outline-warning-focus-active-bg-color: rgb($warning-bg-color, $opacity16) !default;
+
+// Error outline variant
+$chip-outline-error-bg-color: transparent !default;
+$chip-outline-error-font-color: rgb($error) !default;
+$chip-outline-error-avatar-bg-color: rgb($error) !default;
+$chip-outline-error-avatar-font-color: rgb($error-text) !default;
+$chip-outline-error-hover-bg-color: rgb($error-bg-color, $opacity8) !default;
+$chip-outline-error-focus-bg-color: rgb($error-bg-color, $opacity12) !default;
+$chip-outline-error-active-bg-color: rgb($error-bg-color, $opacity16) !default;
+$chip-outline-error-pressed-bg-color: rgb($error-bg-color, $opacity16) !default;
+$chip-outline-error-focus-active-bg-color: rgb($error-bg-color, $opacity16) !default;
 
 // Color maps for standard variants
 $chip-colors: (
-    'default': ('default': ('bg': $secondary-border-color, 'font': rgb($content-text-color-alt1), 'avatar-bg': rgb($primary-light), 'avatar-font': rgb($secondary-text-color)),
-        'hover': ('bg': $content-bg-color-hover, 'font': rgb($content-text-color-alt1)),
-        'focus': ('bg': $content-bg-color-pressed, 'font': rgb($secondary-text-color)),
-        'active': ('bg': $content-bg-color-pressed, 'font': rgb($secondary-text-color-pressed)),
-        'pressed': ('bg': $content-bg-color-pressed, 'font': rgb($secondary-text-color-pressed)),
-        'focus-active': ('bg': $secondary-border-color-pressed, 'font': rgb($secondary-text-color-hover))),
-    'primary': ('default': ('bg': rgb($primary), 'font': rgb($primary-text-color), 'avatar-bg': rgb($primary), 'avatar-font': rgb($primary-text-color)),
-        'hover': ('bg': $primary-bg-color-hover),
-        'focus': ('bg': $primary-bg-color-hover),
-        'active': ('bg': $primary-bg-color-pressed),
-        'pressed': ('bg': $primary-bg-color-pressed),
-        'focus-active': ('bg': $primary-bg-color-pressed)),
-    'success': ('default': ('bg': rgb($success-bg-color), 'font': rgb($success-text), 'avatar-bg': rgb($success-bg-color), 'avatar-font': rgb($success-text)),
-        'hover': ('bg': $success-bg-color-hover),
-        'focus': ('bg': $success-bg-color-hover),
-        'active': ('bg': $success-bg-color-pressed),
-        'pressed': ('bg': $success-bg-color-pressed),
-        'focus-active': ('bg': $success-bg-color-pressed)),
-    'info': ('default': ('bg': rgb($info-bg-color), 'font': rgb($info-text), 'avatar-bg': rgb($info-bg-color), 'avatar-font': rgb($info-text)),
-        'hover': ('bg': $info-bg-color-hover),
-        'focus': ('bg': $info-bg-color-hover),
-        'active': ('bg': $info-bg-color-pressed),
-        'pressed': ('bg': $info-bg-color-pressed),
-        'focus-active': ('bg': $info-bg-color-pressed)),
-    'warning': ('default': ('bg': rgb($warning-bg-color), 'font': rgb($warning-text), 'avatar-bg': rgb($warning-bg-color), 'avatar-font': rgb($warning-text)),
-        'hover': ('bg': $warning-bg-color-hover),
-        'focus': ('bg': $warning-bg-color-hover),
-        'active': ('bg': $warning-bg-color-pressed),
-        'pressed': ('bg': $warning-bg-color-pressed),
-        'focus-active': ('bg': $warning-bg-color-pressed)),
-    'error': ('default': ('bg': rgb($error-bg-color), 'font': rgb($error-text), 'avatar-bg': rgb($error-bg-color), 'avatar-font': rgb($error-text)),
-        'hover': ('bg': $error-bg-color-hover),
-        'focus': ('bg': $error-bg-color-hover),
-        'active': ('bg': $error-bg-color-pressed),
-        'pressed': ('bg': $error-bg-color-pressed),
-        'focus-active': ('bg': $error-bg-color-pressed))) !default;
+    'default': ('default': ('bg': $chip-default-bg-color, 'font': $chip-default-font-color, 'avatar-bg': $chip-default-avatar-bg-color, 'avatar-font': $chip-default-avatar-font-color),
+        'hover': ('bg': $chip-default-hover-bg-color, 'font': $chip-default-hover-font-color),
+        'focus': ('bg': $chip-default-focus-bg-color, 'font': $chip-default-focus-font-color),
+        'active': ('bg': $chip-default-active-bg-color, 'font': $chip-default-active-font-color),
+        'pressed': ('bg': $chip-default-pressed-bg-color, 'font': $chip-default-pressed-font-color),
+        'focus-active': ('bg': $chip-default-focus-active-bg-color, 'font': $chip-default-focus-active-font-color)),
+    'primary': ('default': ('bg': $chip-primary-bg-color, 'font': $chip-primary-font-color, 'avatar-bg': $chip-primary-avatar-bg-color, 'avatar-font': $chip-primary-avatar-font-color),
+        'hover': ('bg': $chip-primary-hover-bg-color),
+        'focus': ('bg': $chip-primary-focus-bg-color),
+        'active': ('bg': $chip-primary-active-bg-color),
+        'pressed': ('bg': $chip-primary-pressed-bg-color),
+        'focus-active': ('bg': $chip-primary-focus-active-bg-color)),
+    'success': ('default': ('bg': $chip-success-bg-color, 'font': $chip-success-font-color, 'avatar-bg': $chip-success-avatar-bg-color, 'avatar-font': $chip-success-avatar-font-color),
+        'hover': ('bg': $chip-success-hover-bg-color),
+        'focus': ('bg': $chip-success-focus-bg-color),
+        'active': ('bg': $chip-success-active-bg-color),
+        'pressed': ('bg': $chip-success-pressed-bg-color),
+        'focus-active': ('bg': $chip-success-focus-active-bg-color)),
+    'info': ('default': ('bg': $chip-info-bg-color, 'font': $chip-info-font-color, 'avatar-bg': $chip-info-avatar-bg-color, 'avatar-font': $chip-info-avatar-font-color),
+        'hover': ('bg': $chip-info-hover-bg-color),
+        'focus': ('bg': $chip-info-focus-bg-color),
+        'active': ('bg': $chip-info-active-bg-color),
+        'pressed': ('bg': $chip-info-pressed-bg-color),
+        'focus-active': ('bg': $chip-info-focus-active-bg-color)),
+    'warning': ('default': ('bg': $chip-warning-bg-color, 'font': $chip-warning-font-color, 'avatar-bg': $chip-warning-avatar-bg-color, 'avatar-font': $chip-warning-avatar-font-color),
+        'hover': ('bg': $chip-warning-hover-bg-color),
+        'focus': ('bg': $chip-warning-focus-bg-color),
+        'active': ('bg': $chip-warning-active-bg-color),
+        'pressed': ('bg': $chip-warning-pressed-bg-color),
+        'focus-active': ('bg': $chip-warning-focus-active-bg-color)),
+    'error': ('default': ('bg': $chip-error-bg-color, 'font': $chip-error-font-color, 'avatar-bg': $chip-error-avatar-bg-color, 'avatar-font': $chip-error-avatar-font-color),
+        'hover': ('bg': $chip-error-hover-bg-color),
+        'focus': ('bg': $chip-error-focus-bg-color),
+        'active': ('bg': $chip-error-active-bg-color),
+        'pressed': ('bg': $chip-error-pressed-bg-color),
+        'focus-active': ('bg': $chip-error-focus-active-bg-color))) !default;
 
 // Color maps for outline variants
 $chip-outline-colors: (
-    'default': ('default': ('bg': transparent, 'font': rgb($content-text-color-alt1), 'avatar-bg': $secondary-bg-color, 'avatar-font': rgb($secondary-text-color)),
-        'hover': ('bg': $content-bg-color-hover, 'font': rgb($secondary-text-color-hover)),
-        'focus': ('bg': $secondary-bg-color, 'font': rgb($secondary-text-color)),
-        'active': ('bg': $secondary-border-color-pressed, 'font': rgb($secondary-text-color-pressed)),
-        'pressed': ('bg': $content-bg-color-pressed, 'font': rgb($content-text-color-alt1)),
-        'focus-active': ('bg': $secondary-border-color-pressed, 'font': rgb($secondary-text-color-pressed))),
-    'primary': ('default': ('bg': transparent, 'font': rgb($primary), 'avatar-bg': rgb($primary), 'avatar-font': rgb($primary-text-color)),
-        'hover': ('bg': rgb($primary, $opacity8)),
-        'focus': ('bg': rgb($primary, $opacity12)),
-        'active': ('bg': rgb($primary, $opacity16)),
-        'pressed': ('bg': rgb($primary, $opacity16)),
-        'focus-active': ('bg': rgb($primary, $opacity16))),
-    'success': ('default': ('bg': transparent, 'font': rgb($success-bg-color), 'avatar-bg': rgb($success), 'avatar-font': rgb($success-text)),
-        'hover': ('bg': rgb($success-bg-color, $opacity8)),
-        'focus': ('bg': rgb($success-bg-color, $opacity12)),
-        'active': ('bg': rgb($success-bg-color, $opacity16)),
-        'pressed': ('bg': rgb($success-bg-color, $opacity16)),
-        'focus-active': ('bg': rgb($success-bg-color, $opacity16))),
-    'info': ('default': ('bg': transparent, 'font': rgb($info-bg-color), 'avatar-bg': rgb($info), 'avatar-font': rgb($info-text)),
-        'hover': ('bg': rgb($info-bg-color, $opacity8)),
-        'focus': ('bg': rgb($info-bg-color, $opacity12)),
-        'active': ('bg': rgb($info-bg-color, $opacity16)),
-        'pressed': ('bg': rgb($info-bg-color, $opacity12)),
-        'focus-active': ('bg': rgb($info-bg-color, $opacity16))),
-    'warning': ('default': ('bg': transparent, 'font': rgb($warning-bg-color), 'avatar-bg': rgb($warning), 'avatar-font': rgb($warning-text)),
-        'hover': ('bg': rgb($warning-bg-color, $opacity8)),
-        'focus': ('bg': rgb($warning-bg-color, $opacity12)),
-        'active': ('bg': rgb($warning-bg-color, $opacity16)),
-        'pressed': ('bg': rgb($warning-bg-color, $opacity16)),
-        'focus-active': ('bg': rgb($warning-bg-color, $opacity16))),
-    'error': ('default': ('bg': transparent, 'font': rgb($error), 'avatar-bg': rgb($error), 'avatar-font': rgb($error-text)),
-        'hover': ('bg': rgb($error-bg-color, $opacity8)),
-        'focus': ('bg': rgb($error-bg-color, $opacity12)),
-        'active': ('bg': rgb($error-bg-color, $opacity16)),
-        'pressed': ('bg': rgb($error-bg-color, $opacity16)),
-        'focus-active': ('bg': rgb($error-bg-color, $opacity16)))) !default;
+    'default': ('default': ('bg': $chip-outline-default-bg-color, 'font': $chip-outline-default-font-color, 'avatar-bg': $chip-outline-default-avatar-bg-color, 'avatar-font': $chip-outline-default-avatar-font-color),
+        'hover': ('bg': $chip-outline-default-hover-bg-color, 'font': $chip-outline-default-hover-font-color),
+        'focus': ('bg': $chip-outline-default-focus-bg-color, 'font': $chip-outline-default-focus-font-color),
+        'active': ('bg': $chip-outline-default-active-bg-color, 'font': $chip-outline-default-active-font-color),
+        'pressed': ('bg': $chip-outline-default-pressed-bg-color, 'font': $chip-outline-default-pressed-font-color),
+        'focus-active': ('bg': $chip-outline-default-focus-active-bg-color, 'font': $chip-outline-default-focus-active-font-color)),
+    'primary': ('default': ('bg': $chip-outline-primary-bg-color, 'font': $chip-outline-primary-font-color, 'avatar-bg': $chip-outline-primary-avatar-bg-color, 'avatar-font': $chip-outline-primary-avatar-font-color),
+        'hover': ('bg': $chip-outline-primary-hover-bg-color),
+        'focus': ('bg': $chip-outline-primary-focus-bg-color),
+        'active': ('bg': $chip-outline-primary-active-bg-color),
+        'pressed': ('bg': $chip-outline-primary-pressed-bg-color),
+        'focus-active': ('bg': $chip-outline-primary-focus-active-bg-color)),
+    'success': ('default': ('bg': $chip-outline-success-bg-color, 'font': $chip-outline-success-font-color, 'avatar-bg': $chip-outline-success-avatar-bg-color, 'avatar-font': $chip-outline-success-avatar-font-color),
+        'hover': ('bg': $chip-outline-success-hover-bg-color),
+        'focus': ('bg': $chip-outline-success-focus-bg-color),
+        'active': ('bg': $chip-outline-success-active-bg-color),
+        'pressed': ('bg': $chip-outline-success-pressed-bg-color),
+        'focus-active': ('bg': $chip-outline-success-focus-active-bg-color)),
+    'info': ('default': ('bg': $chip-outline-info-bg-color, 'font': $chip-outline-info-font-color, 'avatar-bg': $chip-outline-info-avatar-bg-color, 'avatar-font': $chip-outline-info-avatar-font-color),
+        'hover': ('bg': $chip-outline-info-hover-bg-color),
+        'focus': ('bg': $chip-outline-info-focus-bg-color),
+        'active': ('bg': $chip-outline-info-active-bg-color),
+        'pressed': ('bg': $chip-outline-info-pressed-bg-color),
+        'focus-active': ('bg': $chip-outline-info-focus-active-bg-color)),
+    'warning': ('default': ('bg': $chip-outline-warning-bg-color, 'font': $chip-outline-warning-font-color, 'avatar-bg': $chip-outline-warning-avatar-bg-color, 'avatar-font': $chip-outline-warning-avatar-font-color),
+        'hover': ('bg': $chip-outline-warning-hover-bg-color),
+        'focus': ('bg': $chip-outline-warning-focus-bg-color),
+        'active': ('bg': $chip-outline-warning-active-bg-color),
+        'pressed': ('bg': $chip-outline-warning-pressed-bg-color),
+        'focus-active': ('bg': $chip-outline-warning-focus-active-bg-color)),
+    'error': ('default': ('bg': $chip-outline-error-bg-color, 'font': $chip-outline-error-font-color, 'avatar-bg': $chip-outline-error-avatar-bg-color, 'avatar-font': $chip-outline-error-avatar-font-color),
+        'hover': ('bg': $chip-outline-error-hover-bg-color),
+        'focus': ('bg': $chip-outline-error-focus-bg-color),
+        'active': ('bg': $chip-outline-error-active-bg-color),
+        'pressed': ('bg': $chip-outline-error-pressed-bg-color),
+        'focus-active': ('bg': $chip-outline-error-focus-active-bg-color))) !default;

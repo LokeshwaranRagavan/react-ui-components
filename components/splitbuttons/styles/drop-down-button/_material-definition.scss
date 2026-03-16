@@ -24,9 +24,10 @@ $drop-down-btn-sm-li-height: $spacing-32 !default;
 $drop-down-btn-sm-li-padding: $spacing-0 $spacing-16 !default;
 $drop-down-btn-sm-min-width: calc(var(--sf-spacing) * 7.5) !default;
 $drop-down-btn-sm-ul-padding: $spacing-8 $spacing-0 !default;
-$drop-down-btn-sm-icon-margin-right: $spacing-12 !default;
+$drop-down-btn-sm-icon-margin-right: $spacing-8 !default;
 $drop-down-btn-sm-font-size: $font-size-sm !default;
-$drop-down-btn-sm-icon-size: $font-size-xs !default;
+$drop-down-btn-sm-icon-size: $font-size-base !default;
+$drop-down-btn-sm-menu-icon-size: $font-size-base !default;
 
 // Medium size variables (default)
 $drop-down-btn-me-li-height: $spacing-40 !default;
@@ -35,6 +36,8 @@ $drop-down-btn-me-min-width: calc(var(--sf-spacing) * 10) !default;
 $drop-down-btn-me-ul-padding: $spacing-8 $spacing-0 !default;
 $drop-down-btn-me-icon-margin-right: $spacing-12 !default;
 $drop-down-btn-me-font-size: $font-size-base !default;
+$drop-down-btn-me-icon-size: $font-size-base !default;
+$drop-down-btn-me-menu-icon-size: $font-size-xl !default;
 
 // Large size variables
 $drop-down-btn-la-li-height: $spacing-48 !default;
@@ -43,4 +46,5 @@ $drop-down-btn-la-min-width: calc(var(--sf-spacing) * 11.25) !default;
 $drop-down-btn-la-ul-padding: $spacing-12 $spacing-0 !default;
 $drop-down-btn-la-icon-margin-right: $spacing-16 !default;
 $drop-down-btn-la-font-size: $font-size-lg !default;
-$drop-down-btn-la-icon-size: $font-size-2xl !default;
+$drop-down-btn-la-icon-size: $font-size-xl !default;
+$drop-down-btn-la-menu-icon-size: $font-size-xl !default;

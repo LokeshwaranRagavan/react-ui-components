@@ -18,7 +18,8 @@
     &.sf-success {
       border-bottom-color: $input-success-border-color;
 
-      .sf-float-text {
+      .sf-float-text,
+      .sf-input::placeholder {
         color: $input-text-success-color;
       }
 
@@ -31,7 +32,8 @@
     &.sf-warning {
       border-bottom-color: $input-warning-border-color;
 
-      .sf-float-text {
+      .sf-float-text,
+      .sf-input::placeholder {
         color: $input-text-warning-color;
       }
 
@@ -44,7 +46,8 @@
     &.sf-error {
       border-bottom-color: $input-error-border-color;
 
-      .sf-float-text {
+      .sf-float-text,
+      .sf-input::placeholder {
         color: $input-text-error-color;
       }
 
@@ -73,6 +76,10 @@
 
     .sf-float-text {
       color: $input-placeholder-color;
+
+      &.sf-label-top {
+        color: $input-float-label-color;
+      }
     }
 
     &::before,
@@ -123,6 +130,16 @@
     &.sf-filled {
       background: $input-filled-background;
       transition: $input-filled-background-transition;
+    }
+
+    &.sf-disabled {
+      opacity: 1;
+      border-bottom-color: $input-border-disabled-color;
+      color: $input-content-disabled-color;
+
+      & ::placeholder {
+        color: $input-placeholder-disabled-color;
+      }
     }
   }
 

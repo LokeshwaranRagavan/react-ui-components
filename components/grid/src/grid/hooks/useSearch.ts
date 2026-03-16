@@ -1,9 +1,9 @@
-import {  RefObject, useCallback, useEffect, useState } from 'react';
+import {  Dispatch, RefObject, SetStateAction, useCallback, useEffect, useState } from 'react';
 import {  SearchEvent, SearchSettings } from '../types/search.interfaces';
 import { isNullOrUndefined} from '@syncfusion/react-base';
 import { GridRef } from '../types/grid.interfaces';
 import { SearchAPI } from '../types/search.interfaces';
-import { ActionType } from '../types';
+import { ActionType, ScrollMode, VirtualSettings } from '../types';
 
 /**
  * Custom hook to manage Search configuration
@@ -12,12 +12,17 @@ import { ActionType } from '../types';
  * @param {RefObject<GridRef>} gridRef - Reference to the grid component
  * @param {SearchSettings} searchSetting - Reference to the search settings
  * @param {Function} setGridAction - Function to update grid actions
+ * @param {Function} setCurrentPage - State Dispatch Function to update grid currentPage
+ * @param {Function} virtualSettings - virtualization settings
+ * @param {Function} scrollMode - scroll mode setting
  * @returns {SearchAPI} An object containing various sort-related state and API
  */
 export const useSearch: (gridRef?: RefObject<GridRef>, searchSetting?: SearchSettings,
-    setGridAction?: (action: Object) => void) => SearchAPI = (gridRef?: RefObject<GridRef>, searchSetting?: SearchSettings,
-                                                              setGridAction?: (action: Object) => void) => {
-
+    setGridAction?: (action: Object) => void, setCurrentPage?: Dispatch<SetStateAction<number>>, virtualSettings?: VirtualSettings,
+    scrollMode?: ScrollMode) => SearchAPI = (gridRef?: RefObject<GridRef>, searchSetting?: SearchSettings,
+                                             setGridAction?: (action: Object) => void,
+                                             setCurrentPage?: Dispatch<SetStateAction<number>>, virtualSettings?: VirtualSettings,
+                                             scrollMode?: ScrollMode) => {
     const [searchSettings, setSearchSetting] = useState<SearchSettings>(searchSetting);
 
     /**
@@ -25,6 +30,10 @@ export const useSearch: (gridRef?: RefObject<GridRef>, searchSetting?: SearchSet
      */
     useEffect(() => {
         setSearchSetting(searchSetting);
+        if (gridRef.current?.contentScrollRef && scrollMode === ScrollMode.Virtual && virtualSettings.enableRow &&
+            virtualSettings.enableCache) {
+            setCurrentPage(1);
+        }
     }, [searchSetting]);
 
     /**
@@ -87,6 +96,10 @@ export const useSearch: (gridRef?: RefObject<GridRef>, searchSetting?: SearchSet
             });
             args.type = 'actionComplete';
             setGridAction(args);
+            if (gridRef.current?.contentScrollRef && scrollMode === ScrollMode.Virtual && virtualSettings.enableRow &&
+                virtualSettings.enableCache) {
+                setCurrentPage(1);
+            }
         }
     };
 

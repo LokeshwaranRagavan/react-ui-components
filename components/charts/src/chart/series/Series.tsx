@@ -8,7 +8,28 @@ import { ChartContext } from '../layout/ChartProvider';
 import { defaultChartConfigs } from '../base/default-properties';
 import { ChartMarker } from './Marker';
 import { ChartErrorBar } from './ErrorBar';
-import { SeriesProperties } from '../chart-area/chart-interfaces';
+import { ChartTrendlineModel, SeriesProperties } from '../chart-area/chart-interfaces';
+import { ChartTrendline, ChartTrendlineCollection } from './Trendlines';
+import { buildParetoSignature, handleParetoInGetSeries, handleParetoInDeepSignature } from '../utils/pareto';
+
+/**
+ * Extracts primitive properties from an object, ignoring objects, functions, and the 'children' property.
+ * Used to get simple property values from component props.
+ *
+ * @param {ChartSeriesProperty} obj - The source object to extract properties from.
+ * @returns {Partial<ChartSeriesProperty>} A new object containing only the primitive properties from the source object.
+ * @private
+ */
+export function pickPrimitiveProps(obj: ChartSeriesProperty): Partial<ChartSeriesProperty> {
+    const copy: Partial<ChartSeriesProperty> = {};
+    for (const [key, handler] of Object.entries(obj)) {
+        if (key === 'children') { continue; }
+        if (typeof handler !== 'object' && typeof handler !== 'function') {
+            (copy as Record<string, string | number | boolean>)[key as string] = handler as string | number | boolean;
+        }
+    }
+    return copy;
+}
 
 /**
  * Creates a replacer function for JSON.stringify that handles circular references.
@@ -124,24 +145,6 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
     const pointColorMapping: string = extractProperty(childArray, 'pointColorMapping');
 
     /**
-     * Extracts primitive properties from an object, ignoring objects, functions, and the 'children' property.
-     * Used to get simple property values from component props.
-     *
-     * @param {ChartSeriesProperty} obj - The source object to extract properties from.
-     * @returns {Partial<ChartSeriesProperty>} A new object containing only the primitive properties from the source object.
-     */
-    function pickPrimitiveProps(obj: ChartSeriesProperty): Partial<ChartSeriesProperty> {
-        const copy: Partial<ChartSeriesProperty> = {};
-        for (const [key, val] of Object.entries(obj)) {
-            if (key === 'children') { continue; }
-            if (typeof val !== 'object' && typeof val !== 'function') {
-                (copy as Record<string, string | number | boolean>)[key as string] = val as string | number | boolean;
-            }
-        }
-        return copy;
-    }
-
-    /**
      * String representation of marker configurations for all series.
      * Used to track changes in marker properties for dependency arrays in useEffect.
      */
@@ -203,6 +206,9 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
         })
     );
 
+    // String representation of Pareto options (including nested marker and data label) for all series.
+    const paretoSignature: string = buildParetoSignature(childArray);
+
     /**
      * Extracts and processes the series array from child components.
      * This core method transforms React component hierarchy into a data structure
@@ -254,6 +260,7 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
                                 ...defaultChartConfigs.ChartSeries.marker,
                                 ...markerProps
                             } as ChartMarkerProps;
+                            markerConfig.border = { ...defaultChartConfigs.ChartSeries.marker?.border, ...markerProps.border };
 
                             React.Children.forEach(markerChildren, (dataLabelChild: React.ReactNode) => {
                                 if (React.isValidElement(dataLabelChild)) {
@@ -273,6 +280,14 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
                                         markerConfig.dataLabel.font = {
                                             ...defaultChartConfigs.ChartSeries.marker?.dataLabel?.font,
                                             ...((dataLabelChild.props as ChartDataLabelProps).font)
+                                        };
+                                        markerConfig.dataLabel.border = {
+                                            ...defaultChartConfigs.ChartSeries.marker?.dataLabel?.border,
+                                            ...((dataLabelChild.props as ChartDataLabelProps).border)
+                                        };
+                                        markerConfig.dataLabel.margin = {
+                                            ...defaultChartConfigs.ChartSeries.marker?.dataLabel?.margin,
+                                            ...((dataLabelChild.props as ChartDataLabelProps).margin)
                                         };
                                     }
                                 }
@@ -304,6 +319,133 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
                                     }
                                 };
                                 (seriesProps as SeriesProperties).errorBar = mergedErrorBar as ChartErrorBarProps;
+                            }
+                        }
+
+                        // Process Pareto options configuration (including nested marker and data label)
+                        handleParetoInGetSeries(seriesChild, seriesProps as SeriesProperties);
+
+                        // Process trendline collection configuration
+                        if (React.isValidElement(seriesChild)) {
+                            const childType: React.ElementType =
+                                seriesChild.type as React.ElementType<keyof React.JSX.IntrinsicElements>;
+                            const isTrendlineCollectionComponent: boolean =
+                                (typeof childType === 'function') &&
+                                ('displayName' in childType) &&
+                                ((childType as { displayName?: string }).displayName === 'ChartTrendlineCollection');
+
+                            if (seriesChild.type === ChartTrendlineCollection || isTrendlineCollectionComponent) {
+                                const trendlineCollectionChildren: React.ReactNode =
+                                    (seriesChild.props as ChartSeriesProperty).children;
+
+                                if (trendlineCollectionChildren) {
+                                    // Initialize trendlines array if it doesn't exist
+                                    if (!(seriesProps).trendlines) {
+                                        (seriesProps).trendlines = [];
+                                    }
+
+                                    // Process each ChartTrendline inside the collection
+                                    React.Children.forEach(
+                                        trendlineCollectionChildren,
+                                        (trendlineChild: React.ReactNode): void => {
+                                            if (React.isValidElement(trendlineChild)) {
+                                                const trendlineType: React.ElementType =
+                                                    trendlineChild.type as React.ElementType<keyof React.JSX.IntrinsicElements>;
+                                                const isTrendlineComponent: boolean =
+                                                    (typeof trendlineType === 'function') &&
+                                                    ('displayName' in trendlineType) &&
+                                                    ((trendlineType as { displayName?: string }).displayName === 'ChartTrendline');
+
+                                                if (trendlineChild.type === ChartTrendline || isTrendlineComponent) {
+                                                    const { children: trendlineChildren, ...trendlinePropsFromChild } =
+                                                        trendlineChild.props as ChartSeriesProperty;
+
+                                                    const defaultTrendlineConfig: ChartTrendlineModel | undefined =
+                                                        defaultChartConfigs.ChartTrendline as ChartTrendlineModel | undefined;
+
+                                                    // Deep-merge trendline props with defaults
+                                                    const mergedTrendlineConfig: ChartTrendlineModel = {
+                                                        ...(defaultTrendlineConfig || {}),
+                                                        ...trendlinePropsFromChild,
+                                                        animation: {
+                                                            ...(defaultTrendlineConfig?.animation || {}),
+                                                            ...(trendlinePropsFromChild?.animation || {})
+                                                        },
+                                                        accessibility: {
+                                                            ...(defaultTrendlineConfig?.accessibility || {}),
+                                                            ...(trendlinePropsFromChild?.accessibility || {})
+                                                        }
+                                                    } as ChartTrendlineModel;
+
+                                                    // Process marker and data label inside trendline
+                                                    if (trendlineChildren) {
+                                                        React.Children.forEach(
+                                                            trendlineChildren,
+                                                            (trendlineNestedChild: React.ReactNode): void => {
+                                                                if (React.isValidElement(trendlineNestedChild) &&
+                                                                    trendlineNestedChild.type === ChartMarker) {
+                                                                    const { children: markerChildren, ...markerPropsFromChild } =
+                                                                        trendlineNestedChild.props as ChartSeriesProperty;
+
+                                                                    const defaultMarkerConfig: ChartMarkerProps | undefined =
+                                                                        defaultChartConfigs.ChartSeries.marker;
+
+                                                                    const mergedMarkerConfig: ChartMarkerProps = {
+                                                                        ...defaultMarkerConfig,
+                                                                        ...markerPropsFromChild
+                                                                    } as ChartMarkerProps;
+
+                                                                    // Process data label inside marker
+                                                                    if (markerChildren) {
+                                                                        React.Children.forEach(
+                                                                            markerChildren,
+                                                                            (markerChild: React.ReactNode): void => {
+                                                                                if (React.isValidElement(markerChild)) {
+                                                                                    const dataLabelType: React.ElementType =
+                                                                                        markerChild.type as React.ElementType<keyof
+                                                                                        React.JSX.IntrinsicElements>;
+
+                                                                                    const isDataLabelComponent: boolean =
+                                                                                        (typeof dataLabelType === 'function') &&
+                                                                                        ('displayName' in dataLabelType) &&
+                                                                                        ((dataLabelType as { displayName?: string }).displayName === 'ChartDataLabel');
+
+                                                                                    if (isDataLabelComponent) {
+                                                                                        const dataLabelPropsFromChild: ChartDataLabelProps =
+                                                                                            markerChild.props as ChartDataLabelProps;
+
+                                                                                        const defaultDataLabelConfig: ChartDataLabelProps
+                                                                                        | undefined = defaultChartConfigs.
+                                                                                            ChartSeries.marker?.dataLabel;
+
+                                                                                        mergedMarkerConfig.dataLabel = {
+                                                                                            ...defaultDataLabelConfig,
+                                                                                            ...dataLabelPropsFromChild,
+                                                                                            font: {
+                                                                                                ...defaultDataLabelConfig?.font,
+                                                                                                ...dataLabelPropsFromChild.font
+                                                                                            }
+                                                                                        };
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        );
+                                                                    }
+
+                                                                    mergedTrendlineConfig.marker = mergedMarkerConfig;
+                                                                }
+                                                            }
+                                                        );
+                                                    }
+
+                                                    // Add the trendline to the series
+                                                    (seriesProps).trendlines!.push(
+                                                        mergedTrendlineConfig as ChartTrendlineModel);
+                                                }
+                                            }
+                                        }
+                                    );
+                                }
                             }
                         }
                     }
@@ -376,12 +518,230 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
                                 (seriesPropsSignature as SeriesProperties).errorBar = ebProps;
                             }
                         }
+
+                        // Capture Pareto options (including nested marker & data label) in deep signature
+                        handleParetoInDeepSignature(seriesChild, seriesPropsSignature as SeriesProperties);
+
+                        // Capture trendline collection props in deep signature
+                        if (React.isValidElement(seriesChild)) {
+                            const childType: React.ElementType =
+                                seriesChild.type as React.ElementType<keyof React.JSX.IntrinsicElements>;
+                            const isTrendlineCollectionComponent: boolean =
+                                (typeof childType === 'function') &&
+                                ('displayName' in childType) &&
+                                ((childType as { displayName?: string }).displayName === 'ChartTrendlineCollection');
+
+                            if (seriesChild.type === ChartTrendlineCollection || isTrendlineCollectionComponent) {
+                                const trendlineCollectionChildren: React.ReactNode =
+                                    (seriesChild.props as ChartSeriesProperty).children;
+
+                                if (trendlineCollectionChildren) {
+                                    // Initialize trendlines array if it doesn't exist
+                                    if (!(seriesPropsSignature).trendlines) {
+                                        (seriesPropsSignature).trendlines = [];
+                                    }
+
+                                    // Process each ChartTrendline inside the collection
+                                    React.Children.forEach(
+                                        trendlineCollectionChildren,
+                                        (trendlineChild: React.ReactNode): void => {
+                                            if (React.isValidElement(trendlineChild)) {
+                                                const trendlineType: React.ElementType =
+                                                    trendlineChild.type as React.ElementType<keyof React.JSX.IntrinsicElements>;
+                                                const isTrendlineComponent: boolean =
+                                                    (typeof trendlineType === 'function') &&
+                                                    ('displayName' in trendlineType) &&
+                                                    ((trendlineType as { displayName?: string }).displayName === 'ChartTrendline');
+
+                                                if (trendlineChild.type === ChartTrendline || isTrendlineComponent) {
+                                                    const trendlinePropsForSignature: ChartTrendlineModel = {
+                                                        ...trendlineChild.props as ChartTrendlineModel
+                                                    };
+
+                                                    // Check for marker inside trendline
+                                                    const trendlineChildrenNodes: React.ReactNode =
+                                                        (trendlineChild.props as ChartSeriesProperty).children;
+
+                                                    if (trendlineChildrenNodes) {
+                                                        React.Children.forEach(
+                                                            trendlineChildrenNodes,
+                                                            (trendlineNestedChild: React.ReactNode): void => {
+                                                                if (React.isValidElement(trendlineNestedChild) &&
+                                                                    trendlineNestedChild.type === ChartMarker) {
+                                                                    const markerPropsForSignature: ChartMarkerProps = {
+                                                                        ...trendlineNestedChild.props as ChartMarkerProps
+                                                                    };
+
+                                                                    // Look for ChartDataLabel inside marker
+                                                                    const markerChildrenNodes: React.ReactNode =
+                                                                        (trendlineNestedChild.props as ChartSeriesProperty).children;
+
+                                                                    if (markerChildrenNodes) {
+                                                                        React.Children.forEach(
+                                                                            markerChildrenNodes,
+                                                                            (markerChild: React.ReactNode): void => {
+                                                                                if (React.isValidElement(markerChild)) {
+                                                                                    const dataLabelType: React.ElementType =
+                                                                                        markerChild.type as React.ElementType<
+                                                                                        keyof React.JSX.IntrinsicElements>;
+                                                                                    const isDataLabelComponent: boolean =
+                                                                                        (typeof dataLabelType === 'function') &&
+                                                                                        ('displayName' in dataLabelType) &&
+                                                                                        ((dataLabelType as { displayName?: string }).displayName === 'ChartDataLabel');
+
+                                                                                    if (isDataLabelComponent) {
+                                                                                        const dataLabelPropsForSignature
+                                                                                        : ChartDataLabelProps = markerChild
+                                                                                            .props as ChartDataLabelProps;
+                                                                                        markerPropsForSignature.dataLabel
+                                                                                        = dataLabelPropsForSignature;
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        );
+                                                                    }
+
+                                                                    trendlinePropsForSignature.marker = markerPropsForSignature;
+                                                                }
+                                                            }
+                                                        );
+                                                    }
+
+                                                    // Add trendline to signature
+                                                    (seriesPropsSignature).trendlines!.push(
+                                                        trendlinePropsForSignature as ChartTrendlineModel);
+                                                }
+                                            }
+                                        }
+                                    );
+                                }
+                            }
+                        }
                     }
                 );
             }
             return { typeName, ...seriesPropsSignature };
         }),
         getCircularReplacer()
+    );
+
+    /**
+     * String representation of trendline configurations for all series, including nested markers and data labels.
+     * Used to track changes in trendline properties for dependency arrays in useEffect.
+     */
+    const trendlineSignature: string = JSON.stringify(
+        childArray.map((child: React.ReactNode): Partial<ChartSeriesProperty>[] | null => {
+            if (
+                React.isValidElement(child) &&
+                child.type === ChartSeries &&
+                (child.props as ChartSeriesProperty).children
+            ) {
+                const trendlineSignaturesArray: Partial<ChartSeriesProperty>[] = [];
+
+                React.Children.forEach(
+                    (child.props as ChartSeriesProperty).children,
+                    (seriesChild: React.ReactNode): void => {
+                        if (React.isValidElement(seriesChild)) {
+                            const childType: React.ElementType =
+                                seriesChild.type as React.ElementType<keyof React.JSX.IntrinsicElements>;
+                            const isTrendlineCollectionComponent: boolean =
+                                (typeof childType === 'function') &&
+                                ('displayName' in childType) &&
+                                ((childType as { displayName?: string }).displayName === 'ChartTrendlineCollection');
+
+                            // Check if this is a ChartTrendlineCollection
+                            if (seriesChild.type === ChartTrendlineCollection || isTrendlineCollectionComponent) {
+                                const trendlineCollectionChildren: React.ReactNode =
+                                    (seriesChild.props as ChartSeriesProperty).children;
+
+                                if (trendlineCollectionChildren) {
+                                    // Process each ChartTrendline inside the collection
+                                    React.Children.forEach(
+                                        trendlineCollectionChildren,
+                                        (trendlineChild: React.ReactNode): void => {
+                                            if (React.isValidElement(trendlineChild)) {
+                                                const trendlineType: React.ElementType =
+                                                    trendlineChild.type as React.ElementType<keyof React.JSX.IntrinsicElements>;
+                                                const isTrendlineComponent: boolean =
+                                                    (typeof trendlineType === 'function') &&
+                                                    ('displayName' in trendlineType) &&
+                                                    ((trendlineType as { displayName?: string }).displayName === 'ChartTrendline');
+
+                                                if (trendlineChild.type === ChartTrendline || isTrendlineComponent) {
+                                                    const trendlineSignature: Partial<ChartSeriesProperty> = {
+                                                        ...pickPrimitiveProps(trendlineChild.props as ChartSeriesProperty)
+                                                    };
+
+                                                    // Check for marker inside trendline
+                                                    const trendlineChildren: React.ReactNode =
+                                                        (trendlineChild.props as ChartSeriesProperty).children;
+
+                                                    if (trendlineChildren) {
+                                                        React.Children.forEach(
+                                                            trendlineChildren,
+                                                            (trendlineNestedChild: React.ReactNode): void => {
+                                                                if (React.isValidElement(trendlineNestedChild) &&
+                                                                    trendlineNestedChild.type === ChartMarker) {
+                                                                    const markerSignature: Partial<ChartSeriesProperty> = {
+                                                                        ...pickPrimitiveProps(trendlineNestedChild
+                                                                            .props as ChartSeriesProperty)
+                                                                    };
+
+                                                                    trendlineSignature.marker = markerSignature;
+
+                                                                    // Check for dataLabel inside marker
+                                                                    const markerChildren: React.ReactNode =
+                                                                        (trendlineNestedChild.props as ChartSeriesProperty).children;
+
+                                                                    if (markerChildren) {
+                                                                        React.Children.forEach(
+                                                                            markerChildren,
+                                                                            (markerChild: React.ReactNode): void => {
+                                                                                if (React.isValidElement(markerChild)) {
+                                                                                    const dataLabelType: React.ElementType =
+                                                                                        markerChild.type as React.ElementType<
+                                                                                        keyof React.JSX.IntrinsicElements>;
+                                                                                    const isDataLabelComponent: boolean =
+                                                                                        (typeof dataLabelType === 'function') &&
+                                                                                        ('displayName' in dataLabelType) &&
+                                                                                        ((dataLabelType as { displayName?: string }).displayName === 'ChartDataLabel');
+
+                                                                                    if (isDataLabelComponent) {
+                                                                                        const dataLabelSignature: Partial<
+                                                                                        ChartSeriesProperty> = pickPrimitiveProps(
+                                                                                            markerChild.props as ChartSeriesProperty);
+
+                                                                                        if (!trendlineSignature.marker) {
+                                                                                            trendlineSignature.marker = {};
+                                                                                        }
+                                                                                        (trendlineSignature.marker as { dataLabel?: Partial<
+                                                                                        ChartSeriesProperty> }).dataLabel
+                                                                                        = dataLabelSignature;
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
+                                                        );
+                                                    }
+
+                                                    trendlineSignaturesArray.push(trendlineSignature);
+                                                }
+                                            }
+                                        }
+                                    );
+                                }
+                            }
+                        }
+                    }
+                );
+
+                return trendlineSignaturesArray.length > 0 ? trendlineSignaturesArray : null;
+            }
+            return null;
+        })
     );
 
     /**
@@ -417,10 +777,12 @@ export const ChartSeriesCollection: React.FC<SeriesProps> = (props: SeriesProps)
         visible,
         markerSignature,
         errorBarSignature,
+        trendlineSignature,
         deepSignature,
         splineType,
         legendShape,
-        pointColorMapping
+        pointColorMapping,
+        paretoSignature
     ]);
 
     // The component itself doesn't render anything visible

@@ -1,6 +1,9 @@
+import { RefObject } from 'react';
 import { CSS_CLASSES } from '../common/constants';
+import { DateService } from '../services/DateService';
 import { EventService } from '../services/EventService';
-import { SchedulerEventClickEvent, EventModel } from '../types/scheduler-types';
+import { SchedulerEventClickEvent, EventModel, TimeScaleProps, SchedulerScrollToProps } from '../types/scheduler-types';
+import { ScrollToMode } from '../types/enums';
 
 // Ensures only one cell is selected at any time per Scheduler instance.
 export const clearAndSelect: (target: HTMLElement) => void = (target: HTMLElement): void => {
@@ -40,6 +43,7 @@ export const clearAndSelectAppointment: (target: HTMLElement) => void = (target:
         activeAppointments.forEach((element: Element) => {
             element.classList.remove(CSS_CLASSES.APPOINTMENT_ACTIVE);
         });
+        clearAndSelect(scheduler);
     }
     target.classList.add(CSS_CLASSES.APPOINTMENT_ACTIVE);
 };
@@ -54,3 +58,118 @@ export const getSelectedEvents: (eventsData: EventModel[], schedulerElement?: HT
             element: selectedAppointment
         };
     };
+
+const getDate: (el: HTMLElement) => Date | undefined =
+    (el: HTMLElement): Date | undefined => {
+        let date: Date | undefined = undefined;
+        const dateData: string | undefined = el?.getAttribute?.('data-date') ?? (el as HTMLElement).dataset?.date ?? undefined;
+        if (dateData) {
+            const dateInMS: number = parseInt(dateData, 10);
+            date = new Date(dateInMS);
+        }
+        return date;
+    };
+
+export const getCellDetails: (
+    input?: Element | Element[], timeScale?: TimeScaleProps
+) => {
+    startTime?: Date;
+    endTime?: Date;
+    isAllDay: boolean;
+    element: HTMLElement;
+} | null = (input?: Element | Element[], timeScale?: TimeScaleProps) => {
+
+    const cell: HTMLElement = Array.isArray(input)
+        ? (input?.[0] as HTMLElement | undefined)
+        : (input as HTMLElement);
+    const baseAllDay: boolean =
+        cell.classList.contains(CSS_CLASSES.ALL_DAY_CELL) ||
+        cell.classList.contains(CSS_CLASSES.WORK_DAYS) ||
+        cell.classList.contains(CSS_CLASSES.HEADER_CELLS);
+    const effectiveAllDay: boolean = baseAllDay || !(timeScale?.enable ?? true);
+    const startTime: Date | undefined = getDate(cell);
+    let endTime: Date | undefined = undefined;
+    if (effectiveAllDay) {
+        if (startTime) {
+            endTime = DateService.addDays(startTime, 1);
+        }
+    } else if (startTime && timeScale) {
+        const interval: number = timeScale.interval / timeScale.slotCount;
+        const date: Date = new Date(startTime);
+        date.setMinutes(date.getMinutes() + interval);
+        endTime = date;
+    }
+    return {
+        startTime: startTime,
+        endTime: endTime ?? startTime,
+        isAllDay: effectiveAllDay,
+        element: cell
+    };
+};
+
+export const getScrollContainer: (root: HTMLElement) => HTMLElement = (root: HTMLElement | null): HTMLElement | null => {
+    if (!root) { return null; }
+    const scrollElement: HTMLElement | null = root.querySelector('.' + CSS_CLASSES.MAIN_SCROLL_CONTAINER);
+    return scrollElement;
+};
+
+export const setScroll: (root: HTMLElement, target: HTMLElement | null, offset?: number) =>
+void = (root: HTMLElement, target: HTMLElement | null, offset?: number) => {
+    if (!root || !target) { return; }
+    const scrollElement: HTMLElement | null = getScrollContainer(root);
+    if (!scrollElement) { return; }
+    scrollElement.scrollTop = Math.max(0, target.offsetTop - (offset ?? 10));
+};
+
+export const scrollToWorkHour: (scrollTo: SchedulerScrollToProps, schedulerElementRef: RefObject<HTMLDivElement>) =>
+void = (scrollTo: SchedulerScrollToProps, schedulerElementRef: RefObject<HTMLDivElement>): void => {
+    const root: HTMLElement | null = schedulerElementRef.current ?? null;
+    if (!root || !scrollTo?.enable) { return; }
+    let targetEl: HTMLElement | null = null;
+    if (scrollTo.mode === ScrollToMode.WorkHour) {
+        targetEl = root.querySelector(`.${CSS_CLASSES.WORK_HOURS}`);
+    } else {
+        targetEl = root.querySelector(`.${CSS_CLASSES.CURRENT_TIMELINE}`) || root.querySelector(`.${CSS_CLASSES.WORK_HOURS}`);
+    }
+    if (!targetEl) {
+        const scrollElement: HTMLElement | null = getScrollContainer(root);
+        if (scrollElement) { scrollElement.scrollTop = 0; }
+        return;
+    }
+    setScroll(root, targetEl, scrollTo.offset);
+};
+export const scrollToHour: (hour: string, date: Date | undefined, schedulerElementRef: RefObject<HTMLDivElement>) => void = (
+    hour: string,
+    date: Date | undefined,
+    schedulerElementRef: RefObject<HTMLDivElement>
+): void => {
+    const root: HTMLElement | null = schedulerElementRef.current ?? null;
+    if (!hour || !root) { return; }
+    let targetDateTime: Date | undefined;
+    if (date instanceof Date && !isNaN(date.getTime())) {
+        const selectedDate: Date = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const selectedHour: string = DateService.normalizeTime(hour);
+        targetDateTime = DateService.createDateWithTime(selectedDate, selectedHour);
+    } else {
+        const firstCell: HTMLElement | null = root.querySelector(`.${CSS_CLASSES.WORK_CELLS}[data-date]`);
+        if (firstCell) {
+            const dateValue: string | null = firstCell.getAttribute('data-date');
+            const cellTs: number = dateValue ? parseInt(dateValue, 10) : NaN;
+            if (!Number.isNaN(cellTs)) {
+                const workCellDate: Date = new Date(cellTs);
+                const baseDate: Date = new Date(workCellDate.getFullYear(), workCellDate.getMonth(), workCellDate.getDate());
+                const time: string = DateService.normalizeTime(hour);
+                targetDateTime = DateService.createDateWithTime(baseDate, time);
+            }
+        }
+    }
+    if (!targetDateTime) { return; }
+    const dateValue: number = targetDateTime.getTime();
+    const targetElement: HTMLElement | null = root.querySelector(`.${CSS_CLASSES.WORK_CELLS}[data-date="${dateValue}"]`);
+    if (!targetElement) {
+        const scrollElement: HTMLElement | null = getScrollContainer(root);
+        if (scrollElement) { scrollElement.scrollTop = 0; }
+        return;
+    }
+    setScroll(root, targetElement);
+};

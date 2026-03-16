@@ -2,7 +2,8 @@ import { Context, createContext, useContext } from 'react';
 import { defaultSchedulerProps } from '../utils/default-props';
 import { ActiveViewProps } from '../types/internal-interface';
 
-export const SchedulerContext: Context<ActiveViewProps | undefined> = createContext<ActiveViewProps | undefined>(defaultSchedulerProps);
+export const SchedulerContext: Context<ActiveViewProps | undefined> =
+    createContext<ActiveViewProps | undefined>(defaultSchedulerProps as ActiveViewProps);
 
 /**
  * Hook for using the Scheduler context.

@@ -1,12 +1,14 @@
-import { forwardRef, ForwardRefExoticComponent, RefAttributes, useImperativeHandle, useRef, useMemo, memo, CSSProperties, RefObject, JSX } from 'react';
+import { forwardRef, ForwardRefExoticComponent, RefAttributes, useImperativeHandle, useRef, useMemo, memo, CSSProperties, RefObject, JSX, useState, useLayoutEffect } from 'react';
 import { FooterTableBase } from './FooterTable';
-import { useGridComputedProvider } from '../contexts';
+import { useGridComputedProvider, useGridMutableProvider } from '../contexts';
 import {
     FooterPanelRef, FooterTableRef, IFooterPanelBase
 } from '../types';
 
 // Constant CSS class
 const CSS_FOOTER_TABLE: string = 'sf-grid-table';
+const CSS_VIRTUAL_TABLE: string = 'sf-virtual-table';
+const CSS_VIRTUAL_TRACK: string = 'sf-virtual-track';
 
 /**
  * Default styles for footer table to ensure consistent rendering
@@ -36,12 +38,14 @@ const FooterPanelBase: ForwardRefExoticComponent<Partial<IFooterPanelBase> & Ref
         (props: Partial<IFooterPanelBase>, ref: RefObject<FooterPanelRef>) => {
             const { panelAttributes, scrollContentAttributes, tableScrollerPadding } = props;
             const { id } = useGridComputedProvider();
+            const { offsetX, totalVirtualColumnWidth, virtualSettings } = useGridMutableProvider();
 
             // Refs for DOM elements and child components
             const footerPanelRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
             const footerScrollRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
             const footerTableRef: RefObject<FooterTableRef> = useRef<FooterTableRef>(null);
-
+            const footerVirtualTableRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
+            const [columnClientWidth, setColumnClientWidth] = useState<number>(0);
             /**
              * Expose internal elements and methods through the forwarded ref
              * Only define properties specific to FooterPanel and forward FooterTable properties
@@ -52,8 +56,29 @@ const FooterPanelBase: ForwardRefExoticComponent<Partial<IFooterPanelBase> & Ref
                 footerScrollRef: footerScrollRef.current,
 
                 // Forward all properties from FooterTable
-                ...(footerTableRef.current)
-            }), [footerPanelRef.current, footerScrollRef.current, footerTableRef.current]);
+                ...(footerTableRef.current),
+                columnClientWidth: columnClientWidth
+            }), [footerPanelRef.current, footerScrollRef.current, footerTableRef.current, columnClientWidth]);
+
+            const virtualWrapperStyle: CSSProperties = useMemo(() => {
+                return {
+                    transform: `translate3d(${offsetX || 0}px, 0px, 0) translateZ(0)`,
+                    // resizeSettings Auto based currently handled, columns occupied whitespaces, each columns render beyond configured widths.
+                    ...(virtualSettings.enableColumn && totalVirtualColumnWidth > footerScrollRef.current?.clientWidth &&
+                        totalVirtualColumnWidth > columnClientWidth ? { width: columnClientWidth } : {}),
+                    zIndex: 1
+                };
+            }, [offsetX, footerScrollRef.current?.clientWidth, columnClientWidth, totalVirtualColumnWidth]);
+
+            const virtualTrackStyle: CSSProperties = useMemo(() => ({
+                position: 'relative',
+                width: totalVirtualColumnWidth,
+                zIndex: 0
+            }), [totalVirtualColumnWidth, columnClientWidth]);
+
+            useLayoutEffect(() => {
+                setColumnClientWidth(footerTableRef.current?.columnClientWidth);
+            }, [offsetX, footerTableRef.current?.columnClientWidth]);
 
             /**
              * Memoized footer table component to prevent unnecessary re-renders
@@ -78,7 +103,16 @@ const FooterPanelBase: ForwardRefExoticComponent<Partial<IFooterPanelBase> & Ref
                         ref={footerScrollRef}
                         {...scrollContentAttributes}
                     >
-                        {footerTable}
+                        { !virtualSettings.enableRow && !virtualSettings.enableColumn ? (
+                            footerTable
+                        ) : (
+                            <>
+                                <div ref={footerVirtualTableRef} className={CSS_VIRTUAL_TABLE} style={virtualWrapperStyle}>
+                                    {footerTable}
+                                </div>
+                                <div className={CSS_VIRTUAL_TRACK} style={virtualTrackStyle} />
+                            </>
+                        )}
                     </div>
                 </div>
             );

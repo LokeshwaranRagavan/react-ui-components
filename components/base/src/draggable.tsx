@@ -30,7 +30,7 @@ interface DragObject {
 /**
  * Specifies the position coordinates.
  */
-export interface IPosition {
+export interface CursorPosition {
     /**
      * Specifies the left position of cursor in draggable.
      */
@@ -46,11 +46,11 @@ export interface IPosition {
  * Hook to manage draggable Position.
  *
  * @private
- * @param {Partial<IPosition>} props - Initial values for the position properties.
- * @returns {IPosition} - The initialized draggable position properties.
+ * @param {Partial<CursorPosition>} props - Initial values for the position properties.
+ * @returns {CursorPosition} - The initialized draggable position properties.
  */
-export function DraggablePosition(props?: IPosition): IPosition {
-    const propsRef: IPosition = {
+export function DraggablePosition(props?: CursorPosition): CursorPosition {
+    const propsRef: CursorPosition = {
         left: 0,
         top: 0,
         ...props
@@ -169,7 +169,7 @@ export interface IDraggable {
     /**
      * Defines the distance between the cursor and the draggable element when dragging.
      */
-    cursorAt?: IPosition;
+    cursorAt?: CursorPosition;
     /**
      * Determines if drag operations are performed on a duplicate element of the draggable element.
      *
@@ -201,19 +201,19 @@ export interface IDraggable {
      *
      * @event drag
      */
-    drag?: (args: DragEvent) => void;
+    onDrag?: (args: DragEvent) => void;
     /**
      * Specifies the callback function for dragStart event.
      *
      * @event dragStart
      */
-    dragStart?: (args: DragEvent) => void;
+    onDragStart?: (args: DragEvent) => void;
     /**
      * Specifies the callback function for dragStop event.
      *
      * @event dragStop
      */
-    dragStop?: (args: DragEvent) => void;
+    onDragStop?: (args: DragEvent) => void;
     /**
      * Defines the minimum distance draggable element to be moved to trigger the drag operation.
      *
@@ -252,7 +252,7 @@ export interface IDraggable {
      * * `x` - Allows drag movement in horizontal direction only.
      * * `y` - Allows drag movement in vertical direction only.
      */
-    axis?: DragDirection;
+    dragDirection?: DragDirection;
     /**
      * Defines the function to change the position value.
      *
@@ -344,7 +344,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
         helper: null,
         scope: 'default',
         dragTarget: '',
-        axis: null,
+        dragDirection: null,
         queryPositionInfo: null,
         enableTailMode: false,
         skipDistanceCheck: false,
@@ -382,7 +382,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
     let pageY: number;
     let helperElement: HTMLElement;
     let hoverObject: DropObject;
-    let parentClientRect: IPosition;
+    let parentClientRect: CursorPosition;
     let parentScrollX: number = 0;
     let parentScrollY: number = 0;
     let initialScrollX: number = 0;
@@ -538,11 +538,11 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
         if (propsStateRef.current.preventDefault && !isUndefined(evt.changedTouches) && evt.type !== 'touchstart') {
             evt.preventDefault();
         }
-        element.current.setAttribute('aria-grabbed', 'true');
+        element?.current?.setAttribute('aria-grabbed', 'true');
         const intCoord: Coordinates = getCoordinates(evt);
         initialPosition = { x: intCoord.pageX, y: intCoord.pageY };
         if (!propsStateRef.current.clone) {
-            const pos: IPosition = element.current.getBoundingClientRect();
+            const pos: CursorPosition = element.current.getBoundingClientRect();
             getScrollableValues();
             relativeXPosition = intCoord.pageX - (pos.left + parentScrollX);
             relativeYPosition = intCoord.pageY - (pos.top + parentScrollY);
@@ -579,7 +579,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
             return;
         }
         const intCordinate: Coordinates = getCoordinates(evt);
-        let pos: IPosition;
+        let pos: CursorPosition;
         const styleProp: CSSStyleDeclaration = getComputedStyle(element.current);
         margin = {
             left: parseInt(styleProp.marginLeft, 10),
@@ -612,7 +612,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
             }
             const dragTargetElement: HTMLElement = helperElement = ele;
             parentClientRect = calculateParentPosition(dragTargetElement.offsetParent);
-            if (propsStateRef.current && propsStateRef.current.dragStart) {
+            if (propsStateRef.current && propsStateRef.current.onDragStart) {
                 const curTarget: HTMLElement = getProperTargetElement(evt);
                 const args: object = {
                     event: evt,
@@ -621,7 +621,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
                     bindEvents: null,
                     dragElement: dragTargetElement
                 };
-                propsStateRef.current.dragStart(args as DragEvent);
+                propsStateRef.current.onDragStart(args as DragEvent);
                 if ((args as DragEvent).cancel) {
                     propsRef.intDestroy();
                     return undefined;
@@ -688,9 +688,9 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
         if (docWidth < position.left) {
             position.left = docWidth;
         }
-        if (propsStateRef.current && propsStateRef.current.drag) {
+        if (propsStateRef.current && propsStateRef.current.onDrag) {
             const curTarget: HTMLElement = getProperTargetElement(evt);
-            propsStateRef.current.drag({ event: evt, element: element.current, target: curTarget } as DragEvent);
+            propsStateRef.current.onDrag({ event: evt, element: element.current, target: curTarget } as DragEvent);
         }
         const eleObj: DropObject = checkTargetElement(evt);
         if (eleObj.target && eleObj.instance) {
@@ -710,8 +710,11 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
         } else if (hoverObject) {
             triggerOutFunction(evt, eleObj);
         }
-        const helperElement: HTMLElement = droppables[propsStateRef.current.scope].helper;
-        parentClientRect = calculateParentPosition(helperElement.offsetParent);
+        const helperElement: HTMLElement | undefined = droppables?.[propsStateRef.current.scope]?.helper;
+        if (!helperElement) {
+            return;
+        }
+        parentClientRect = calculateParentPosition((helperElement.offsetParent as HTMLElement));
         const tLeft: number = parentClientRect.left;
         const tTop: number = parentClientRect.top;
         const intCoord: Coordinates = getCoordinates(evt);
@@ -780,7 +783,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
                 draEleLeft = left - iLeft;
             }
         }
-        const marginTop: number = parseFloat(getComputedStyle(element.current).marginTop);
+        const marginTop: number = element.current ? parseFloat(getComputedStyle(element.current).marginTop) : 0;
         if (marginTop > 0) {
             if (propsStateRef.current.clone) {
                 draEleTop += marginTop;
@@ -869,14 +872,14 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
         }
         const type: string[] = ['touchend', 'pointerup', 'mouseup'];
         if (type.indexOf(evt.type) !== -1) {
-            if (propsStateRef.current && propsStateRef.current.dragStop) {
+            if (propsStateRef.current && propsStateRef.current.onDragStop) {
                 const curTarget: HTMLElement = getProperTargetElement(evt);
-                propsStateRef.current.dragStop(
+                propsStateRef.current.onDragStop(
                     { event: evt, element: element.current, target: curTarget, helper: helperElement } as DragEvent);
             }
             propsRef.intDestroy();
         } else {
-            element.current.setAttribute('aria-grabbed', 'false');
+            element?.current?.setAttribute('aria-grabbed', 'false');
         }
         const eleObj: DropObject = checkTargetElement(evt);
         if (eleObj.target && eleObj.instance) {
@@ -909,7 +912,7 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
         dragProcessStarted = false;
         toggleEvents();
         document.body.classList.remove('sf-prevent-select');
-        element.current.setAttribute('aria-grabbed', 'false');
+        element?.current?.setAttribute('aria-grabbed', 'false');
         EventHandler.remove(document, Browser.isSafari() ? 'touchmove' : Browser.touchMoveEvent, intDragStart);
         EventHandler.remove(document, Browser.isSafari() ? 'touchend' : Browser.touchEndEvent, intDragStop);
         EventHandler.remove(document, Browser.isSafari() ? 'touchend' : Browser.touchEndEvent, propsRef.intDestroy);
@@ -968,9 +971,9 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
      *
      * @param {MouseEvent | TouchEvent} evt - The drag event.
      * @param {boolean} [isdragscroll] - Indicates if the dragging is performed with scrolling.
-     * @returns {IPosition} - The left and top coordinates of the drag event.
+     * @returns {CursorPosition} - The left and top coordinates of the drag event.
      */
-    function getMousePosition(evt: MouseEvent & TouchEvent, isdragscroll?: boolean): IPosition {
+    function getMousePosition(evt: MouseEvent & TouchEvent, isdragscroll?: boolean): CursorPosition {
         const dragEle: EventTarget | null = evt.srcElement !== undefined ? evt.srcElement : evt.target;
         const intCoord: Coordinates = getCoordinates(evt);
         let pageX: number;
@@ -1134,10 +1137,10 @@ export function useDraggable(element: RefObject<HTMLElement>, props?: IDraggable
      */
     function getDragPosition(dragValue: DragPosition & { position?: string }): Record<string, string | number> {
         const temp: Record<string, string | number> = { ...dragValue };
-        if (propsStateRef.current.axis) {
-            if (propsStateRef.current.axis === 'x') {
+        if (propsStateRef.current.dragDirection) {
+            if (propsStateRef.current.dragDirection === 'x') {
                 delete temp.top;
-            } else if (propsStateRef.current.axis === 'y') {
+            } else if (propsStateRef.current.dragDirection === 'y') {
                 delete temp.left;
             }
         }

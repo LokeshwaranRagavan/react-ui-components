@@ -1,7 +1,11 @@
-import { ReactNode } from 'react';
-import { SpannedEventPlacement } from './enums';
+import { ReactElement, ReactNode } from 'react';
+import { CrudAction, ScrollToMode,  SpannedEventPlacement, WeekRule } from './enums';
 import { DataManager, Query } from '@syncfusion/react-data';
-
+import { DialogProps, Position, TooltipAnimationOptions } from '@syncfusion/react-popups';
+import { OverflowMode } from '@syncfusion/react-navigations';
+import { Color, Variant } from '@syncfusion/react-base';
+import { ButtonSelectEvent, ItemModel } from '@syncfusion/react-splitbuttons';
+import { ValidationRules } from '@syncfusion/react-inputs';
 type SchedulerHTMLAttributes = {
     className?: string;
     id?: string;
@@ -42,6 +46,22 @@ export interface VerticalViewProps {
      * @default { enable: true, interval: 60, slotCount: 2, majorSlot: null, minorSlot: null }
      */
     timeScale?: TimeScaleProps;
+}
+
+/**
+ * Configures custom rendering of the header indent area (left section of the date header).
+ * Only active when `showWeekNumber` is `true`; otherwise, this interface is not used or instantiated.
+ * Enables positioning of week numbers or custom controls within the left indent header section.
+ */
+export interface HeaderIndentProps {
+    /**
+     * ISO week number of the currently rendered period.
+     * Useful for tracking weeks across multiple months or years.
+     * Only present when `showWeekNumber` is `true`.
+     *
+     * @default null
+     */
+    weekNumber?: number | null;
 }
 
 /** @private */
@@ -117,6 +137,58 @@ export interface SchedulerCommonProps {
      * @default null
      */
     cell?: (props: SchedulerCellProps) => ReactNode;
+
+    /**
+     * Accepts a custom React component to render the header indent area (left section of date header).
+     * When provided, replaces the default week number and all-day toggle section.
+     * Can be configured at both the root scheduler level and individual view level.
+     *
+     * @default null
+     */
+    headerIndent?: (props: HeaderIndentProps) => ReactNode;
+
+    /**
+     * Provides a factory function for rendering a custom editor popup; defaults to the built-in editor if not specified.
+     * View-level editor props override root-level editor when both are provided.
+     *
+     * @default null
+     */
+    editor?: (props: SchedulerEditorProps) => React.ReactNode;
+
+    /**
+     * Accepts custom React components to render different sections of the Quick Info Popup.
+     * Supports separate customization for new event creation (add) and existing event view (edit).
+     *
+     * @default null
+     */
+    quickInfo?: SchedulerQuickInfoProps;
+}
+
+/**
+ * Represents the event submission details from the scheduler's editor dialog.
+ * Contains the modified or newly created event data along with operation context for validation or custom processing.
+ * Enables fine-grained control over event persistence with support for cancellation and tracking of original data.
+ */
+export interface SchedulerEditorSubmitEvent {
+    /**
+     * The event data to be saved.
+     */
+    data: EventModel;
+
+    /**
+     * Set to true to cancel the save operation.
+     */
+    cancel?: boolean;
+
+    /**
+     * Whether this is a new event (add) or editing existing event.
+     */
+    requestType: CrudAction;
+
+    /**
+     * Original event data (only available for edit mode).
+     */
+    originalData?: EventModel;
 }
 
 /** @private */
@@ -131,12 +203,20 @@ export interface SchedulerProps extends SchedulerCommonProps, VerticalViewProps,
     defaultView?: string;
 
     /**
-     * Enables dragging events to different time slots, automatically updating their start and end times.
-     * When enabled, events can be moved freely across the scheduler while maintaining their duration.
+     * Enables or disables drag-and-drop event repositioning with optional detailed behavior configuration.
+     * Set to `true` for default drag behavior, `false` to disable, or provide an object for advanced drag options.
      *
      * @default true
      */
-    eventDrag?: boolean;
+    eventDrag?: boolean | EventDragProps;
+
+    /**
+     * Enables or disables automatic validation of recurring event rules.
+     * When disabled, recurrence validation is skipped, allowing more flexible but potentially invalid recurrence patterns.
+     *
+     * @default true
+     */
+    enableRecurrenceValidation?: boolean;
 
     /**
      * Enables keyboard shortcuts for navigation and event manipulation within the scheduler.
@@ -147,12 +227,12 @@ export interface SchedulerProps extends SchedulerCommonProps, VerticalViewProps,
     keyboardNavigation?: boolean;
 
     /**
-     * Enables resize handles on events to drag and adjust their start or end time without moving the entire event.
-     * Useful for quickly extending or shortening event durations.
+     * Configures event resizing with optional detailed behavior settings for snapping and constraints.
+     * Set to `true` for default resize behavior, `false` to disable, or provide an object for advanced resize options.
      *
      * @default true
      */
-    eventResize?: boolean;
+    eventResize?: boolean | EventResizeProps;
 
     /**
      * Sets the vertical dimension of the scheduler container.
@@ -209,7 +289,13 @@ export interface SchedulerProps extends SchedulerCommonProps, VerticalViewProps,
      * @default { highlight: true, start: '09:00', end: '18:00' }
      */
     workHours?: WorkHoursProps;
-
+    /**
+     * Specifies the available options for determining how the first week of the year is calculated.
+     * Supported week rule components: FirstDay,FirstFourDayWeek,FirstFullWeek.
+     *
+     * @default WeekRule.FirstDay
+     */
+    weekRule?: WeekRule;
     /**
      * Displays a moving indicator showing the current system time within the scheduler.
      * Helps users quickly identify the present moment during event planning.
@@ -227,12 +313,14 @@ export interface SchedulerProps extends SchedulerCommonProps, VerticalViewProps,
     rowAutoHeight?: boolean;
 
     /**
-     * Controls the visibility of the header bar containing date navigation and view switcher buttons.
-     * Useful for embedded or custom scheduler implementations.
+     * Configures or replaces the Scheduler header.
+     * - true: renders the built-in header
+     * - false: hides the header entirely
+     * - (props) => ReactNode: renders a custom SchedulerHeader composition with provided props
      *
      * @default true
      */
-    showHeaderBar?: boolean;
+    header?: boolean | ((props: SchedulerHeaderProps) => React.ReactNode);
 
     /**
      * Displays a compact popup with event or cell details when clicked.
@@ -241,6 +329,18 @@ export interface SchedulerProps extends SchedulerCommonProps, VerticalViewProps,
      * @default true
      */
     showQuickInfoPopup?: boolean;
+
+    /** Enables appointment tooltip. Set to true for default tooltip, false to disable, or provide props to customize
+     *
+     *  @default false
+     */
+    eventTooltip?: boolean | SchedulerTooltipProps;
+
+    /** Fires before each tooltip opens. Set args.cancel = true to suppress.
+     *
+     * @event onTooltipOpen
+     */
+    onTooltipOpen?: (args: SchedulerTooltipOpenEvent) => void;
 
     /**
      * Fired before event data is loaded from the data source or remote server.
@@ -386,11 +486,25 @@ export interface SchedulerProps extends SchedulerCommonProps, VerticalViewProps,
      * @private
      */
     children?: React.ReactNode;
+
+    /**
+     * Fired when an event is submitted in the editor window.
+     * Allows validation and cancellation.
+     *
+     * @event onEditorSubmit
+     */
+    onEditorSubmit?: (args: SchedulerEditorSubmitEvent) => void;
+
+    /**
+     * Specifies the initial scroll behavior of the main content area.
+     * When set, the scheduler automatically scrolls to the defined target after the view has finished rendering.
+     */
+    scrollToSettings?: SchedulerScrollToProps;
 }
 
 /**
- * Event arguments passed to drag lifecycle callbacks (onDragStart, onDrag, onDragStop).
- * Handlers can modify properties like cancel, interval, or scrolling behavior to control the drag operation.
+ * Event arguments passed to resize lifecycle callbacks (onResizeStart, onResizing, onResizeStop).
+ * Handlers can modify properties like cancel, interval, or scrolling behavior to control the resize operation.
  */
 export interface SchedulerResizeEvent {
     /**
@@ -407,14 +521,6 @@ export interface SchedulerResizeEvent {
      * The native mouse or touch event triggering the resize action.
      */
     event?: MouseEvent | TouchEvent;
-
-    /**
-     * Specifies the time increment in minutes used for snapping the resize operation.
-     * Overrides the default slot interval when provided by the handler.
-     *
-     * @private
-     */
-    interval?: number;
 
     /**
      * The proposed new start time after resizing. Can be modified by handlers to enforce custom business logic.
@@ -457,29 +563,6 @@ export interface SchedulerDragEvent {
      */
     data?: EventModel;
 
-    /**
-     * Specifies the time increment in minutes used for snapping during the drag operation.
-     * Overrides the default slot interval when provided by the handler.
-     *
-     * @private
-     */
-    interval?: number;
-
-    /**
-     * Configures automatic scrolling behavior when dragging near container edges.
-     * Includes enable flag, scroll speed in pixels, and delay between scroll steps.
-     *
-     * @private
-     */
-    scroll?: ScrollOptions;
-
-    /**
-     * CSS selector(s) that exclude specific elements from participating in drag-and-drop operations.
-     *
-     * @private
-     */
-    excludeSelectors?: string;
-
 }
 
 /** @private */
@@ -520,16 +603,32 @@ export interface CommonViewProps {
     eventTemplate?: (props: EventModel) => ReactNode;
 }
 
-/** Defines the properties for DayView of the React Scheduler component */
+/**
+ * Configures the day view display in the React Scheduler component.
+ * Provides properties for customizing time slot layout, overlap behavior, and event rendering for single-day views.
+ * Inherits all scheduler common properties while supporting view-specific customizations.
+ */
 export interface DayViewProps extends SchedulerCommonProps, VerticalViewProps, CommonViewProps {}
 
-/** Defines the properties for WeekView of the React Scheduler component */
+/**
+ * Configures the week view display in the React Scheduler component.
+ * Provides properties for customizing time slot layout, overlap behavior, and event rendering for seven-day week views.
+ * Inherits all scheduler common properties while supporting view-specific customizations.
+ */
 export interface WeekViewProps extends SchedulerCommonProps, VerticalViewProps, CommonViewProps {}
 
-/** Defines the properties for WorkWeek of the React Scheduler component */
+/**
+ * Configures the work week view display in the React Scheduler component.
+ * Provides properties for customizing time slot layout, overlap behavior, and event rendering for working days only.
+ * Inherits all scheduler common properties while supporting view-specific customizations.
+ */
 export interface WorkWeekViewProps extends SchedulerCommonProps, VerticalViewProps, CommonViewProps {}
 
-/** Defines the properties for MonthView of the React Scheduler component */
+/**
+ * Configures the month view display in the React Scheduler component.
+ * Provides properties for customizing week display, event rendering per cell, and month-specific layout options.
+ * Inherits all scheduler common properties while supporting specialized month view customizations.
+ */
 export interface MonthViewProps extends SchedulerCommonProps, CommonViewProps {
 
     /**
@@ -582,29 +681,30 @@ export interface MonthViewProps extends SchedulerCommonProps, CommonViewProps {
 }
 
 /**
- * Defines the configuration for event data binding and field mapping in the scheduler.
- * Supports local data arrays, remote data sources, and custom field definitions.
+ * Configures event data binding and field mapping for the scheduler component.
+ * Supports local data arrays, remote data sources via DataManager, and custom field definitions for flexible data integration.
+ * Enables customization of data source operations, event visibility controls, and advanced rendering options like event indicators.
  */
 export interface EventSettings {
 
     /**
-     * The event data source for the scheduler. Accepts an array of JavaScript objects or a DataManager instance for remote data.
-     * Automatically bound to the scheduler upon initialization.
+     * The event data source for the scheduler, supporting local arrays or remote DataManager instances.
+     * Events are automatically bound to the scheduler upon initialization without requiring manual configuration.
      *
      * @default []
      */
     dataSource?: Record<string, unknown>[] | DataManager;
 
     /**
-     * Maps database or object properties to scheduler event fields (id, subject, startTime, etc.).
-     * Allows flexible integration with existing data structures without requiring data transformation.
+     * Maps your data source field names to scheduler event properties (id, subject, startTime, etc.).
+     * Eliminates the need for data transformation, directly connecting your existing data structure to the scheduler.
      *
      * @default { id: 'Id', subject: 'Subject', startTime: 'StartTime', endTime: 'EndTime', isAllDay: 'IsAllDay', location: 'Location', description: 'Description' }
      */
     fields?: EventFields;
 
     /**
-     * Enables or disables event editing capabilities for end users.
+     * Enables or disables the ability to edit existing events in the scheduler.
      * When disabled, existing events cannot be modified.
      *
      * @default true
@@ -612,7 +712,7 @@ export interface EventSettings {
     allowEditing?: boolean;
 
     /**
-     * Enables or disables event creation capabilities for end users.
+     * Enables or disables the ability to create new events in the scheduler.
      * When disabled, users cannot add new events to the scheduler.
      *
      * @default true
@@ -620,7 +720,7 @@ export interface EventSettings {
     allowAdding?: boolean;
 
     /**
-     * Enables or disables event deletion capabilities for end users.
+     * Enables or disables the ability to delete events from the scheduler.
      * When disabled, users cannot remove existing events from the scheduler.
      *
      * @default true
@@ -628,88 +728,88 @@ export interface EventSettings {
     allowDeleting?: boolean;
 
     /**
-     * Accepts a custom React component to render event content across all views.
-     * Can be overridden by view-level event templates for specific views.
+     * Provides a custom React component to render event content across all scheduler views.
+     * Individual view-level templates take precedence over this root-level template when both are configured.
      *
      * @default null
      */
     template?: (props: EventModel) => ReactNode;
 
     /**
-     * Determines how spanned events (longer than 24 hours) are rendered: in an all-day row or within time slot rows.
-     * Default behavior displays them in the all-day section for clarity.
+     * Determines how multi-day events (longer than 24 hours) are positioned in the scheduler.
+     * Set to 'AllDayRow' to display in the all-day section for clarity, or within time slots for compact layouts.
      *
      * @default 'AllDayRow'
      */
     spannedEventPlacement?: SpannedEventPlacement;
 
     /**
-     * When enabled, events expand to fill available space, with overflow managed by the "more events" indicator.
-     * Improves readability in cells with many events.
+     * When enabled, events automatically expand to fill available cell space with excess events managed by a "+n more" indicator.
+     * Improves readability for cells containing many events without compromising layout stability.
      *
      * @default false
      */
     enableIndicator?: boolean;
 
     /**
-     * When enabled, ignores empty space below events within cells, allowing tighter event packing.
-     * Useful for maximizing cell usage in views with many events.
+     * When enabled, removes vertical gaps between events in cells, allowing tighter, more compact event packing.
+     * Maximizes cell usage when displaying many events in high-density scheduling scenarios.
      *
      * @default false
      */
     ignoreWhitespace?: boolean;
 
     /**
-     * Applies a predefined query to the data source for filtering, sorting, or custom operations.
-     * Particularly useful when working with remote data sources requiring complex query logic.
+     * Applies a pre-configured query to the data source for filtering, sorting, or advanced operations.
+     * Essential when working with remote data sources requiring complex filtering, sorting, or pagination logic.
      *
      * @default null
-     *
      */
     query?: Query;
 }
 
 /**
  * Configures how time slots are divided and rendered in day, week, and work week views.
- * Supports custom intervals, slot counts, and templated display of time labels.
+ * Supports custom intervals, slot counts, and templated display of time labels with major and minor slot customizations.
+ * Enables granular control over time granularity and visual representation of scheduler time divisions.
  */
 export interface TimeScaleProps {
 
     /**
-     * Toggles the visibility and functionality of time slots in the scheduler view.
-     * When disabled, the time scale section is hidden entirely.
+     * Enables or disables the time scale (hour/minute divisions) in day, week, and work week views.
+     * When disabled, the time scale section is completely hidden from the scheduler.
      *
      * @default true
      */
     enable?: boolean;
 
     /**
-     * Specifies the duration of each time slot in minutes (e.g., 30 for 30-minute slots).
-     * Smaller intervals provide finer granularity for event scheduling.
+     * Specifies the interval duration for each time slot in minutes (e.g., 30 for 30-minute slots).
+     * Smaller intervals provide finer scheduling granularity; larger intervals simplify the time grid.
      *
      * @default 60
      */
     interval?: number;
 
     /**
-     * Divides each major time slot into this many minor subdivisions.
-     * A value of 2 creates two 30-minute slots within each 60-minute major slot.
+     * Number of subdivisions for each major time slot interval (e.g., a value of 2 creates two 30-minute slots within 60 minutes).
+     * Controls the granularity of minor time divisions visible in the scheduler's time scale.
      *
      * @default 2
      */
     slotCount?: number;
 
     /**
-     * Accepts a custom React component to render the primary (hour) time labels.
-     * Enables custom formatting or styling of major time divisions.
+     * Provides a custom React component to render the primary (hourly) time labels in the scheduler's time scale.
+     * Enables custom formatting, styling, or localization of major time divisions.
      *
      * @default null
      */
     majorSlot?: (props: TimeSlotProps) => ReactNode;
 
     /**
-     * Accepts a custom React component to render the secondary (minute) time labels within each major slot.
-     * Enables detailed time formatting or visual differentiation.
+     * Provides a custom React component to render secondary (minute-level) time labels within each major time slot.
+     * Enables detailed time formatting, custom styling, or alternative time label representations.
      *
      * @default null
      */
@@ -718,7 +818,8 @@ export interface TimeScaleProps {
 
 /**
  * Defines the business hours configuration for visual highlighting and reference in the scheduler.
- * Allows users to quickly identify standard working hours during event planning.
+ * Enables users to quickly identify standard working hours during event planning with customizable start and end times.
+ * Supports visual emphasis through distinct background colors while maintaining the time range for reference purposes.
  */
 export interface WorkHoursProps {
 
@@ -750,143 +851,198 @@ export interface WorkHoursProps {
 
 /**
  * Maps scheduler event model properties to corresponding data source fields.
- * Enables the scheduler to correctly interpret event data from various data structures.
+ * Enables the scheduler to correctly interpret event data from various data structures with minimal transformation overhead.
+ * Supports configuration of all standard event fields including recurrence rules, read-only flags, and blocking indicators.
  */
 export interface EventFields {
     /**
-     * Maps the unique event identifier field. Required to perform add, delete and edit actions.
+     * Maps the unique event identifier field enabling add, update, and delete operations.
+     * This field is essential for all CRUD operations in the scheduler.
      *
      * @default 'Id'
      */
     id?: string;
 
     /**
-     * Maps the event title or heading field displayed in the scheduler.
-     * Provides a brief description or name for each event.
+     * Maps the event title or subject field displayed in the scheduler's event cells.
+     * Provides a concise name or description for each event.
      *
      * @default 'Subject'
      */
     subject?: string;
 
     /**
-     * Maps the event start time field. Must be provided for all valid event objects.
-     * Determines when an event begins on the scheduler.
+     * Maps the event start time field that determines when an event begins on the scheduler.
+     * This field is required for all valid event records.
      *
      * @default 'StartTime'
      */
     startTime?: string;
 
     /**
-     * Maps the event end time field. Must be provided for all valid event objects.
-     * Determines when an event concludes on the scheduler.
+     * Maps the event end time field that determines when an event concludes on the scheduler.
+     * This field is required for all valid event records.
      *
      * @default 'EndTime'
      */
     endTime?: string;
 
     /**
-     * Maps the all-day event indicator field. When true, the event spans the entire day regardless of time.
-     * Useful for marking holidays, birthdays, or full-day activities.
+     * Maps the boolean flag indicating all-day events that span entire days without specific times.
+     * Ideal for holidays, birthdays, task deadlines, or any events not tied to specific hours.
      *
      * @default 'IsAllDay'
      */
     isAllDay?: string;
 
     /**
-     * Maps the event location or venue field displayed to users.
-     * Helps users understand where the event takes place.
+     * Maps the event location or venue field displayed alongside event details for context.
+     * Helps users understand where the event takes place (physical or virtual location).
      *
      * @default 'Location'
      */
     location?: string;
 
     /**
-     * Maps the event description or detailed notes field.
-     * Provides additional context or instructions for the event.
+     * Maps the event description or detailed notes field that provides supplementary information.
+     * Displayed in event detail views, tooltips, or custom event templates.
      *
      * @default 'Description'
      */
     description?: string;
 
     /**
-     * Maps the read-only flag indicating whether an event can be modified.
-     * When true, the event cannot be edited or deleted by users.
+     * Maps the read-only flag indicating whether an event can be modified or deleted by users.
+     * When true, the event is protected from editing or deletion operations.
      *
      * @default 'IsReadonly'
      */
     isReadonly?: string;
 
     /**
-     * Maps the block event indicator that reserves a time slot to prevent other events from being scheduled.
-     * Useful for blocking meetings, maintenance windows, or unavailable time periods.
+     * Maps the blocking flag indicating whether an event reserves a time slot blocking other event scheduling.
+     * Useful for maintenance windows, meetings, blocked time, or unavailable periods.
      *
      * @default 'IsBlock'
      */
     isBlock?: string;
+
+    /**
+     * Maps the recurrence rule field in RFC 5545 format (e.g., 'FREQ=DAILY;INTERVAL=1;UNTIL=2025-12-31').
+     * Defines how events repeat across days, weeks, months, or years for recurring event management.
+     *
+     * @default 'RecurrenceRule'
+     */
+    recurrenceRule?: string;
+
+    /**
+     * Maps the parent recurring event identifier linking individual exception occurrences to the original series.
+     * Used internally to manage and track modified instances within a recurring event series.
+     *
+     * @default 'RecurrenceID'
+     */
+    recurrenceID?: string | number;
+
+    /**
+     * Maps the recurrence exception rule field in RFC 5545 format (e.g., 'EXDATE=2024-01-01,2024-02-01').
+     * Specifies dates or rules for excluding specific occurrences from a recurring event series.
+     *
+     * @default 'RecurrenceException'
+     */
+    recurrenceException?: string;
+
+    /**
+     * Maps the internal unique identifier field generated by the scheduler for tracking events.
+     * Used internally for scheduler operations and should not be manually modified.
+     *
+     * @private
+     * @default 'Guid'
+     */
+    guid?: string;
 }
 
 /**
- * Represents the data structure of a single event in the scheduler.
- * Contains all relevant event details and supports custom properties via the indexed signature.
+ * Represents the complete data structure of a single event in the scheduler.
+ * Contains all event details including timing, location, and recurrence information, with support for custom properties.
+ * Provides a unified interface for event manipulation across all scheduler views and operations.
  */
 export interface EventModel {
 
     /**
-     * A unique identifier for the event used for update and delete operations.
-     * Can be a string or number depending on your data source.
+     * A unique identifier for the event used in update and delete operations.
+     * Can be a string or number depending on your data source configuration.
      */
     id?: string | number;
 
     /**
-     * The event title or heading displayed in the scheduler view.
-     * Provides a brief summary of the event's purpose.
+     * The event title or heading displayed in all scheduler views and event cards.
+     * Provides a concise summary of the event's purpose or topic.
      */
     subject?: string;
 
     /**
-     * The exact date and time when the event begins.
-     * Determines the event's position and start point in the scheduler.
+     * The exact date and time when the event begins, determining its position in the scheduler.
+     * Must be a valid JavaScript Date object for proper scheduling.
      */
     startTime?: Date;
 
     /**
-     * The exact date and time when the event concludes.
-     * Determines the event's end point and duration in the scheduler.
+     * The exact date and time when the event concludes, determining its duration in the scheduler.
+     * Must be a valid JavaScript Date object later than the start time.
      */
     endTime?: Date;
 
     /**
-     * Marks the event as spanning the entire day rather than a specific time range.
-     * All-day events appear in a separate section above timed events.
+     * When true, the event spans the entire day and appears in the all-day row above timed events.
+     * Ideal for holidays, birthdays, deadlines, or events without specific times.
      */
     isAllDay?: boolean;
 
     /**
-     * The physical location or venue where the event occurs.
-     * Displayed alongside the event details for user reference.
+     * The physical location or venue where the event occurs (in-person or virtual meeting link).
+     * Displayed alongside event details for attendee reference and planning.
      */
     location?: string;
 
     /**
-     * Additional notes or context for the event that provide supplementary information.
-     * Visible in event detail views or custom event templates.
+     * Additional notes, agenda items, or context for the event provided to attendees.
+     * Visible in event detail views, popups, or custom event templates.
      */
     description?: string;
 
     /**
-     * Prevents the event from being edited or deleted by end users.
-     * Useful for protecting important or locked events.
+     * When true, prevents the event from being edited or deleted by end users.
+     * Useful for protecting critical events or events managed by administrators only.
      */
     isReadonly?: boolean;
 
     /**
-     * Marks the event as a time block that prevents scheduling other events in the same slot.
-     * Commonly used for meetings, maintenance windows, or reserved time periods.
+     * When true, marks the event as a time block preventing scheduling of other events in the same slot.
+     * Commonly used for meetings, lunch breaks, maintenance windows, or reserved availability.
      */
     isBlock?: boolean;
 
     /**
-     * Allows custom properties beyond the standard event fields for flexible event data modeling.
+     * Recurrence rule string in RFC 5545 format (e.g., 'FREQ=DAILY;INTERVAL=1;UNTIL=2025-12-31').
+     * Defines event repetition patterns for daily, weekly, monthly, or yearly recurrence.
+     */
+    recurrenceRule?: string;
+
+    /**
+     * The parent recurring event identifier linking this exception occurrence back to the original series.
+     * Used internally to manage and track modified instances within recurring event series.
+     */
+    recurrenceID?: string | number;
+
+    /**
+     * Recurrence exception rule string in RFC 5545 format (e.g., 'EXDATE=2024-01-01,2024-02-01').
+     * Specifies dates or rules for skipping or excluding specific occurrences from a recurring series.
+     */
+    recurrenceException?: string;
+
+    /**
+     * Supports custom properties beyond standard event fields for flexible event data modeling.
+     * Allows extending event objects with domain-specific attributes and metadata.
      */
     [key: string]: unknown;
 
@@ -899,212 +1055,388 @@ export interface EventModel {
 }
 
 /**
- * Event arguments provided when a scheduler cell is clicked or tapped.
- * Contains the cell's time range and interaction details for custom event handling.
+ * Event arguments provided when a scheduler cell is clicked or tapped on mobile devices.
+ * Contains the cell's time range, all-day status, and interaction details for custom event handling and validation.
+ * Enables developers to implement custom cell selection logic or prevent default cell click behaviors.
  */
 export interface SchedulerCellClickEvent {
 
     /**
-     * The native MouseEvent object triggered by the cell interaction.
+     * The native browser MouseEvent triggered by the cell interaction.
+     * Provides access to event properties like button, coordinates, and modifier keys.
      */
     nativeEvent: MouseEvent;
 
     /**
      * The start time of the clicked time slot or date cell.
+     * Represents the beginning of the time range for the selected cell.
      */
     startTime: Date;
 
     /**
      * The end time of the clicked time slot or date cell.
+     * Represents the end of the time range for the selected cell.
      */
     endTime: Date;
 
     /**
      * Indicates whether the clicked cell belongs to the all-day row (true) or a timed slot (false).
+     * Useful for determining the type of cell and applying appropriate event creation logic.
      */
     isAllDay: boolean;
 
     /**
-     * The DOM element that was clicked, enabling direct manipulation or inspection if needed.
+     * The DOM element that was clicked, enabling direct manipulation or style inspection if needed.
+     * Useful for custom styling or finding parent elements.
      */
     element?: HTMLElement;
 
     /**
-     * Set to true to cancel the default cell click behavior (e.g., preventing event creation dialogs).
+     * Set to true to cancel the default cell click behavior (e.g., preventing auto-opening event creation dialogs).
+     * Allows custom handling of cell clicks without triggering default actions.
      */
     cancel?: boolean;
 }
 
 /**
- * Event arguments provided when a scheduler event is clicked or tapped.
- * Contains the event data and DOM reference for custom interaction handling.
+ * Event arguments provided when a scheduler event is clicked or tapped on mobile devices.
+ * Contains the complete event data and DOM reference for custom interaction handling and event manipulation.
+ * Enables developers to trigger custom workflows or prevent default event editing behaviors.
  */
 export interface SchedulerEventClickEvent {
 
     /**
      * The native React MouseEvent triggered by clicking the event element.
+     * Provides access to browser event properties, coordinates, and interaction details.
      */
-    event?: React.MouseEvent<HTMLElement>;
+    event?: React.MouseEvent;
 
     /**
-     * The complete event data object containing all event properties and custom fields.
+     * The complete event data object containing all event properties, custom fields, and metadata.
+     * Provides full context for event manipulation and custom workflow logic.
      */
     data: Record<string, any>;
 
     /**
-     * The DOM element of the clicked event, enabling direct styling or inspection if needed.
+     * The DOM element of the clicked event, enabling direct styling, inspection, or parent element access.
+     * Useful for custom styling or element manipulation.
      */
     element?: HTMLElement;
 
     /**
-     * Set to true to cancel the default event click behavior (e.g., preventing event editor from opening).
+     * Set to true to cancel the default event click behavior (e.g., preventing auto-opening the event editor).
+     * Allows custom handling of event clicks without triggering default actions.
      */
     cancel?: boolean;
 }
 
 /**
- * Event arguments provided when the "+n more events" indicator is clicked in the Scheduler.
- * Allows custom handling of expanded event list display.
+ * Event arguments provided when the "+n more events" indicator is clicked in the scheduler's Month view.
+ * Contains all events for the clicked date or time slot to enable custom display or filtering logic.
+ * Enables developers to implement custom event expansion behaviors or alternative event display strategies.
  */
 export interface SchedulerMoreEventsClickEvent {
     /**
-     * Set to true to cancel the more events popup open and handle expansion manually.
+     * Set to true to cancel the more events popup expansion and implement custom event display logic.
+     * Allows full control over how overflowing events are presented to users.
      */
     cancel?: boolean;
 
     /**
      * An array of all event objects for the clicked date or time slot.
-     * Useful for custom display or filtering logic.
+     * Provides context for custom display, filtering, or aggregation logic.
      */
     data: Record<string, any>[];
 }
 
 /**
  * Represents a single time division in the scheduler's time scale (e.g., 9:00 AM, 9:30 AM).
- * Used in custom time slot templates to render hour or minute labels.
+ * Used in custom time slot templates to render hour or minute labels with context about the slot's position.
+ * Enables developers to create specialized time label formatting or localization strategies.
  */
 export interface TimeSlotProps {
     /**
-     * The exact date and time represented by this time slot division.
+     * The exact date and time represented by this time slot division in the scheduler.
+     * Useful for formatting custom time labels or applying time-specific logic.
      */
     date: Date;
 
     /**
-     * Indicates whether this slot is a major division (hourly) or minor division (sub-hourly).
-     * Values: 'majorSlot' or 'minorSlot'
+     * Indicates whether this slot is a major division (hourly) or minor division (sub-hourly time subdivision).
+     * Values: 'majorSlot' for primary hour labels, 'minorSlot' for minute subdivisions.
      */
     type: string;
 }
 
 /**
  * Represents a single scheduler cell for custom rendering in day, week, or month views.
- * Provides context about the cell's date and type for template rendering.
+ * Provides context about the cell's date and type to enable conditional rendering logic and styling.
+ * Enables developers to implement custom cell templates with awareness of view type and time range.
  */
 export interface SchedulerCellProps {
 
     /**
-     * The start date and time of the scheduler cell.
+     * The start date and time of the scheduler cell, determining its position in the view.
+     * Used for cell positioning, event assignment, and custom rendering logic.
      */
     date: Date;
 
     /**
-     * Identifies the cell type to allow conditional rendering logic.
-     * Values: 'monthCell' for month view cells or 'workCell' for time-slot cells.
+     * Identifies the cell type for conditional rendering and styling logic.
+     * Values: 'monthCell' for month view or 'workCell' for time-slot cells in day/week views.
      */
     type: string;
 }
 
 /**
- * Represents a date header cell in the scheduler's header row.
- * Used in custom date header templates for day, week, or month views.
+ * Represents a date header cell in the scheduler's header row across day, week, or month views.
+ * Used in custom date header templates to render date-specific content with full formatting control.
+ * Enables developers to create custom date display strategies or localization approaches.
  */
 export interface SchedulerDateHeaderProps {
 
     /**
      * The date displayed in the header cell, useful for formatting or rendering date-specific content.
+     * Provides context for custom date display strategies and localization.
      */
     date: Date;
 }
 
 /**
- * Represents a month view cell header in the scheduler.
- * Used in custom cell header templates to render date information or custom decorations.
+ * Represents a month view cell header in the scheduler for rendering date information or custom decorations.
+ * Provides the cell's date context to enable custom header rendering with awareness of month view positioning.
+ * Enables developers to create specialized date headers with event counts, holidays, or other indicators.
  */
 export interface SchedulerCellHeaderProps {
 
     /**
-     * The date of the cell header, enabling date-aware custom rendering and styling.
+     * The date of the cell header, enabling date-aware custom rendering and styling strategies.
+     * Useful for adding event counts, holidays, or other date-specific decorations.
      */
     date: Date;
 }
 
 /**
- * Represents a weekday label (e.g., "Monday", "Tuesday") in the scheduler's header row.
- * Used in custom weekday templates for rendering or localizing day names.
+ * Represents a weekday label (e.g., "Monday", "Tuesday") in the scheduler's header row across all views.
+ * Used in custom weekday templates for rendering or localizing day names with full formatting control.
+ * Enables developers to implement custom day labels or alternative localization approaches.
  */
 export interface SchedulerWeekDayProps {
 
     /**
      * The name or label of the weekday (e.g., "Monday") for display in the scheduler header.
-     * Useful for custom formatting or localization.
+     * Used for custom formatting, localization, or alternative day label representations.
      */
     day: string;
 }
 
 /**
- * Controls automatic scrolling behavior when dragging or resizing events near the container edges.
- * Enhances user experience by smoothly scrolling the view during interactive operations.
+ * Provides granular configuration for the Scheduler event resize behavior.
+ * Allows fine-tuned control over how events can be resized, including snapping intervals,
+ * directional constraints, and automatic scrolling during resize operations.
+ */
+export interface EventResizeProps {
+    /**
+     * Enables or disables the ability to resize events throughout the scheduler.
+     * When disabled, resize handles are hidden and event durations cannot be modified.
+     *
+     * @default true
+     */
+    enable: boolean;
+
+    /**
+     * Specifies the snapping granularity in minutes while resizing events (e.g., 15 for 15-minute increments).
+     * When not specified, defaults to the timeScale interval divided by slotCount for optimal alignment.
+     *
+     * @default Derived from timeScale configuration
+     */
+    interval?: number;
+
+    /**
+     * When enabled, allows events to be resized to zero duration (start time equals end time).
+     * When disabled, the minimum event duration is enforced as one interval unit to prevent invalid states.
+     *
+     * @default false
+     */
+    resizeToZero?: boolean;
+
+    /**
+     * Enables or disables the ability to drag the start edge of an event to change its start time.
+     * When disabled, the start time cannot be modified through resizing.
+     *
+     * @default true
+     */
+    startResizable?: boolean;
+
+    /**
+     * Enables or disables the ability to drag the end edge of an event to change its end time.
+     * When disabled, the end time cannot be modified through resizing.
+     *
+     * @default true
+     */
+    endResizable?: boolean;
+
+    /**
+     * Configures auto-scroll behavior when the user drags a resize handle near the viewport edges.
+     * Enables continuous scrolling to allow extending events beyond the visible area.
+     *
+     */
+    scroll?: SchedulerDragScrollProps;
+}
+
+/**
+ * Provides granular configuration for the Scheduler event drag-and-drop behavior.
+ * Enables fine-tuned control over event movement, including snapping intervals, scroll behavior,
+ * auto-navigation to adjacent date ranges, and external drag-and-drop capabilities.
+ */
+export interface EventDragProps {
+    /**
+     * Enables or disables the ability to drag events throughout the scheduler.
+     * When disabled, events remain stationary but remain interactive for other operations.
+     *
+     * @default true
+     */
+    enable: boolean;
+
+    /**
+     * Specifies the snapping interval in minutes for drag operations (e.g., 15 for 15-minute increments).
+     * When not specified, defaults to (timeScale interval / slotCount) or 30 minutes for optimal alignment.
+     *
+     * @default Derived from timeScale configuration
+     */
+    interval?: number;
+
+    /**
+     * Comma-separated CSS selectors matching elements that should not accept dropped events.
+     * Example: '.read-only-cell, .blocked-time' prevents dropping onto read-only or blocked cells.
+     *
+     * @default ''
+     */
+    excludeSelectors?: string;
+
+    /**
+     * Configures auto-scroll behavior when dragging events near the scheduler viewport edges.
+     * Ensures users can drag events beyond the currently visible time range.
+     *
+     */
+    scroll?: SchedulerDragScrollProps;
+
+    /**
+     * Configures automatic navigation to previous/next date ranges when the user holds
+     * the pointer at extreme edges during dragging. Enables seamless dragging across weeks or months.
+     *
+     * @private
+     */
+    navigation?: SchedulerNavigateProps;
+
+    /**
+     * Enables external drag-and-drop using native HTML5 drag and drop API for cross-component event moving.
+     * When enabled, events can be dragged outside the scheduler or from external elements into the scheduler.
+     *
+     * @private
+     * @default false
+     */
+    externalDragAndDrop?: boolean;
+
+    /**
+     * CSS selector restricting the draggable area for events (e.g., '.scheduler-container' limits dragging within that container).
+     * Set to null or undefined to allow unrestricted dragging throughout the page.
+     *
+     * @private
+     * @default null
+     */
+    eventDragArea?: string | null;
+}
+
+/**
+ * Configures automatic navigation behavior when dragging events at viewport extremes.
+ * When the user holds an event at the edge of the visible time range, the scheduler
+ * automatically navigates to the next or previous time period to enable extended dragging.
  *
  * @private
  */
-export interface ScrollOptions {
+export interface SchedulerNavigateProps {
     /**
-     * Toggles auto-scroll on or off during drag or resize operations near container edges.
+     * Enables or disables automatic navigation when the user holds an event at viewport extremes during dragging.
+     * When enabled, the scheduler automatically moves to the next or previous time period for extended dragging.
+     *
+     * @default false
+     */
+    enable: boolean;
+
+    /**
+     * Specifies the hold delay in milliseconds before auto-navigation is triggered (recommended: 1000-3000ms).
+     * A longer delay prevents accidental navigation from quick drag movements.
+     *
+     * @default 2000
+     */
+    timeDelay: number;
+}
+
+/**
+ * Configures automatic scrolling behavior when dragging or resizing events near viewport edges.
+ * Provides smooth scrolling as users move events or resize handles toward the scheduler boundaries,
+ * enabling seamless operations across larger time ranges or date spans.
+ */
+export interface SchedulerDragScrollProps {
+    /**
+     * Enables or disables automatic scrolling when dragging or resizing events near viewport edges.
+     * When disabled, the viewport remains static during drag/resize operations.
+     *
+     * @default true
      */
     enable?: boolean;
 
     /**
-     * The number of pixels to scroll per tick when auto-scrolling is active.
-     * Larger values create faster scrolling.
+     * Number of pixels to scroll per scroll step/tick (typical range: 5-20 pixels for balanced responsiveness).
+     * Larger values increase scroll speed; smaller values provide finer control.
+     *
+     * @default 10
      */
     scrollBy?: number;
 
     /**
-     * The delay in milliseconds between consecutive scroll steps.
-     * Smaller values create smoother, more frequent scrolling.
+     * Specifies the delay in milliseconds between consecutive scroll steps (typical range: 50-200ms).
+     * Shorter delays result in faster scrolling; longer delays provide more controlled, slower scrolling.
+     *
+     * @default 100
      */
     timeDelay?: number;
 }
 
 /**
  * Event arguments provided during scheduler data modification operations (add, update, delete).
- * Allows interception and custom handling of CRUD operations and server-side validation.
+ * Allows interception and custom handling of CRUD operations with support for server-side validation and cancellation.
+ * Enables developers to implement custom validation logic, loading indicators, or data persistence workflows.
  */
 export interface SchedulerDataChangeEvent {
     /**
-     * Set to true to cancel the entire data modification operation and revert all changes.
+     * Set to true to cancel the entire data modification operation and revert all changes to the scheduler.
+     * Useful for validation failures or business logic constraints.
      */
     cancel?: boolean;
 
     /**
-     * An array of newly created event records during add operations.
+     * Array of newly created event records during add operations.
+     * Each record contains the full event data for the newly added events.
      */
     addedRecords?: Record<string, any>[];
 
     /**
-     * An array of modified event records during update operations.
+     * Array of modified event records during update operations.
+     * Each record contains the updated event data for changed events.
      */
     changedRecords?: Record<string, any>[];
 
     /**
-     * An array of deleted event records during delete operations.
+     * Array of deleted event records during delete operations.
+     * Each record contains the full data of removed events.
      */
     deletedRecords?: Record<string, any>[];
 
     /**
-     * An optional promise that validates overlapping events on the server.
-     * If resolved with true, overlapping events are found and the operation is canceled.
-     * If resolved with false, no conflicts exist and the operation proceeds.
+     * Optional promise for server-side overlap validation of events.
+     * If resolved with true, overlapping conflicts are found and the operation is canceled; false allows the operation to proceed.
      *
      * @private
      */
@@ -1113,40 +1445,606 @@ export interface SchedulerDataChangeEvent {
 
 /**
  * Event arguments provided when event data is requested from the data source.
- * Contains raw data and metadata before field mapping to the event model.
+ * Contains raw event records and metadata before field mapping to the scheduler event model.
+ * Enables developers to implement custom data processing or pagination logic.
  */
 export interface SchedulerDataRequestEvent {
     /**
-     * The raw event records returned by the DataManager after executing the query.
-     * Each object contains the source data before field mapping to the scheduler event model.
+     * The raw event records returned by the DataManager after executing the data query.
+     * Each object contains source data before field mapping to the scheduler event model.
      */
     result?: Object[];
 
     /**
-     * The total number of records available in the data source that match the query (if applicable).
-     * Useful for pagination or lazy-loading implementations.
+     * The total number of records available in the complete data source (useful for pagination).
+     * Enables pagination or lazy-loading implementations when working with large datasets.
      */
     count?: number;
 }
 
 /**
  * Event arguments provided when the active view changes in the scheduler.
- * Fired when users switch between Day, Week, Month, or other view types.
+ * Fired when users switch between Day, Week, Month, or other view types with the new view identifier.
+ * Enables developers to track view changes for analytics or load view-specific data.
  */
 export interface SchedulerViewChangeEvent {
     /**
-     * The name or identifier of the newly active view (e.g., 'Day', 'Week', 'Month').
+     * The name or identifier of the newly active view (e.g., 'Day', 'Week', 'WorkWeek', 'Month').
+     * Useful for tracking view changes or loading view-specific data.
      */
     value: string;
 }
 
 /**
  * Event arguments provided when the active date changes in the scheduler.
- * Fired when users navigate to a different date or date range.
+ * Fired when users navigate to a different date or date range with the newly selected date value.
+ * Enables developers to synchronize the scheduler with other components or load date-specific data.
  */
 export interface SchedulerDateChangeEvent {
     /**
      * The newly selected or navigated date in the scheduler.
+     * Fired when users navigate to a different date or date range.
      */
     value: Date;
+}
+
+/**
+ * Configures the appearance, behavior, and interaction of tooltips displayed over scheduler events and cells.
+ * Provides granular control over tooltip positioning, animation, and custom content rendering for enhanced user guidance.
+ * Enables customization of tooltip dimensions, open modes, and interactive behaviors through flexible property configuration.
+ */
+export interface SchedulerTooltipProps {
+    /**
+     * Specifies the width of the Tooltip component in pixels or CSS units.
+     * Use 'auto' for automatic width based on content.
+     *
+     * @default 'auto'
+     */
+    width?: string | number;
+
+    /**
+     * Specifies the height of the Tooltip component in pixels or CSS units.
+     * Use 'auto' for automatic height based on content.
+     *
+     * @default 'auto'
+     */
+    height?: string | number;
+
+    /**
+     * Specifies the content of the Tooltip component (text, HTML, or custom React component).
+     * Can be a static string or a dynamically rendered component.
+     *
+     * @default -
+     */
+    content?: React.ReactNode | Function;
+
+    /**
+     * Specifies the vertical and horizontal position of the Tooltip relative to the target element.
+     * Options: 'TopCenter', 'TopLeft', 'TopRight', 'BottomCenter', 'BottomLeft', 'BottomRight', etc.
+     *
+     * @default 'TopCenter'
+     */
+    position?: Position;
+
+    /**
+     * Specifies the device mode to display the Tooltip content.
+     *
+     * Set of open modes available for Tooltip.
+     * ```props
+     * Auto :- The Tooltip opens automatically when the trigger element is hovered over.
+     * Hover :- The Tooltip opens when the trigger element is hovered over.
+     * Click :- The Tooltip opens when the trigger element is clicked.
+     * Focus :- The Tooltip opens when the trigger element is focused.
+     * Custom :- The Tooltip opens when the trigger element is triggered by a custom event.
+     * ```
+     *
+     * @default 'Auto'
+     */
+    opensOn?: string;
+
+    /**
+     * When enabled, the Tooltip follows the mouse pointer movement over the target element.
+     * Provides dynamic tooltip positioning based on cursor location.
+     *
+     * @default false
+     */
+    followCursor?: boolean;
+
+    /**
+     * When enabled, the Tooltip remains in an open state until manually closed by the user.
+     * Provides persistent tooltip display for important information.
+     *
+     * @default false
+     */
+    sticky?: boolean;
+
+    /**
+     * Controls the Tooltip's visibility state: true to display, false to hide completely.
+     * Allows programmatic control over tooltip visibility.
+     *
+     * @default false
+     */
+    open?: boolean;
+
+    /**
+     * Specifies animation settings for Tooltip open and close actions.
+     * Enables smooth transitions with configurable effects, duration, and delay.
+     *
+     * @default { open: { effect: 'FadeIn', duration: 150, delay: 0 }, close: { effect: 'FadeOut', duration: 150, delay: 0 } }
+     */
+    animation?: TooltipAnimationOptions;
+
+    /**
+     * When enabled, displays a small arrow/pointer showing the direction of the Tooltip relative to its target.
+     * Enhances visual clarity of tooltip positioning.
+     *
+     * @default false
+     */
+    arrow?: boolean;
+
+    /**
+     * Triggers before the Tooltip is displayed over the target element.
+     *
+     * @event onOpen
+     */
+    onOpen?: (event: Event) => void;
+
+    /**
+     * Triggers before the Tooltip hides from the screen.
+     *
+     * @event onClose
+     */
+    onClose?: (event: Event) => void;
+
+    /**
+     * Specifies a callback function that determines the target elements on which the Tooltip should be displayed.
+     * This can be used for showing Tooltip with multiple targets.
+     *
+     * @param {HTMLElement} args - The target element for which the Tooltip is being evaluated.
+     * @returns {HTMLElement} True to display the Tooltip, false to prevent it from showing.
+     * @event onFilterTarget
+     */
+    onFilterTarget?: (event: HTMLElement) => HTMLElement;
+}
+
+/**
+ * Event arguments provided before the scheduler tooltip is displayed over a target element.
+ * Contains the raw event data and allows cancellation of the tooltip display operation.
+ * Enables developers to implement conditional tooltip visibility or custom tooltip filtering logic.
+ */
+export interface SchedulerTooltipOpenEvent {
+    /** Set true to cancel this tooltip open */
+    cancel?: boolean;
+    /** Raw appointment data */
+    data?: Record<string, any>;
+}
+
+/**
+ * Represents the date range context for custom header rendering in the scheduler.
+ * Provides start date, end date, and view information to enable context-aware date range displays.
+ * Enables developers to create custom date range representations or localized date formatting strategies.
+ */
+export interface DateRangeProps {
+    /**
+     * The start date of the currently visible date range in the scheduler.
+     * Indicates the beginning of the period displayed by the active view.
+     */
+    startDate: Date;
+
+    /**
+     * The end date of the currently visible date range in the scheduler.
+     * Indicates the end of the period displayed by the active view.
+     */
+    endDate: Date;
+
+    /**
+     * The name of the currently active view type ('Day', 'Week', 'WorkWeek', 'Month', or custom).
+     * Indicates which view is displaying the date range.
+     */
+    view: string;
+}
+
+/**
+ * Configures the base properties for scheduler toolbar buttons including styling, callbacks, and accessibility attributes.
+ * Provides common button configuration options shared across all toolbar button types in the scheduler header.
+ * Enables consistent styling and interaction handling for toolbar button customization across the scheduler.
+ */
+export interface BaseToolbarButtonProps {
+    /**
+     * Click handler function executed when the button is clicked.
+     * Receives the click event as a parameter.
+     */
+    onClick?: (e?: React.SyntheticEvent) => void;
+    /**
+     * Adds an accessible ARIA label to the button for screen readers and accessibility tools.
+     * Essential for keyboard navigation and voice command support.
+     */
+    ariaLabel?: string;
+    /**
+     * Adds a custom tooltip or title text displayed on button hover.
+     * Provides user guidance about the button's function.
+     */
+    title?: string;
+    /**
+     * When true, disables the button and prevents user interaction.
+     * Useful for conditional disabling based on state or permissions.
+     */
+    disabled?: boolean;
+    /**
+     * An icon for the button, either as a CSS class name for icon fonts or as a React element.
+     * Enhances button visual clarity and user recognition.
+     */
+    icon?: ReactElement;
+    /**
+     * Adds a custom CSS class name to the button element for custom styling.
+     * Enables fine-grained style control through external CSS.
+     */
+    className?: string;
+    /**
+     * Specifies the semantic color of the button for visual hierarchy and intent communication.
+     * Options: 'Primary', 'Secondary', 'Warning', 'Success', 'Error', 'Info'.
+     */
+    color?: Color;
+    /**
+     * Specifies the visual style variant of the button for design flexibility.
+     * Options: 'Outlined', 'Filled', 'Standard' for different visual presentations.
+     */
+    variant?: Variant;
+}
+
+export interface ToolbarButtonProps extends BaseToolbarButtonProps {
+    /**
+     * Displays the text label within the toolbar button.
+     * Provides user-friendly identification of the button's function.
+     */
+    text?: string;
+}
+
+export interface DateRangeButtonProps extends BaseToolbarButtonProps {
+    /**
+     * The custom React component or content to display within the date range button.
+     * Enables flexible date range representation.
+     */
+    dateRangeContent?: ReactNode;
+
+    /**
+     * When true, indicates the calendar picker popup is currently visible.
+     * Controls the open/closed state of the date range selector.
+     */
+    isCalendarOpen?: boolean;
+
+    /**
+     * Sets the ARIA expanded attribute for accessibility, indicating whether the popup is open or closed.
+     * Essential for screen reader users to understand the button's expanded state.
+     */
+    ariaExpanded?: boolean;
+
+    /**
+     * Callback handler triggered when the user presses a keyboard key while the button has focus.
+     * Enables keyboard navigation and custom keyboard handling.
+     */
+    onKeyDown?: (e: React.KeyboardEvent) => void;
+}
+
+export interface ViewButtonProps extends BaseToolbarButtonProps {
+    /**
+     * An array of available view options presented in the view switcher dropdown.
+     * Each item represents a selectable view (Day, Week, Month, etc.).
+     */
+    items?: ItemModel[];
+
+    /**
+     * The name or identifier of the currently active view type in the scheduler.
+     * Indicates which view option is selected in the view switcher.
+     */
+    currentView?: string;
+
+    /**
+     * Callback handler triggered when the user selects a different view from the view switcher.
+     * Enables custom handling of view changes.
+     */
+    onSelect?: (args: ButtonSelectEvent) => void;
+}
+
+/**
+ * Props passed to custom header renderers in the scheduler, enabling full header bar customization.
+ * Provides pre-configured button instances, templates, and configuration objects for comprehensive header control.
+ * Enables developers to customize, extend, or completely replace the default scheduler header with custom implementations.
+ */
+export interface SchedulerHeaderProps {
+    /**
+     * Configures how toolbar items are displayed when space is limited: Popup, Dropdown, or Scroll.
+     * Defaults to Popup mode for optimal space management.
+     */
+    overflowMode?: OverflowMode;
+
+    /**
+     * Provides a custom React component to render the date range display in the scheduler header.
+     * Enables custom date range formatting or localization.
+     */
+    dateRangeTemplate?: (props: DateRangeProps) => React.ReactNode;
+
+    /**
+     * Configuration object for the "Today" button in the scheduler header.
+     * Set to `null` to completely hide the button from the toolbar.
+     */
+    todayProps?: ToolbarButtonProps | null;
+
+    /**
+     * Configuration object for the "Previous" navigation button in the scheduler header.
+     * Set to `null` to completely hide the button from the toolbar.
+     */
+    previousProps?: ToolbarButtonProps | null;
+
+    /**
+     * Configuration object for the "Next" navigation button in the scheduler header.
+     * Set to `null` to completely hide the button from the toolbar.
+     */
+    nextProps?: ToolbarButtonProps | null;
+
+    /**
+     * Configuration object for the date range button in the scheduler header.
+     * Set to `null` to completely hide the button from the toolbar.
+     */
+    dateRangeProps?: DateRangeButtonProps | null;
+
+    /**
+     * Configuration object for the view switcher button in the scheduler header.
+     * Set to `null` to completely hide the button from the toolbar.
+     */
+    viewSwitcherProps?: ViewButtonProps | null;
+
+
+    /**
+     * Custom toolbar items.
+     * - If only children are provided → replaces toolbar.
+     * - If combined with button props → extends toolbar.
+     */
+    children?: React.ReactNode;
+
+    /**
+     * A fully configured "Today" button instance ready for rendering.
+     * Can be repositioned within the toolbar or excluded from display as needed.
+     */
+    today?: React.ReactNode;
+
+    /**
+     * A fully configured "Previous" navigation button instance ready for rendering.
+     * Can be repositioned within the toolbar or excluded from display as needed.
+     */
+    previous?: React.ReactNode;
+
+    /**
+     * A fully configured "Next" navigation button instance ready for rendering.
+     * Can be repositioned within the toolbar or excluded from display as needed.
+     */
+    next?: React.ReactNode;
+
+    /**
+     * A fully configured date range button instance ready for rendering.
+     * Can be repositioned within the toolbar or excluded from display as needed.
+     */
+    dateRange?: React.ReactNode;
+
+    /**
+     * A fully configured view switcher instance ready for rendering.
+     * Can be repositioned within the toolbar or excluded from display as needed.
+     */
+    viewSwitcher?: React.ReactNode;
+}
+
+/**
+ * Represents the resolved details for a scheduler cell corresponding to a specific DOM element.
+ * Provides timing information, all-day status, and direct access to the DOM element for advanced cell operations.
+ * Enables developers to programmatically interact with scheduler cells and retrieve detailed cell context.
+ */
+export interface SchedulerCellDetails {
+    /**
+     * The start time of the cell's time range, marking the beginning of the time slot.
+     * Used for scheduling and event positioning logic.
+     */
+    startTime: Date;
+
+    /**
+     * The end time of the cell's time range, marking the end of the time slot.
+     * Used for scheduling and event positioning logic.
+     */
+    endTime: Date;
+
+    /**
+     * Indicates whether the cell belongs to the all-day row (true) or a timed time slot (false).
+     * Useful for determining cell type and appropriate event creation logic.
+     */
+    isAllDay: boolean;
+
+    /**
+     * The underlying DOM element for the selected cell, enabling direct manipulation or inspection.
+     * Useful for custom styling or finding parent elements.
+     */
+    element: HTMLElement;
+}
+
+/**
+ * Configures custom renderers for the Quick Info Popup shown when selecting cells or events in the scheduler.
+ * Supports separate customization for cell creation popups (add) and existing event popups (edit) with header, content, and footer sections.
+ * Enables developers to implement specialized popup layouts or alternative quick-edit experiences for different interaction scenarios.
+ */
+export interface SchedulerQuickInfoProps {
+    /**
+     * Custom React component to render the header section of the quick info popup for cell selection.
+     * Replaces the default header with custom content when adding new events.
+     */
+    addHeader?: (props: { cellData: SchedulerCellDetails }) => React.ReactNode;
+
+    /**
+     * Custom React component to render the content section of the quick info popup for cell selection.
+     * Replaces the default body with custom content when adding new events.
+     */
+    addContent?: (props: { cellData: SchedulerCellDetails }) => React.ReactNode;
+
+    /**
+     * Custom React component to render the footer section of the quick info popup for cell selection.
+     * Replaces the default footer with custom action buttons when adding new events.
+     */
+    addFooter?: (props: { cellData: SchedulerCellDetails }) => React.ReactNode;
+
+    /**
+     * Custom React component to render the header section of the quick info popup for existing events.
+     * Replaces the default header when viewing or editing selected events.
+     */
+    editHeader?: (props: { eventData: EventModel }) => React.ReactNode;
+
+    /**
+     * Custom React component to render the content section of the quick info popup for existing events.
+     * Replaces the default event details with custom content when viewing or editing events.
+     */
+    editContent?: (props: { eventData: EventModel }) => React.ReactNode;
+
+    /**
+     * Custom React component to render the footer section of the quick info popup for existing events.
+     * Replaces the default footer with custom action buttons when viewing or editing events.
+     */
+    editFooter?: (props: { eventData: EventModel }) => React.ReactNode;
+
+    /**
+     * When enabled, the quick info popup displays in full-screen mode on mobile devices.
+     * Provides better usability and visibility on smaller screens.
+     */
+    adaptive?: boolean;
+}
+
+/**
+ * Props for configuring the customization options of the scheduler's editor dialog for event creation and editing.
+ * Enables control over dialog visibility, event data, fields, validation, and styling through a comprehensive configuration interface.
+ * Supports both field-based and children-based rendering approaches for flexible editor customization.
+ */
+export interface SchedulerEditorProps {
+    /**
+     * Controls whether the event editor dialog is visible (true) or hidden (false).
+     * Allows programmatic control over editor visibility.
+     */
+    open?: boolean;
+
+    /**
+     * Callback function triggered when the user requests to close the event editor dialog.
+     * Allows custom close logic or confirmation dialogs.
+     */
+    onClose?: () => void;
+
+    /**
+     * The event data object being edited or created with all property values.
+     * Bind to this for two-way data binding with form inputs.
+     */
+    data?: EventModel;
+
+    /**
+     * The original event data before any edits (only present in edit mode; undefined when creating new events).
+     * Useful for detecting changes or reverting modifications.
+     */
+    originalData?: EventModel;
+
+    /**
+     * The editor mode indicating whether creating ('Add') a new event or editing ('Edit') an existing one.
+     * Useful for conditional rendering or validation logic.
+     */
+    action?: CrudAction;
+
+    /**
+     * Configuration object for the underlying editor dialog component.
+     * Allows customization of dialog appearance, behavior, and properties.
+     */
+    dialogProps?: DialogProps;
+
+    /**
+     * An array of field configurations controlling which fields are displayed and how they render.
+     * Provides granular control over editor input customization and visibility.
+     */
+    fields?: SchedulerEditorField[];
+
+    /**
+     * Adds custom CSS class names to the editor container element.
+     * Enables custom styling and visual customization through external CSS.
+     */
+    className?: string;
+
+    /**
+     * Inline CSS styles applied directly to the editor container element.
+     * Enables direct style customization without external CSS.
+     */
+    style?: React.CSSProperties;
+
+    /**
+     * Custom React components or content rendered as editor children when `fields` is not provided.
+     * Enables complete custom editor implementations.
+     */
+    children?: React.ReactNode;
+}
+
+/**
+ * Field configuration object for customizing individual editor inputs in the scheduler's event editing dialog.
+ * Defines field visibility, custom components, component properties, and validation rules for granular editor control.
+ * Enables developers to create specialized field inputs or override default field rendering with custom implementations.
+ */
+export interface SchedulerEditorField {
+    /**
+     * Unique field identifier used for data binding and validation (e.g., 'subject', 'location', 'description').
+     * Must correspond to a property in the event data model.
+     */
+    name: string;
+
+    /**
+     * Controls whether the field is displayed in the editor form.
+     * Set to false to hide the field from the editor while maintaining its data structure.
+     *
+     * @default true
+     */
+    visible?: boolean;
+
+    /**
+     * Adds custom CSS class names to the field container element.
+     * Enables custom styling of individual fields through external CSS.
+     */
+    className?: string;
+
+    /**
+     * A custom React component to render instead of the default field input component.
+     * Enables specialized field rendering for custom data types or interactions.
+     */
+    component?: React.ReactNode;
+
+    /**
+     * Props to override or extend the default field component's properties.
+     * Enables fine-grained customization without replacing the entire component.
+     */
+    props?: Record<string, any>;
+
+    /**
+     * Validation rules for the field enforcing required values, patterns, or constraints.
+     * Applied before saving event data to ensure data integrity (e.g., { required: [true, 'Field is required'] }).
+     */
+    validationRule?: ValidationRules[string];
+}
+
+
+/**
+ * Specifies the configuration for automatically scrolling the Scheduler when the view is initialized or rendered.
+ */
+export interface SchedulerScrollToProps {
+    /**
+     * Specifies whether automatic scrolling should occur when the view is rendered.
+     * If omitted or set to `false`, the Scheduler does not perform any automatic scroll.
+     */
+    enable?: boolean;
+
+    /**
+     * Specifies a pixel value that is subtracted from the calculated scroll position.
+     * This value represents the exact amount reduced from the final scroll target.
+     * Accepts positive or negative values to fine tune the final scroll target.
+     */
+    offset?: number;
+
+    /**
+     * Specifies the scrolling strategy used to determine the target scroll position.
+     */
+    mode?: ScrollToMode;
 }

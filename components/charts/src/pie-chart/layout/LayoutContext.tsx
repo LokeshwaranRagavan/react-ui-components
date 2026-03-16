@@ -1,7 +1,7 @@
 //LayoutContext.tsx
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ChartContext } from './ChartProvider';
-import { Chart, Points, SeriesProperties } from '../base/internal-interfaces';
+import { Chart, PieBaseSelection, Points, SeriesProperties } from '../base/internal-interfaces';
 import { ChartRenderer } from '../renderer/ChartRenderer';
 import { ChartTitleRenderer } from '../renderer/ChartTitleRenderer';
 import { ChartSubTitleRenderer } from '../renderer/ChartSubtitleRender';
@@ -13,6 +13,8 @@ import { PieChartMouseEvent, PieChartSizeProps, PiePointClickEvent, PieResizeEve
 import { Browser, isNullOrUndefined } from '@syncfusion/react-base';
 import { PieChartTooltipRenderer, PointData } from '../renderer/ChartTooltipRenderer';
 import { indexFinder, stringToNumber } from '../utils/helper';
+import { PieSelectionRenderer } from '../renderer/PieSelectionsRenderer';
+import { highlightChart, PieHighlightRenderer } from '../renderer/PieHighlightRenderer';
 
 /**
  * React context for managing layout-related state and operations.
@@ -31,7 +33,7 @@ export const LayoutProvider: React.FC = () => {
     const [phase, setPhase] = useState<'measuring' | 'rendering'>('measuring');
 
     const { render, parentElement, chartProps, chartTitle, chartSubTitle, chartSeries, centerLabel
-        , chartLegend, chartTooltip } = useContext(ChartContext);
+        , chartLegend, chartTooltip, chartSelection, chartHighlight } = useContext(ChartContext);
 
     const measuredKeysRef: React.RefObject<Set<string>> = useRef<Set<string>>(new Set());
     const layoutRef: React.RefObject<Chart> = useRef<Chart>({} as Chart);
@@ -42,6 +44,15 @@ export const LayoutProvider: React.FC = () => {
     const [isMouseInside, setIsMouseInside] = useState(false);
     const [disableAnimation, setDisableAnimation] = useState(false);
     const [isSeriesAnimated, setSeriesAnimated] = useState(false);
+
+
+    const setLayoutValue: <K extends keyof Chart>(key: K, value: Chart[K]) => void = useCallback(
+        <K extends keyof Chart>(key: K, value: Chart[K]) => {
+            if (!layoutRef.current) { return; }
+            (layoutRef.current as Chart)[key as K] = value;
+        },
+        []
+    );
 
     useEffect(() => {
         if (phase === 'rendering') {
@@ -74,11 +85,19 @@ export const LayoutProvider: React.FC = () => {
         if (chartLegend.visible) {
             keys.push('ChartLegend');
         }
+        if (chartHighlight.mode !== 'None') {
+            keys.push('PieChartHighlight');
+        }
+        if (chartSelection.mode !== 'None') {
+            keys.push('PieChartSelection');
+        }
         return keys;
     }, [
         chartTitle?.text,
         chartSubTitle?.text,
-        chartLegend?.visible
+        chartLegend?.visible,
+        chartSelection.mode,
+        chartHighlight.mode
     ]);
 
     const reportMeasured: (key: string) => void = useCallback((key: string) => {
@@ -206,7 +225,7 @@ export const LayoutProvider: React.FC = () => {
     ): void {
 
         const element: Element | null = evt.target as Element | null;
-        const id: string = element?.id ?? '';
+        const id: string = element?.id as string;
         const pointIndex: number = indexFinder(id) as number;
         if (isNullOrUndefined(pointIndex) || Number.isNaN(pointIndex)) {
             return;
@@ -579,7 +598,7 @@ export const LayoutProvider: React.FC = () => {
         const chart: Chart & {tabHandled?: boolean } = layoutRef.current as Chart & {tabHandled?: boolean };
         let actionKey: string = '';
         if (e.code === 'Tab') {
-            const currId: string = (e.target as Element)?.id || '';
+            const currId: string = (e.target as Element)?.id as string;
 
             // Determine if a legend target exists
             const legendId: string = chart?.chartLegend?.legendID as string;
@@ -741,7 +760,7 @@ export const LayoutProvider: React.FC = () => {
                         }
                     }
                 }
-                if ((chart)?.tooltipModule?.enable) {
+                if ((chart)?.tooltipModule?.enable || layoutRef.current.chartHighlight) {
                     actionKey = 'Tab'; // only for slice to show tooltip via simulated mousemove
                 }
             } else {
@@ -779,7 +798,7 @@ export const LayoutProvider: React.FC = () => {
             else if (targetId.indexOf('_Point_') > -1) {
                 (activeElement as Element).setAttribute('tabindex', '-1');
                 const arrowDirection: 1 | -1 = (e.code === 'ArrowUp' || e.code === 'ArrowRight') ? +1 : -1;
-                chart.currentPointIndex = (chart.currentPointIndex ?? 0) + arrowDirection;
+                chart.currentPointIndex = (chart.currentPointIndex) + arrowDirection;
                 const groupElement: HTMLElement = (e.target as Element).parentElement as HTMLElement;
                 let total: number = 0;
                 if (groupElement) {
@@ -794,14 +813,12 @@ export const LayoutProvider: React.FC = () => {
                     focusTarget(pointElement);
                     setNavigationStyle(pointElement);
                 }
-                actionKey = ((chart)?.tooltipModule?.enable) ? 'ArrowMove' : '';
+                actionKey = ((chart)?.tooltipModule?.enable || layoutRef.current.chartHighlight) ? 'ArrowMove' : '';
                 targetId = nextPointId;
             }
         }
-        else if (
-            (e.code === 'Enter' || e.code === 'Space') &&
-            (targetId.indexOf('_chart_legend_') > -1 || targetId.indexOf('_Point_') > -1)
-        ) {
+        else if ((e.code === 'Enter' || e.code === 'Space') && ((targetId.indexOf('_chart_legend_') > -1) ||
+            (targetId.indexOf('_Point_') > -1) || layoutRef.current.chartSelection)) {
             if (targetId.indexOf('_chart_legend_g') > -1) {
                 const labelId: string = (e.target as Element)?.lastElementChild?.id as string;
                 void (labelId && (targetId = labelId));
@@ -826,6 +843,8 @@ export const LayoutProvider: React.FC = () => {
     const accumulationChartKeyboardNavigations: (e: KeyboardEvent, targetId: string, actionKey: string) => void =
         (e: KeyboardEvent, targetId: string, actionKey: string): void => {
             layoutRef.current.isLegendClicked = false;
+            const chart: Chart = layoutRef.current as Chart;
+            const isKeyboardNav: boolean = true;
             switch (actionKey) {
             case 'Tab':
             case 'ArrowMove': {
@@ -836,7 +855,8 @@ export const LayoutProvider: React.FC = () => {
                     if (pointRegion?.symbolLocation) {
                         layoutRef.current.mouseX = pointRegion.symbolLocation.x + layoutRef.current.clipRect.x;
                         layoutRef.current.mouseY = pointRegion.symbolLocation.y + layoutRef.current.clipRect.y;
-                        if (layoutRef.current.tooltipModule?.enable && layoutRef.current.tooltipRef.current) {
+                        if ((layoutRef.current.tooltipModule?.enable && layoutRef.current.tooltipRef.current) ||
+                            layoutRef.current.chartHighlight) {
                             const pointElement: HTMLElement = document.getElementById(targetId) as HTMLElement;
                             const container: HTMLElement = layoutRef.current.element as HTMLElement;
                             const rect: DOMRect = container.getBoundingClientRect();
@@ -851,8 +871,20 @@ export const LayoutProvider: React.FC = () => {
                             });
                             if (pointElement) { pointElement.dispatchEvent(mouseEvent); }
                             callChartEventHandlers(
-                                'mouseMove', mouseEvent, layoutRef.current, layoutRef.current.mouseX, layoutRef.current.mouseY
+                                'mouseMove', mouseEvent, layoutRef.current, layoutRef.current.mouseX, layoutRef.current.mouseY, isKeyboardNav
                             );
+
+                            if (layoutRef.current.chartHighlight) {
+                                const tartgetElement: SVGGElement = seriesRef.current as SVGGElement;
+                                const chartHighlight: PieBaseSelection = layoutRef.current?.chartHighlight as PieBaseSelection;
+                                if (chartHighlight && chart) {
+                                    highlightChart(
+                                        chart, chartHighlight, tartgetElement, legendRef, seriesRef, layoutRef.current?.chartSelection &&
+                                    (layoutRef.current?.chartSelection as PieBaseSelection).
+                                        chartSelectedDataIndexes?.length as number > 0
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -860,7 +892,7 @@ export const LayoutProvider: React.FC = () => {
             }
             case 'Enter':
             case 'Space': {
-                if (targetId.indexOf('_chart_legend_') > -1) {
+                if (targetId.indexOf('_chart_legend_') > -1 || layoutRef.current.chartSelection) {
                     layoutRef.current.isLegendClicked = true;
                     const element: HTMLElement = document.getElementById(targetId) as HTMLElement;
                     if (element) {
@@ -922,7 +954,7 @@ export const LayoutProvider: React.FC = () => {
         render &&
         <LayoutContext.Provider value={{
             layoutRef, phase, availableSize, triggerRemeasure, reportMeasured, disableAnimation
-            , setDisableAnimation, isSeriesAnimated, setSeriesAnimated
+            , setDisableAnimation, isSeriesAnimated, setSeriesAnimated, seriesRef, legendRef, setLayoutValue
         }}>
             <div
                 id={`${parentElement?.element?.id}_Secondary_Element`}
@@ -954,6 +986,8 @@ export const LayoutProvider: React.FC = () => {
                 {!chartTooltip.template && chartTooltip.enable &&
                     <PieChartTooltipRenderer {...chartTooltip} />
                 }
+                <PieSelectionRenderer {...chartSelection} ></PieSelectionRenderer>
+                <PieHighlightRenderer {...chartHighlight} ></PieHighlightRenderer>
             </svg>
         </LayoutContext.Provider>
     );
@@ -1030,4 +1064,22 @@ export interface LayoutContextType {
      * @param val - True if the series has finished its initial animation; otherwise, false.
      */
     setSeriesAnimated: (val: boolean) => void;
+
+    /**
+     * Updates layout-related values by key.
+     *
+     * @param key - The identifier for the layout value.
+     * @param values - A partial object containing the new layout values.
+     */
+    setLayoutValue: <K extends keyof Chart>(key: K, value: Chart[K]) => void;
+
+    /**
+     * Optional reference to the chart series component.
+     */
+    seriesRef: React.RefObject<SVGGElement | null>;
+
+    /**
+     * Optional reference to the chart legend component.
+     */
+    legendRef: React.RefObject<SVGGElement | null>;
 }

@@ -29,7 +29,7 @@ import ScatterSeriesRenderer from './ScatterSeriesRenderer';
 import BubbleSeriesRenderer from './BubbleSeriesRenderer';
 import SplineAreaSeriesRenderer from './SplineAreaSeriesRenderer';
 import { ChartSeriesType } from '../../base/enum';
-import { Chart, DataLabelRendererResult, DataPoint, MarkerOptions, MarkerProperties, Points, Rect, RenderOptions, SeriesModules, SeriesProperties } from '../../chart-area/chart-interfaces';
+import { Chart, ChartTrendlineModel, DataLabelRendererResult, DataPoint, MarkerOptions, MarkerProperties, Points, Rect, RenderOptions, SeriesModules, SeriesProperties, TrendlineSeriesSignature, ProcessedParetoOptions } from '../../chart-area/chart-interfaces';
 import { isEqual, useStableDataLabelProps, useStableDataSources, useStableMarkerProps } from '../../hooks/useDeepCompare';
 import CandleSeriesRenderer from './CandleSeriesRenderer';
 import HiloSeriesRenderer from './HiloSeriesRenderer';
@@ -42,6 +42,12 @@ import SplineRangeAreaRenderer from './SplineRangeAreaSeriesRenderer';
 import { renderErrorBarsJSX } from './ErrorBarRender';
 import MultiColoredLineSeriesRenderer from './MultiColoredLineSeriesRenderer';
 import { isNullOrUndefined } from '@syncfusion/react-base';
+import WaterfallSeriesRenderer, { drawConnectorLines } from './WaterfallSeriesRenderer';
+import MultiColoredAreaSeriesRenderer from './MultiColoredAreaSeriesRenderer';
+import { initDataSource, renderTrendlineSeriesJSX } from './TrendlinesRenderer';
+import { extractTrendlineSignature } from '../../utils/trendlineHelper';
+import HistogramSeriesRenderer, { drawHistogramNormalDistribution } from './HistogramSeriesRenderer';
+import ParetoSeriesRenderer, { getProcessedParetoOptions } from './ParetoSeriesRenderer';
 
 // Create a global chart instance for storing options
 export const chart: Chart = {} as Chart;
@@ -75,6 +81,9 @@ type ChartExtensions = {
 const seriesOptionsByChartId: { [chartId: string]: RenderOptions[][] } = {};
 const markersOptionsByChartId: { [chartId: string]: ChartMarkerProps[] } = {};
 export const dataLabelOptionsByChartId: { [chartId: string]: DataLabelRendererResult[][] } = {};
+const trendSeriesOptionsByChartId: { [chartId: string]: { [sourceIndex: number]: RenderOptions[][] } } = {};
+const trendlineMarkersOptionsByChartId: { [chartId: string]: { [sourceIndex: number]: ChartMarkerProps[] } } = {};
+const trendlineDataLabelOptionsByChartId: { [chartId: string]: { [sourceIndex: number]: DataLabelRendererResult[][] } } = {};
 
 export const seriesModules: SeriesModules = {
     'lineSeriesModule': LineSeriesRenderer,
@@ -96,7 +105,11 @@ export const seriesModules: SeriesModules = {
     'hiloOpenCloseSeriesModule': HiloOpenCloseSeriesRenderer,
     'rangeAreaSeriesModule': RangeAreaSeriesRenderer,
     'rangeColumnSeriesModule': RangeColumnSeriesRenderer,
-    'splineRangeAreaSeriesModule': SplineRangeAreaRenderer
+    'splineRangeAreaSeriesModule': SplineRangeAreaRenderer,
+    'waterfallSeriesModule': WaterfallSeriesRenderer,
+    'multiColoredAreaSeriesModule': MultiColoredAreaSeriesRenderer,
+    'histogramSeriesModule': HistogramSeriesRenderer,
+    'paretoSeriesModule': ParetoSeriesRenderer
 };
 
 const processRenderResult: (renderResult: RenderOptions[] | {
@@ -112,21 +125,45 @@ const processRenderResult: (renderResult: RenderOptions[] | {
     const options: RenderOptions[] = hasMarkerData ?
         (renderResult as { options: RenderOptions[] }).options :
         renderResult as RenderOptions[];
+
+    const isTrendLine: boolean = series.category === 'TrendLine';
+    const sourceIndex: number = series.sourceIndex ?? 0;
     if (!seriesOptionsByChartId[chartId as string]) {
         seriesOptionsByChartId[chartId as string] = [];
     }
     // Process marker data if it exists
     if (hasMarkerData && 'marker' in renderResult) {
-        if (!markersOptionsByChartId[chartId as string] && !series.skipMarkerAnimation) {
-            markersOptionsByChartId[chartId as string] = [];
-        }
         const markerData: ChartMarkerProps = (renderResult as { marker: ChartMarkerProps }).marker;
-        markersOptionsByChartId[chartId as string].push(markerData);
-        (chart as Chart).markerOptions = [...((chart as Chart).markerOptions as ChartMarkerProps[]), markerData];
+        if (isTrendLine) {
+            if (!trendlineMarkersOptionsByChartId[chartId as string]) {
+                trendlineMarkersOptionsByChartId[chartId as string] = {};
+            }
+            if (!trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number]) {
+                trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number] = [];
+            }
+            trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number].push(markerData);
+        } else {
+            if (!markersOptionsByChartId[chartId as string] && !series.skipMarkerAnimation) {
+                markersOptionsByChartId[chartId as string] = [];
+            }
+            markersOptionsByChartId[chartId as string].push(markerData);
+            (chart as Chart).markerOptions = [...((chart as Chart).markerOptions as ChartMarkerProps[]), markerData];
+        }
     }
-    // Store and return the render options
-    seriesOptionsByChartId[chartId as string].push(options);
-    (chart as Chart & ChartExtensions as { seriesOptions: RenderOptions[][] }).seriesOptions = seriesOptionsByChartId[chartId as string];
+    if (isTrendLine) {
+        if (!trendSeriesOptionsByChartId[chartId as string]) {
+            trendSeriesOptionsByChartId[chartId as string] = {};
+        }
+        if (!trendSeriesOptionsByChartId[chartId as string][sourceIndex as number]) {
+            trendSeriesOptionsByChartId[chartId as string][sourceIndex as number] = [];
+        }
+        trendSeriesOptionsByChartId[chartId as string][sourceIndex as number].push(options);
+    } else {
+        // Store and return the render options
+        seriesOptionsByChartId[chartId as string].push(options);
+        (chart as Chart & ChartExtensions as { seriesOptions: RenderOptions[][] }).seriesOptions
+        = seriesOptionsByChartId[chartId as string];
+    }
 
     return options;
 };
@@ -184,6 +221,8 @@ const updateSeries: (xAxis: boolean, yAxis: boolean, series: SeriesProperties, i
         }
         else {
             seriesOptionsByChartId[chartId as string] = [];
+            trendSeriesOptionsByChartId[chartId as string] = {};
+            trendlineMarkersOptionsByChartId[chartId as string] = {};
             (chart as Chart).seriesOptions = [];
             if (series.skipMarkerAnimation) {
                 markersOptionsByChartId[chartId as string] = [];
@@ -343,6 +382,15 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                 }
             }
             previousDataSourcesRef.current[index as number] = [newDataSource];
+            if (series && series.trendlines) {
+                for (const trendline of series.trendlines) {
+                    if (trendline.visible) {
+                        trendline.points = series.points;
+                        initDataSource(trendline);
+                    }
+                }
+            }
+
         };
 
         const seriesList: ChartSeriesProps[] = Object.values(props);
@@ -373,15 +421,31 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                 });
             }
         }, [useStableDataSources(seriesList)]);
-        const visibleSeries: ChartSeriesProps | undefined = seriesList.find(
-            (series: ChartSeriesProps) => series.visible
+
+        const isParetoDataLabelEnabled: boolean = !!((layoutRef.current?.chart as Chart)?.visibleSeries?.some(
+            (seriesItem: SeriesProperties) => !!seriesItem.paretoOptions?.marker?.dataLabel?.visible));
+        const isDataLabelEnabled: boolean = seriesList.some(
+            (series: ChartSeriesProps) => {
+                const hasSeriesDataLabel: boolean | undefined = series.visible && series.marker?.dataLabel?.visible;
+                const hasTrendlineMarker: boolean | undefined = series.visible &&
+                    series.trendlines?.some(
+                        (trendline: ChartTrendlineModel) => trendline.visible && trendline.marker?.dataLabel?.visible
+                    );
+
+                return hasSeriesDataLabel || hasTrendlineMarker || isParetoDataLabelEnabled;
+            }
         );
-        const isDataLabelEnabled: boolean = !!visibleSeries?.marker?.dataLabel?.visible;
-        const isAnimationEnabled: boolean = !!visibleSeries?.animation?.enable;
-        const durations: number = visibleSeries?.animation?.duration || 1000;
+        const animationEnabledSeries: ChartSeriesProps | undefined = seriesList.find(
+            (series: ChartSeriesProps) => series.visible && series.animation?.enable
+        );
+        const isAnimationEnabled: boolean = !!animationEnabledSeries;
+        const durations: number = animationEnabledSeries?.animation?.duration || 1000;
         const firstAnimationCompletedRef: React.RefObject<boolean> = useRef(false);
 
         useEffect(() => {
+            if (firstAnimationCompletedRef.current) {
+                setLabelOpacity(1);
+            }
             if (
                 isDataLabelEnabled &&
                 isAnimationEnabled &&
@@ -420,8 +484,14 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
             if (phase === 'measuring' || !layoutRef.current?.chart) {
                 return;
             }
-            const visibleSeries: SeriesProperties[] = (layoutRef.current.chart as Chart).visibleSeries;
+            const visibleSeries: SeriesProperties[] = (layoutRef.current.chart as Chart).visibleSeries.filter(
+                (series: SeriesProperties) => series.category !== 'TrendLine'
+            );
             const hasErrorBarChanges: boolean = visibleSeries.some((series: SeriesProperties) => {
+                const isParetoLine: boolean = series.category === 'Pareto' && series.type === 'Line';
+                if (isParetoLine) {
+                    return false;
+                }
                 const nextErrorBar: ChartErrorBarProps = (seriesList[series.index] as SeriesProperties)?.errorBar;
                 return !isEqual(series.errorBar, nextErrorBar);
             });
@@ -457,7 +527,8 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
             if (phase !== 'measuring') {
                 const hasMarkerChanges: boolean | undefined =
                     (layoutRef.current.chart as Chart)?.visibleSeries?.some((series: SeriesProperties, index: number) => {
-                        const currentSeries: ChartSeriesProps = seriesList[index as number];
+                        const currentSeries: ChartSeriesProps = series.category === 'TrendLine' ? ((seriesList[series
+                            .sourceIndex]?.trendlines?.[series.trendIndex]) as ChartSeriesProps) : seriesList[index as number];
 
                         const currentMarker: ChartMarkerProps = currentSeries?.marker as ChartMarkerProps;
                         const previousMarker: ChartMarkerProps = series.marker as ChartMarkerProps;
@@ -478,21 +549,36 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                     const chartId: string = (layoutRef.current.chart as Chart)?.element.id;
                     markersOptionsByChartId[chartId as string] = [];
                     (chart as Chart).markerOptions = [];
-
+                    trendlineMarkersOptionsByChartId[chartId as string] = {};
                     (layoutRef.current.chart as Chart)?.visibleSeries?.forEach((series: SeriesProperties, index: number) => {
                         series.marker = {
                             ...series.marker,
-                            ...seriesList[index as number]?.marker
+                            ...(series.category === 'TrendLine' ? ((seriesList[series
+                                .sourceIndex]?.trendlines?.[series.trendIndex]) as ChartSeriesProps)?.marker
+                                : seriesList[index as number]?.marker)
                         };
 
-                        void (series.visible && (
-                            ((marker: Object) => {
-                                void (marker && (
-                                    (markersOptionsByChartId[chartId as string] ??= []),
-                                    markersOptionsByChartId[chartId as string].push(marker as ChartMarkerProps)
-                                ));
-                            })(MarkerRenderer.render(series))
-                        ));
+                        if (!series.visible) {return; }
+
+                        const rendered: {options: Object; symbolGroup: Object; markerOptionsList: Object[]; }
+                        = MarkerRenderer.render(series);
+                        if (!rendered) {return; }
+
+                        if (series.category === 'TrendLine') {
+                            // Store into trendline-specific collection by sourceIndex
+                            const sourceIndex: number = series.sourceIndex ?? 0;
+                            (trendlineMarkersOptionsByChartId[chartId as string] ??= {});
+                            (trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number] ??= []);
+                            trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number].push(
+                                rendered as ChartMarkerProps
+                            );
+                        } else {
+                            // Store normal series markers
+                            (markersOptionsByChartId[chartId as string] ??= []);
+                            markersOptionsByChartId[chartId as string].push(rendered as ChartMarkerProps);
+
+                            (chart as Chart).markerOptions = markersOptionsByChartId[chartId as string];
+                        }
                     });
                     setMarkerVersion((prev: number) => prev + 1);
                 }
@@ -511,32 +597,46 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                     (chart as Chart).dataLabelOptions = [];
                     const chartId: string = (layoutRef.current.chart as Chart)?.element.id;
                     dataLabelOptionsByChartId[chartId as string] = [];
+                    trendlineDataLabelOptionsByChartId[chartId as string] = {};
 
                     (layoutRef.current.chart as Chart)?.visibleSeries?.forEach((series: SeriesProperties, index: number) => {
-                        if (!series.visible || (!series.marker?.visible && !series.marker?.dataLabel?.visible)) {
-                            return;
-                        }
                         // Merge updated dataLabel for each series (if applicable)
                         series.marker = {
                             ...series.marker,
                             dataLabel: {
                                 ...series.marker?.dataLabel as ChartDataLabelProps,
-                                ...seriesList[index as number]?.marker?.dataLabel
+                                ...(series.category === 'TrendLine' ? ((seriesList[series
+                                    .sourceIndex]?.trendlines?.[series.trendIndex]) as ChartSeriesProps)?.marker?.dataLabel
+                                    : seriesList[index as number]?.marker?.dataLabel)
                             }
                         };
-                        void (series.visible && (
-                            ((dataLabel: DataLabelRendererResult[]) => {
-                                void (dataLabel && (
-                                    (dataLabelOptionsByChartId[chartId as string] ??= []),
-                                    dataLabelOptionsByChartId[chartId as string].push(dataLabel),
-                                    ((chart as Chart & ChartExtensions as ChartExtensions).dataLabelOptions =
-                                        [...((chart as Chart & ChartExtensions as ChartExtensions).dataLabelOptions), dataLabel])
-                                ));
-                            })(DataLabelRenderer.render(
-                                series,
-                                series.marker?.dataLabel as ChartDataLabelProps
-                            ) as DataLabelRendererResult[])
-                        ));
+                        if (!series.visible || (!series.marker?.dataLabel?.visible)) {
+                            return;
+                        }
+                        const dataLabel: DataLabelRendererResult[] = DataLabelRenderer.render(
+                            series,
+                            series.marker?.dataLabel as ChartDataLabelProps
+                        ) as DataLabelRendererResult[];
+
+                        if (series.visible && dataLabel) {
+                            const isTrendLine: boolean = series.category === 'TrendLine';
+                            const sourceIndex: number = series.sourceIndex ?? 0;
+
+                            if (isTrendLine) {
+                                // Store trendline data labels
+                                trendlineDataLabelOptionsByChartId[chartId as string] =
+                                    trendlineDataLabelOptionsByChartId[chartId as string] ?? {};
+                                trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number] =
+                                    trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                                trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number].push(dataLabel);
+                            } else {
+                                // Store normal series data labels
+                                dataLabelOptionsByChartId[chartId as string] ??= [];
+                                dataLabelOptionsByChartId[chartId as string].push(dataLabel);
+                                ((chart as Chart & ChartExtensions as ChartExtensions).dataLabelOptions =
+                                    [...((chart as Chart & ChartExtensions as ChartExtensions).dataLabelOptions), dataLabel]);
+                            }
+                        }
                     });
                 }
                 setDataLabelVersion((prev: number) => prev + 1);
@@ -558,6 +658,23 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
             };
         }, []);
 
+        const trendlineSignature: TrendlineSeriesSignature[] = useMemo(() => {
+            return extractTrendlineSignature(seriesList);
+        }, [seriesList]);
+
+        useEffect(() => {
+            if (phase !== 'measuring') {
+                const chartId: string = (layoutRef.current.chart as Chart)?.element.id;
+                seriesOptionsByChartId[chartId as string] = [];
+                (chart as Chart).seriesOptions = [];
+                trendSeriesOptionsByChartId[chartId as string] = {};
+                trendlineMarkersOptionsByChartId[chartId as string] = {};
+                trendlineDataLabelOptionsByChartId[chartId as string] = {};
+                triggerRemeasure();
+                setDisableAnimation?.(true);
+            }
+        }, [JSON.stringify(trendlineSignature)]);
+
         /**
          * Renders a given series based on its axis type and available points, including animations if enabled.
          *
@@ -566,6 +683,8 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
          */
         const renderSeries: (series: SeriesProperties) => void = (series: SeriesProperties): void => {
             const chartId: string = series.chart.element.id;
+            const isTrendLine: boolean = series.category === 'TrendLine';
+            const sourceIndex: number = series.sourceIndex ?? 0;
             let seriesType: string = firstToLowerCase(series.type as string);
             seriesType = seriesType.replace('100', '');
             let options: RenderOptions[] = [];
@@ -589,24 +708,32 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                 // Always ensure data labels are stored in the chart options
                 // This is crucial to prevent them from disappearing on resize
                 if (labelOptions && labelOptions.length > 0) {
-                // Store data label options directly in chart
-                    dataLabelOptionsByChartId[chartId as string] = dataLabelOptionsByChartId[chartId as string] ?? [];
-
-                    // Find and replace existing data labels for this series
-                    const seriesIndex: number = series.index as number;
-                    const existingIndex: number = dataLabelOptionsByChartId[chartId as string].
-                        findIndex((_: DataLabelRendererResult[], i: number) => i === seriesIndex);
-
-                    if (existingIndex !== -1) {
-                        dataLabelOptionsByChartId[chartId as string][existingIndex as number] = labelOptions;
+                    if (isTrendLine) {
+                        // Store trendline data labels separately by sourceIndex
+                        trendlineDataLabelOptionsByChartId[chartId as string] = trendlineDataLabelOptionsByChartId[chartId as string] ?? {};
+                        trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number] =
+                            trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                        trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number].push(labelOptions);
                     } else {
-                        while (dataLabelOptionsByChartId[chartId as string].length < seriesIndex) {
-                            dataLabelOptionsByChartId[chartId as string].push([]);
+                        // Store data label options directly in chart
+                        dataLabelOptionsByChartId[chartId as string] = dataLabelOptionsByChartId[chartId as string] ?? [];
+
+                        // Find and replace existing data labels for this series
+                        const seriesIndex: number = series.index as number;
+                        const existingIndex: number = dataLabelOptionsByChartId[chartId as string].
+                            findIndex((_: DataLabelRendererResult[], i: number) => i === seriesIndex);
+
+                        if (existingIndex !== -1) {
+                            dataLabelOptionsByChartId[chartId as string][existingIndex as number] = labelOptions;
+                        } else {
+                            while (dataLabelOptionsByChartId[chartId as string].length < seriesIndex) {
+                                dataLabelOptionsByChartId[chartId as string].push([]);
+                            }
+                            dataLabelOptionsByChartId[chartId as string][seriesIndex as number] = labelOptions;
                         }
-                        dataLabelOptionsByChartId[chartId as string][seriesIndex as number] = labelOptions;
+                        (chart as Chart & ChartExtensions as { dataLabelOptions: DataLabelRendererResult[][] }).dataLabelOptions =
+                            dataLabelOptionsByChartId[chartId as string];
                     }
-                    (chart as Chart & ChartExtensions as { dataLabelOptions: DataLabelRendererResult[][] }).dataLabelOptions =
-                    dataLabelOptionsByChartId[chartId as string];
                 }
             }
 
@@ -620,27 +747,67 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                  */
                 const startAnimation: (startTime: DOMHighResTimeStamp) => void = (startTime: DOMHighResTimeStamp) => {
                     seriesOptionsByChartId[chartId as string] = seriesOptionsByChartId[chartId as string] ?? [];
-                    const hasSeries: boolean = options?.length > 0 &&
-                    seriesOptionsByChartId[chartId as string].some((seriesOption: RenderOptions[]) =>
-                        seriesOption?.[0]?.id === options?.[0]?.id);
-                    if (!hasSeries) {
-                        seriesOptionsByChartId[chartId as string].push(options);
-                        (chart as Chart & ChartExtensions as ChartExtensions).seriesOptions = seriesOptionsByChartId[chartId as string];
-                    }
-
-                    if (marker) {
-                        markersOptionsByChartId[chartId as string] = markersOptionsByChartId[chartId as string] ?? [];
-                        const firstMarkerOption: MarkerOptions = (marker as MarkerProperties)?.markerOptionsList?.[0] as MarkerOptions;
-                        const markerId: string = firstMarkerOption?.id;
-                        const hasMarker: boolean = !isNullOrUndefined(markerId) &&
-                        markersOptionsByChartId[chartId as string].some((chartMarker: ChartMarkerProps) =>
-                            (chartMarker as MarkerProperties)?.markerOptionsList?.[0]?.id === markerId);
-                        if (!hasMarker) {
-                            markersOptionsByChartId[chartId as string].push(marker);
-                            (chart as Chart).markerOptions = markersOptionsByChartId[chartId as string];
+                    if (isTrendLine) {
+                        trendSeriesOptionsByChartId[chartId as string] = trendSeriesOptionsByChartId[chartId as string] ?? {};
+                        trendSeriesOptionsByChartId[chartId as string][sourceIndex as number] =
+                            trendSeriesOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                        trendSeriesOptionsByChartId[chartId as string][sourceIndex as number].push(options);
+                    } else {
+                        const hasSeries: boolean = options?.length > 0 &&
+                            seriesOptionsByChartId[chartId as string].some((seriesOption: RenderOptions[]) =>
+                                seriesOption?.[0]?.id === options?.[0]?.id);
+                        if (!hasSeries) {
+                            seriesOptionsByChartId[chartId as string].push(options);
                         }
                     }
-                    animatePath(startTime, series.animation?.duration as number, setAnimationProgress, animationFrameRef, startTime);
+
+                    (chart as Chart & ChartExtensions as ChartExtensions).seriesOptions = seriesOptionsByChartId[chartId as string];
+
+                    if (marker) {
+                        if (isTrendLine) {
+                            // ADD THIS - Store trendline markers separately
+                            trendlineMarkersOptionsByChartId[chartId as string] = trendlineMarkersOptionsByChartId[chartId as string] ?? {};
+                            trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number] =
+                                trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                            trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number].push(marker);
+                        } else {
+                            markersOptionsByChartId[chartId as string] = markersOptionsByChartId[chartId as string] ?? [];
+                            const firstMarkerOption: MarkerOptions = (marker as MarkerProperties)?.markerOptionsList?.[0] as MarkerOptions;
+                            const markerId: string = firstMarkerOption?.id;
+                            const hasMarker: boolean = !isNullOrUndefined(markerId) &&
+                                markersOptionsByChartId[chartId as string].some((chartMarker: ChartMarkerProps) =>
+                                    (chartMarker as MarkerProperties)?.markerOptionsList?.[0]?.id === markerId);
+                            if (!hasMarker) {
+                                markersOptionsByChartId[chartId as string].push(marker);
+                                (chart as Chart).markerOptions = markersOptionsByChartId[chartId as string];
+                            }
+                        }
+                    }
+                    if (series.type === 'Waterfall') {
+                        const duration: number = series.animation?.duration ?? series.chart?.duration ?? 1000;
+
+                        /**
+                         * Animation frame callback for rectangle animations.
+                         *
+                         * Computes the elapsed time, normalizes it to a 0–1 progress value,
+                         * updates the shared animation progress state, and schedules the
+                         * next frame until the animation completes.
+                         *
+                         * @param {number} now - High-resolution timestamp (in ms) supplied by requestAnimationFrame.
+                         * @returns {void}
+                         */
+                        const rectAnimateFrame: (now: number) => void = (now: number): void => {
+                            const elapsed: number = now - startTime;
+                            const progress: number = Math.min(1, elapsed / duration) || 0;
+                            setAnimationProgress(progress);
+                            if (progress < 1) {
+                                animationFrameRef.current = requestAnimationFrame(rectAnimateFrame);
+                            }
+                        };
+                        requestAnimationFrame(rectAnimateFrame);
+                    } else {
+                        animatePath(startTime, series.animation?.duration as number, setAnimationProgress, animationFrameRef, startTime);
+                    }
                 };
 
                 if (seriesDelay > 0) {
@@ -654,14 +821,29 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
             } else {
             // Store series options directly in chart
                 seriesOptionsByChartId[chartId as string] = seriesOptionsByChartId[chartId as string] ?? [];
-                seriesOptionsByChartId[chartId as string].push(options);
+                if (isTrendLine) {
+                    trendSeriesOptionsByChartId[chartId as string] = trendSeriesOptionsByChartId[chartId as string] ?? {};
+                    trendSeriesOptionsByChartId[chartId as string][sourceIndex as number] =
+                        trendSeriesOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                    trendSeriesOptionsByChartId[chartId as string][sourceIndex as number].push(options);
+                } else {
+                    seriesOptionsByChartId[chartId as string].push(options);
+                }
                 (chart as Chart & ChartExtensions as ChartExtensions).seriesOptions = seriesOptionsByChartId[chartId as string];
 
                 if (marker) {
-                // Store marker options directly in chart
-                    markersOptionsByChartId[chartId as string] = markersOptionsByChartId[chartId as string] ?? [];
-                    markersOptionsByChartId[chartId as string].push(marker);
-                    (chart as Chart).markerOptions = markersOptionsByChartId[chartId as string];
+                    if (isTrendLine) {
+                        // ADD THIS - Store trendline markers separately
+                        trendlineMarkersOptionsByChartId[chartId as string] = trendlineMarkersOptionsByChartId[chartId as string] ?? {};
+                        trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number] =
+                            trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                        trendlineMarkersOptionsByChartId[chartId as string][sourceIndex as number].push(marker);
+                    } else {
+                        // Store marker options directly in chart
+                        markersOptionsByChartId[chartId as string] = markersOptionsByChartId[chartId as string] ?? [];
+                        markersOptionsByChartId[chartId as string].push(marker);
+                        (chart as Chart).markerOptions = markersOptionsByChartId[chartId as string];
+                    }
                 }
             }
         };
@@ -689,7 +871,10 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                 const chartId: string = (layoutRef.current.chart as Chart).element.id;
 
                 seriesOptionsByChartId[chartId as string] = [];
+                trendSeriesOptionsByChartId[chartId as string] = {};
                 markersOptionsByChartId[chartId as string] = [];
+                trendlineMarkersOptionsByChartId[chartId as string] = {};
+                trendlineDataLabelOptionsByChartId[chartId as string] = {}; // ADD THIS LINE
 
                 // Don't reset data label options - this causes them to disappear on resize
                 if (!dataLabelOptionsByChartId[chartId as string]) {
@@ -743,6 +928,7 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
             columnSpacing: number | undefined;
             columnWidth: number | undefined;
             columnWidthInPixel: number | undefined;
+            paretoOptions?: ProcessedParetoOptions;
         }[] = useMemo(() => {
             return Object.keys(props)
                 .filter((key: string) => !isNaN(Number(key)))
@@ -762,7 +948,8 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                     },
                     columnSpacing: series.columnSpacing,
                     columnWidth: series.columnWidth,
-                    columnWidthInPixel: series.columnWidthInPixel
+                    columnWidthInPixel: series.columnWidthInPixel,
+                    paretoOptions: getProcessedParetoOptions(series)
                 }));
         }, [props]);
 
@@ -779,8 +966,11 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                 let reRender: boolean = false;
                 const chartId: string = (layoutRef.current.chart as Chart).element.id;
                 seriesOptionsByChartId[chartId as string] = [];
+                trendSeriesOptionsByChartId[chartId as string] = {};
                 markersOptionsByChartId[chartId as string] = [];
+                trendlineMarkersOptionsByChartId[chartId as string] = {};
                 dataLabelOptionsByChartId[chartId as string] = [];
+                trendlineDataLabelOptionsByChartId[chartId as string] = {};
                 (layoutRef.current.chart as Chart).dataLabelCollections = [];
                 (chart as Chart).seriesOptions = [];
                 (chart as Chart).markerOptions = [];
@@ -849,6 +1039,7 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                 const chartId: string = (layoutRef.current.chart as Chart)?.element.id;
                 seriesOptionsByChartId[chartId as string] = [];
                 (chart as Chart).seriesOptions = [];
+                trendSeriesOptionsByChartId[chartId as string] = {};
                 triggerRemeasure();
                 setDisableAnimation?.(true);
             }
@@ -870,8 +1061,11 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
             (axesChanged && axesChanged.id === (layoutRef.current.chart as Chart)?.element.id))) {
                 const chartId: string = (layoutRef.current.chart as Chart).element.id;
                 seriesOptionsByChartId[chartId as string] = [];
+                trendSeriesOptionsByChartId[chartId as string] = {};
                 markersOptionsByChartId[chartId as string] = [];
+                trendlineMarkersOptionsByChartId[chartId as string] = {};
                 dataLabelOptionsByChartId[chartId as string] = [];
+                trendlineDataLabelOptionsByChartId[chartId as string] = {};
                 internalDataUpdateRef.current = true;
                 (layoutRef.current.chart as Chart).dataLabelCollections = [];
 
@@ -906,7 +1100,7 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                     else {
                         requestAnimationFrame(() => {
                             updateSeries(true, true, series, true);
-                            if (series.visible) {
+                            if (series.visible && !(series.category === 'TrendLine' && !((layoutRef.current.chart as Chart).visibleSeries[series.sourceIndex].visible))) {
                                 if (legendClickedInfo?.version !== 0) {
                                     series.isLegendClicked = true;
                                 }
@@ -915,11 +1109,23 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                                         render(series, series.marker?.dataLabel as
                                             ChartDataLabelProps) as DataLabelRendererResult[];
                                     if (dataLabel) {
-                                        // Store data label options
-                                        if (!dataLabelOptionsByChartId[chartId as string]) {
-                                            dataLabelOptionsByChartId[chartId as string] = [];
+                                        const isTrendLine: boolean = series.category === 'TrendLine';
+                                        const sourceIndex: number = series.sourceIndex ?? 0;
+
+                                        if (isTrendLine) {
+                                            // Store trendline data labels
+                                            trendlineDataLabelOptionsByChartId[chartId as string] =
+                                                trendlineDataLabelOptionsByChartId[chartId as string] ?? {};
+                                            trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number] =
+                                                trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number] ?? [];
+                                            trendlineDataLabelOptionsByChartId[chartId as string][sourceIndex as number].push(dataLabel);
+                                        } else {
+                                            // Store data label options
+                                            if (!dataLabelOptionsByChartId[chartId as string]) {
+                                                dataLabelOptionsByChartId[chartId as string] = [];
+                                            }
+                                            dataLabelOptionsByChartId[chartId as string].push(dataLabel);
                                         }
-                                        dataLabelOptionsByChartId[chartId as string].push(dataLabel);
                                     }
                                 }
                             }
@@ -944,7 +1150,8 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
         const currentChartId: string = (layoutRef.current.chart as Chart).element.id;
         // Get the series options for the current chart - prioritize the per-chartId collections
         const currentChartSeriesOptions: RenderOptions[][] = seriesOptionsByChartId[currentChartId as string];
-
+        const currentTrendlineSeriesOPtions: {[sourceIndex: number]: RenderOptions[][]; }
+        = trendSeriesOptionsByChartId[currentChartId as string];
         return (
             <g id={`${(layoutRef.current.chart as Chart).element.id}_SeriesCollection`} ref={ref}>
                 {currentChartSeriesOptions.length > 0 && currentChartSeriesOptions.map(
@@ -1064,13 +1271,36 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
                                                             fill={pathOption.fill}
                                                             fillOpacity={currentSeries.type === 'Candle' ? pathOption.fillOpacity : pathOption.opacity}
                                                             strokeOpacity={currentSeries.type === 'Candle' ? 1 : pathOption.opacity}
-                                                            strokeDasharray={currentSeries?.isRectSeries ? 'none' : animationProps.strokeDasharray}
+                                                            strokeDasharray={currentSeries?.isRectSeries ? (currentSeries.border?.dashArray ?? '') : animationProps.strokeDasharray}
                                                             strokeDashoffset={currentSeries?.isRectSeries ? 0 :
                                                                 animationProps.strokeDashoffset}
                                                             opacity={currentSeries.type === 'Candle' ? '' : pathOption.opacity}
                                                             transform={seriesType === 'Scatter' ? animationProps.scatterTransform : animationProps.animatedTransform}
                                                             style={{ clipPath: animationProps.animatedClipPath, outline: 'none' }}
+                                                            role="img"
+                                                            aria-label={
+                                                                currentPoint
+                                                                    ? `${currentPoint.x}: ${currentPoint.yValue}, ${currentSeries.name}`
+                                                                    : undefined
+                                                            }
                                                         />
+                                                    );
+                                                }
+                                                //  Waterfall connector branch
+                                                if (currentSeries.type === 'Waterfall' && pathOption.id?.includes('_Connector_')) {
+                                                    return drawConnectorLines(pathOption, currentSeries, animationProgress);
+                                                }
+                                                // Normal Distribution curve (NON point-based)
+                                                const isHistogramNDLine: boolean =
+                                                    currentSeries.type === 'Histogram' &&
+                                                    currentSeries.histogramSettings?.showNormalDistribution === true &&
+                                                    pathOption.id?.endsWith('_NDLine');
+
+                                                if (isHistogramNDLine) {
+                                                    return drawHistogramNormalDistribution(
+                                                        pathOption,
+                                                        currentSeries,
+                                                        animationProgress
                                                     );
                                                 }
                                                 return null;
@@ -1199,10 +1429,29 @@ export const SeriesRenderer: React.ForwardRefExoticComponent<ChartSeriesProps[] 
 
                     </g>
                 )}
-
+                {/* Render trendline series */}
+                {currentTrendlineSeriesOPtions && Object.keys(currentTrendlineSeriesOPtions).length > 0 && (
+                    renderTrendlineSeriesJSX(
+                        layoutRef,
+                        currentChartId,
+                        currentTrendlineSeriesOPtions,
+                        (layoutRef.current.chart as Chart).visibleSeries as SeriesProperties[],
+                        {
+                            previousPathLengthRef,
+                            isInitialRenderRef,
+                            renderedPathDRef,
+                            animationProgress,
+                            isFirstRenderRef,
+                            previousSeriesOptionsRef
+                        },
+                        animationProgress,
+                        trendlineMarkersOptionsByChartId[currentChartId as string],
+                        trendlineDataLabelOptionsByChartId[currentChartId as string],
+                        labelOpacity
+                    )
+                )}
             </g>
         );
     });
-
 
 

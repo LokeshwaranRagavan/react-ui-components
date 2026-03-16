@@ -1,5 +1,18 @@
 # Changelog
 
+## 33.1.44 (2026-03-16)
+
+### Form
+
+Added support for field-level validation rules on `FormField`. Field-level rules now override form-level `rules` for the same field, enabling per-field custom validation and messages while remaining backward compatible.
+
+**Features**
+
+- **Field-level Rules:** Specify a `rules` prop on `FormField` to define validation specific to that field.
+- **Override Behavior:** Field-level rules take precedence over form-level rules with identical rule names.
+- **Custom Messages:** Field-level rules support custom error messages for more granular feedback.
+- **Backward Compatible:** Existing form-level rules continue to function when no field-level rules are provided.
+
 ## 32.1.19 (2025-12-16)
 
 ### NumericTextBox

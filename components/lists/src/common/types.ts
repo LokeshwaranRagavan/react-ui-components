@@ -1,35 +1,5 @@
-/**
- * An enum type that denotes the position of checkbox in the ListView. Available options are as follows Left and Right;
- */
-export enum CheckBoxPosition {
-    /**
-     * The checkbox is positioned on the left side of the ListView item.
-     */
-    Left = 'Left',
-    /**
-     * The checkbox is positioned on the right side of the ListView item.
-     */
-    Right = 'Right'
-}
-
-/**
- * Enumeration for specifying sorting orders in the ListView. Available options are as follows None, Ascending, and Descending.
- *
- */
-export enum SortOrder {
-    /**
-     * No specific sorting order is applied to the ListView items. The items are displayed in their original order.
-     */
-    None = 'None',
-    /**
-     * Ascending order sorting is applied to the ListView items.
-     */
-    Ascending = 'Ascending',
-    /**
-     * Descending order sorting is applied to the ListView items.
-     */
-    Descending = 'Descending'
-}
+import { SortOrder } from '@syncfusion/react-base';
+export { SortOrder };
 
 /**
  * An interface representing a data source object that maps string keys to various data types.
@@ -37,6 +7,22 @@ export enum SortOrder {
  */
 export interface DataSource {
     [key: string]: object | string | number | boolean;
+}
+
+/**
+ * Interface representing a grouped data.
+ */
+export interface GroupedData {
+    [key: string]: object | string | number | boolean;
+    /**
+     * Indicates whether the record is a group header item.
+     */
+    isHeader: boolean;
+
+    /**
+     * Specifies the child items that belong to this group/category
+     */
+    items: GroupedData[];
 }
 
 /**
@@ -51,18 +37,6 @@ export interface FieldsMapping {
      * The `text` field is used to map the text value from the data source for each list item.
      */
     text?: string;
-    /**
-     * The `value` field is used to map the unique value from the data source for each list item.
-     */
-    value?: string;
-    /**
-     * The `selected` field is used to select or unselect the list item.
-     */
-    selected?: string;
-    /**
-     * The `checked` field is used to check or uncheck the list item.
-     */
-    checked?: string;
     /**
      * The `visible` field is used to  hide or show the list item.
      */
@@ -85,18 +59,11 @@ export interface FieldsMapping {
      *  We can add a specific image to the icons using `icon` field.
      */
     icon?: string;
-    /**
-     * The `child` field is used to map the list items to their corresponding parent items and facilitates nested navigation functionality.
-     */
-    child?: string;
+
     /**
      * The `tooltip` field is used to display the content about the target element when hovering on list item.
      */
     tooltip?: string;
-    /**
-     * The `hasChildren` field is used to check whether the list items have child items or not.
-     */
-    hasChildren?: string;
     /**
      * The `htmlAttributes` field allows additional attributes such as id, class, etc., and
      *  accepts n number of attributes in a key-value pair format.
@@ -109,7 +76,7 @@ export interface FieldsMapping {
     /**
      * The `sortBy` field used to enable the sorting of list items to be ascending or descending order.
      */
-    sortBy?: string
+    sortBy?: string;
 }
 
 /**
@@ -118,23 +85,33 @@ export interface FieldsMapping {
  */
 export interface VirtualizationProps {
     /**
-     * Specifies the height of each list item in pixels. This is necessary to calculate the scrolling height and manage the visible window.
-     *
-     * @default 40
+     * Specifies the fixed pixel height of each row.
+     * Required for precise virtualization calculations.
      */
-    itemSize?: number;
+    itemSize: number;
 
     /**
-     * The total count of items in the data source. This is used to calculate the total scrollable content size.
-     *
-     * @default 15
+     * Specifies the number of items in a single data page.
+     * Used for progressive loading and skeleton sizing.
      */
-    itemsCount?: number;
+    pageSize: number;
 
     /**
-     * The number of items to pre-render beyond the visible area. This helps prevent flickering by loading additional items in advance.
+     * Specifies the extra items rendered before and after the viewport for smooth scrolling.
      *
      * @default 5
      */
     overscanCount?: number;
+
+    /**
+     * Specifies whether skeleton placeholders should be enabled during data fetch.
+     *
+     * @default false
+     */
+    showSkeleton?: boolean;
+
+    /**
+     * Specifies the total number of items available in the data source.
+     */
+    totalCount?: number;
 }

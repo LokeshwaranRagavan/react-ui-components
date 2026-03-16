@@ -121,7 +121,9 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                             symbolIndex: i,
                             x: 0, // Will be updated when showing
                             y: 0, // Will be updated when showing
-                            fill: seriesMarker?.fill || series.interior,
+                            fill: seriesMarker?.filled === false
+                                ? 'transparent'
+                                : (seriesMarker?.fill || series.interior),
                             border: {
                                 width: seriesMarker?.border?.width || 1,
                                 color: seriesMarker?.border?.color || series.interior
@@ -683,8 +685,12 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                             const size: ChartSizeProps = { height: point.marker?.height as number, width: point.marker?.width as number };
                             const border: ChartBorderProps = (point.marker.border || series.border) as ChartBorderProps;
                             const explodeSeries: boolean = (series.type === 'Bubble' || series.type === 'Scatter');
-                            const borderColor: string = (border.color && border.color !== 'transparent') ? border.color :
-                                point.marker.fill || point.interior || (explodeSeries ? point.color : series.interior);
+                            const borderColor: string  =
+                                (border.color && border.color !== 'transparent')
+                                    ? border.color
+                                    : (series.marker?.border?.color || series.border?.color ||
+                                        point.marker.fill || point.interior || (explodeSeries ? point.color : series.interior));
+
                             const colorValue: ColorValue = convertHexToColor(colorNameToHex(borderColor));
                             const markerShadow: string = series.chart.themeStyle.markerShadow ||
                                 'rgba(' + colorValue.r + ',' + colorValue.g + ',' + colorValue.b + ',0.2)';
@@ -701,7 +707,9 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                                 y: location.y + (result.series!.clipRect?.y || 0),
                                 visible: true,
                                 currentPointIndex: point.index || 0,
-                                fill: (point.marker.fill || point.color || (explodeSeries ? series.interior : '#ffffff')),
+                                fill: series.marker?.filled === false
+                                    ? 'transparent'
+                                    : ( point.interior || marker.fill || point.color || (explodeSeries ? series.interior : '#ffffff')),
                                 stroke: borderColor,
                                 markerShadow: markerShadow,
                                 currentRadius: markerRadius,
@@ -843,6 +851,9 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                 Math.max(0, radius / ((marker.size.width + marker.size.height) / 4));
             const chart: Chart = layoutRef.current.chart as Chart;
             const series: SeriesProperties = chart?.visibleSeries[marker.seriesIndex];
+            if (!series) {
+                return null;
+            }
             const isBubbleSeries: boolean = series?.type === 'Bubble';
             const symbolId: string = chart.element.id + '_Series_' + series.index + '_Point_' + marker.symbolIndex + '_Trackball';
             if (marker.shape === 'Circle' || !marker.shape) {
@@ -851,8 +862,9 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                         key={`trackball-${marker.seriesIndex}-${marker.symbolIndex}`}
                         style={{ display: marker.visible ? 'block' : 'none' }}
                     >
+
                         <circle
-                            id = {symbolId}
+                            id={symbolId}
                             cx={marker.x}
                             cy={marker.y}
                             r={radius + 4}
@@ -864,7 +876,7 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                         />
 
                         <circle
-                            id = {symbolId}
+                            id={symbolId}
                             cx={marker.x}
                             cy={marker.y}
                             r={radius}
@@ -874,6 +886,7 @@ export const TrackballRenderer: React.ForwardRefExoticComponent<ChartTooltipProp
                             opacity={opacity}
                             className={`trackball-marker-${marker.seriesIndex}-${marker.symbolIndex}`}
                         />
+
                     </g>
                 );
             } else {

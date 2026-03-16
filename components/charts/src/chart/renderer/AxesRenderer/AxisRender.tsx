@@ -345,16 +345,23 @@ export const AxisRenderer: React.FC<ChartAxesProps> = ({ axes }: { axes: AxisMod
  * @param {boolean} requireInvertedAxis - Indicates whether the chart orientation is inverted (e.g., horizontal chart).
  * @param {AxisModel[]} axisCollection - The full collection of axis models defined in the chart.
  * @param {SeriesProperties[]} visibleSeries - The list of series that are currently visible in the chart.
+ * @param {AxisModel[]} paretoAxes - Axes used for rendering the Pareto line.
  * @returns {AxisModel[]} An array of axis models that are determined to be visible based on the current chart state.
  * @private
  */
 export function calculateVisibleAxis(
-    requireInvertedAxis: boolean, axisCollection: AxisModel[], visibleSeries: SeriesProperties[]): AxisModel[] {
+    requireInvertedAxis: boolean, axisCollection: AxisModel[],
+    visibleSeries: SeriesProperties[], paretoAxes: AxisModel[] = []): AxisModel[] {
     const axisCollections: AxisModel[] = [];
-    const calculatedAxes: AxisModel[] = [];
+    let calculatedAxes: AxisModel[] = [];
     axisCollection.map((axis: AxisModel) => {
         calculatedAxes.push(extend({}, axis) as AxisModel);
     });
+    if (visibleSeries.some((seriesItem: SeriesProperties) =>
+        seriesItem.type === 'Pareto' || seriesItem.category === 'Pareto' || !!seriesItem.paretoOptions
+    )) {
+        calculatedAxes = calculatedAxes.concat(paretoAxes);
+    }
     calculatedAxes.forEach((axis: AxisModel) => {
         axis.series = [];
         axis.labels = [];
@@ -392,6 +399,9 @@ export function calculateVisibleAxis(
         axis.titleSize = { height: 0, width: 0 };
         for (const series of visibleSeries) {
             initAxis(requireInvertedAxis, series, axis, true);
+            if (series.category === 'Pareto' && series.type === 'Line' && series.yAxis) {
+                series.yAxis.internalVisibility = series.paretoOptions?.showAxis ?? true;
+            }
         }
         if (axis.orientation != null) {
             axisCollections.push(axis);
@@ -534,7 +544,7 @@ export function refreshAxisLabel(series: SeriesProperties): void {
     series.xAxis.indexLabels = {};
 
     for (const item of series.xAxis.series) {
-        if (item.visible) {
+        if (item.visible && item.category !== 'TrendLine') {
             item.xMin = Infinity;
             item.xMax = -Infinity;
 

@@ -11,17 +11,21 @@ import {
     RefObject,
     ReactNode,
     useEffect,
-    ReactElement
+    ReactElement,
+    useState,
+    useCallback
 } from 'react';
 import { HeaderPanelBase, ContentPanelBase, PagerPanelBase, GridToolbar, PopupEditForm } from './index';
-import { RenderRef, IRenderBase, HeaderPanelRef, ContentPanelRef, FooterPanelRef, WrapMode, InlineEditFormRef, ColumnProps, IRow } from '../types';
+import { RenderRef, IRenderBase, HeaderPanelRef, ContentPanelRef, FooterPanelRef, WrapMode, InlineEditFormRef, ColumnProps, IRow, ScrollMode, LoadingIndicatorType } from '../types';
 import { useGridComputedProvider, useGridMutableProvider } from '../contexts';
 import { useRender, useScroll } from '../hooks';
 import { ToolbarItemProps, ToolbarAPI } from '../types/toolbar.interfaces';
 import { PagerRef } from '@syncfusion/react-pager';
 import { FooterPanelBase } from './FooterPanel';
-import { Spinner } from '@syncfusion/react-popups';
+import { Spinner, SpinnerProps } from '@syncfusion/react-popups';
 import { isNullOrUndefined } from '@syncfusion/react-base';
+import { DataManager } from '@syncfusion/react-data';
+import { addLastRowBorder } from '../utils';
 
 /**
  * CSS class names used in the Render component
@@ -100,11 +104,16 @@ const RenderBase: <T>(_props: Partial<IRenderBase> & RefAttributes<RenderRef<T>>
 
         const { privateRenderAPI, protectedRenderAPI } = useRender<T>();
         const { privateScrollAPI, protectedScrollAPI, setHeaderScrollElement, setContentScrollElement, setFooterScrollElement } =
-            useScroll<T>();
+            useScroll<T>(contentPanelRef.current);
         const { setPadding } = protectedScrollAPI;
-        const { headerContentBorder, headerPadding, onContentScroll, onHeaderScroll, onFooterScroll, getCssProperties } = privateScrollAPI;
-        const { textWrapSettings, pageSettings, aggregates, toolbar, id } = useGridComputedProvider<T>();
-        const { columnsDirective, currentViewData, totalRecordsCount, cssClass, toolbarModule, editModule } = useGridMutableProvider<T>();
+        const [isContentHeightUpdateRequired, setContentHeightUpdateRequired] = useState<Object>({});
+        const { headerContentBorder, headerPadding, onContentScroll, onVirtualRowContentScroll, onVirtualColumnContentScroll,
+            onHeaderScroll, onFooterScroll, getCssProperties } = privateScrollAPI;
+        const { textWrapSettings, pageSettings, aggregates, toolbar, id, columns, dataSource, editSettings, height,
+            loadingIndicatorSettings } = useGridComputedProvider<T>();
+        const  { indicatorType, params } = loadingIndicatorSettings;
+        const { columnsDirective, currentViewData, totalRecordsCount, cssClass, toolbarModule, editModule, scrollMode, virtualSettings } =
+            useGridMutableProvider<T>();
 
         // Synchronize scroll elements between header and content panels
         useSyncScrollElements(
@@ -116,6 +125,10 @@ const RenderBase: <T>(_props: Partial<IRenderBase> & RefAttributes<RenderRef<T>>
             setFooterScrollElement,
             setPadding
         );
+
+        const refreshContentUI: () => void = useCallback(() => {
+            contentPanelRef.current?.setRequireMoreVirtualRowsForceRefresh?.({});
+        }, []);
 
         // Expose methods and properties through ref
         useImperativeHandle(ref, () => ({
@@ -131,7 +144,9 @@ const RenderBase: <T>(_props: Partial<IRenderBase> & RefAttributes<RenderRef<T>>
             pagerModule: pagerObjectRef.current,
             ...(editModule.editSettings.mode === 'Popup' && editModule.isEdit ?
                 isNullOrUndefined(editModule.originalData) ? { addInlineRowFormRef: popupEditFormRef }
-                    : { editInlineRowFormRef: popupEditFormRef } : {})
+                    : { editInlineRowFormRef: popupEditFormRef } : {}),
+            refreshContentUI,
+            isContentBusy: privateRenderAPI.isContentBusy
         }), [
             protectedRenderAPI.refresh,
             headerPanelRef.current,
@@ -149,13 +164,22 @@ const RenderBase: <T>(_props: Partial<IRenderBase> & RefAttributes<RenderRef<T>>
 
         ), [totalRecordsCount, pageSettings]);
 
+        const isNoColumnRemoteData: boolean = useMemo(() => {
+            return !columns.length && dataSource instanceof DataManager && dataSource.dataSource.url
+                && Array.isArray(currentViewData) && currentViewData?.length > 0;
+        }, [columns, dataSource, currentViewData]);
 
         // Memoize header panel to prevent unnecessary re-renders
-        const headerPanel: JSX.Element = useMemo(() => (
-            <HeaderPanelBase
-                ref={headerPanelRef}
+        const headerPanel: JSX.Element = useMemo(() => {
+            return (<HeaderPanelBase
+                ref={(panelRef: HeaderPanelRef) => {
+                    headerPanelRef.current = panelRef;
+                    if (isNoColumnRemoteData) {
+                        setContentHeightUpdateRequired({});
+                    }
+                }}
                 panelAttributes={{
-                    style: headerPadding,
+                    style: { ...headerPadding },
                     className: CSS_CLASS_NAMES.GRID_HEADER
                 }}
                 scrollContentAttributes={{
@@ -164,26 +188,67 @@ const RenderBase: <T>(_props: Partial<IRenderBase> & RefAttributes<RenderRef<T>>
                     onScroll: onHeaderScroll
                 }}
             />
-        ), [headerPadding, headerContentBorder, onHeaderScroll]);
+            );
+        }, [headerPadding, headerContentBorder, onHeaderScroll, isNoColumnRemoteData]);
+
+        useMemo(() => {
+            if (contentPanelRef.current?.contentScrollRef && virtualSettings.enableRow && virtualSettings.enableCache) {
+                contentPanelRef.current.contentScrollRef.scrollTop = 0;
+                protectedScrollAPI.virtualRowInfo.startIndex = 0;
+            }
+        }, [totalRecordsCount]);
+        useMemo(() => {
+            protectedScrollAPI.virtualRowInfo.endIndex = (scrollMode === ScrollMode.Virtual ? totalRecordsCount :
+                currentViewData?.length) ?? 0;
+        }, [currentViewData, totalRecordsCount]);
 
         // Memoize content panel to prevent unnecessary re-renders
-        const contentPanel: JSX.Element = useMemo(() => (
-            <ContentPanelBase<T>
-                ref={contentPanelRef}
+        const contentPanel: JSX.Element = useMemo(() => {
+            const toolbarHeight: number = toolbarModule?.getToolbar()?.clientHeight ?? 0;
+            const headerHeight: number = headerPanelRef.current?.headerPanelRef?.clientHeight ?? 0;
+            const footerHeight: number = footerPanelRef.current?.footerPanelRef?.clientHeight ?? 0;
+            const pagerHeight: number = pagerObjectRef.current?.element?.clientHeight ?? 0;
+
+            const totalHeight: string = `calc(${privateRenderAPI.contentStyles.height} - ${toolbarHeight}px - ${headerHeight + 2}px - ${footerHeight}px - ${pagerHeight}px)`;
+
+            return (<ContentPanelBase<T>
+                ref={(panelRef: ContentPanelRef<T>) => {
+                    contentPanelRef.current = panelRef;
+                    if (privateRenderAPI.isContentBusy && columns.length && panelRef &&
+                        panelRef.contentSectionRef.clientHeight < panelRef.contentPanelRef.clientHeight) {
+                        refreshContentUI();
+                    }
+                    if (height !== 'auto' && (panelRef?.contentPanelRef.firstElementChild as HTMLElement)?.offsetHeight >
+                        panelRef?.contentTableRef?.scrollHeight) {
+                        addLastRowBorder(panelRef?.contentTableRef, editSettings);
+                    }
+                }}
                 setHeaderPadding={setPadding}
                 panelAttributes={{
                     className: `${CSS_CLASS_NAMES.GRID_CONTENT} ${textWrapSettings?.enabled &&
-                        textWrapSettings?.wrapMode === WrapMode.Content ? 'sf-wrap' : ''}`.trim()
+                        textWrapSettings?.wrapMode === WrapMode.Content ? 'sf-wrap' : ''}`.trim(),
+                    style: {
+                        height: totalHeight,
+                        position: 'relative' // required inline element styles for responsive UI state update
+                    }
                 }}
                 scrollContentAttributes={{
                     className: CSS_CLASS_NAMES.CONTENT,
-                    style: privateRenderAPI.contentStyles,
-                    'aria-busy': privateRenderAPI.isContentBusy,
-                    onScroll: onContentScroll,
-                    tabIndex: -1
+                    style: {
+                        ...privateRenderAPI.contentStyles,
+                        height: '100%' // required inline element styles for responsive UI state update
+                    },
+                    onScroll: onContentScroll
+                }}
+                virtualRowScrollContentAttributes={{
+                    onScroll: onVirtualRowContentScroll
+                }}
+                virtualColumnScrollContentAttributes={{
+                    onScroll: onVirtualColumnContentScroll
                 }}
             />
-        ), [setPadding, privateRenderAPI.contentStyles, privateRenderAPI.isContentBusy, onContentScroll]);
+            );
+        }, [setPadding, privateRenderAPI.contentStyles, privateRenderAPI.isContentBusy, onContentScroll, isContentHeightUpdateRequired]);
 
         const footerPanel: JSX.Element = useMemo(() => {
             if (!columnsDirective || !currentViewData || currentViewData.length === 0) {
@@ -230,10 +295,15 @@ const RenderBase: <T>(_props: Partial<IRenderBase> & RefAttributes<RenderRef<T>>
                 contentPanelRef?.current?.addInlineRowFormRef?.current?.focusFirstField();
             }
         }, [privateRenderAPI.isContentBusy]);
+        useEffect(() => {
+            setContentHeightUpdateRequired({});
+        }, [toolbar]);
 
+        const loadingSpinnerProps: SpinnerProps = indicatorType === LoadingIndicatorType.Spinner ? params : {};
         return (
             <>
-                <Spinner visible={privateRenderAPI.isContentBusy} className={cssClass} overlay={true} />
+                <Spinner visible={privateRenderAPI.isContentBusy &&
+                    indicatorType === LoadingIndicatorType.Spinner} className={cssClass} overlay={true} {...loadingSpinnerProps} />
                 {toolbarModule && toolbar?.length > 0 && (
                     <GridToolbar
                         key={id + '_grid_toolbar'}

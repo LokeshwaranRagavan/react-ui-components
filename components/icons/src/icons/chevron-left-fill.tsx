@@ -1,4 +1,4 @@
 import { createIcon } from '../icon';
 import { IconComponent } from '../icon';
-const path: React.ReactNode = <path d='M17 3.20718L17 20.793C17 21.2384 16.4614 21.4615 16.1464 21.1465L7.35354 12.3536C7.15828 12.1584 7.15828 11.8418 7.35354 11.6465L16.1464 2.85363C16.4614 2.53864 17 2.76173 17 3.20718Z' fillRule='evenodd' clipRule='evenodd' fill='currentcolor'/>;
+const path: React.ReactNode = <path d='M13.9998 18.623C13.9995 18.9582 13.6692 19.1257 13.4763 18.8886L8.0896 12.2665C7.96996 12.1195 7.96996 11.8804 8.0896 11.7333L13.4763 5.11126C13.6692 4.8741 13.9995 5.0416 13.9998 5.37689L13.9998 18.623Z' fillRule='evenodd' clipRule='evenodd' fill='currentcolor'/>;
 export const ChevronLeftFillIcon: IconComponent  = createIcon(path);

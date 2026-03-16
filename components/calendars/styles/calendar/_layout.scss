@@ -9,6 +9,9 @@
     font-weight: $calendar-font-weight-style;
     padding: $calendar-normal-header-padding;
     position: relative;
+    .sf-radius-full {
+      border-radius: $calendar-header-border-radius;
+    }
   }
 
   .sf-calendar-decade .sf-calendar-title {

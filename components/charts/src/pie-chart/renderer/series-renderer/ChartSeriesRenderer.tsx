@@ -7,7 +7,7 @@ import { stringToNumber } from '../../utils/helper';
 import { degreeToLocation, indexFinder } from '../../utils/helper';
 import { ChartEventArg, registerChartEventHandler, useChartRenderVersion, useRegisterCenterLabelRender, useSeriesRenderVersion, useRegisterLegendUpdate } from '../../hooks/events';
 import { addPoint, generateClubPoint, getPoints, pushPoints, removePoint, refreshDataManager } from './ProcessData';
-import { AccPointData, angleDelta, computeAngles, findCenter, getPathArc, getPieData, initAngles, isEmpty, lerpAngleShortest } from './series-helper';
+import { AccPointData, angleDelta, computeAngles, findCenter, getPathArc, getPieData, initAngles, isEmpty, lerpAngleShortest, patternForIndex } from './series-helper';
 import { getSeriesColor } from '../../utils/theme';
 import { extend } from '@syncfusion/react-base';
 import { ChartContext } from '../../layout/ChartProvider';
@@ -17,6 +17,8 @@ import { buildConnectorPath, renderDataLabels } from './DataLabelRenderer';
 import { calculateVisibleSeries } from '../ChartRenderer';
 import { Animation } from '../../../common/interfaces';
 import { TextAnchor } from '../../../common';
+import { PieSelectionPattern } from '../../base/enum';
+import { ensureSelectionPattern } from '../PieHighlightRenderer';
 
 /**
  * Represents a single data point with dynamic keys and object values.
@@ -292,6 +294,17 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                 if (updateAnimRef.current) { return; } // skip during tween
                 const chart: Chart = layoutRef.current;
                 const series: SeriesProperties = chart.visibleSeries[0];
+                // If explode is disabled, ensure no stale explode flags remain.
+                if (!series?.explode) {
+                    if (series?.points?.length) {
+                        series.points.forEach((seriesPoints: Points) => { seriesPoints.isExplode = false; });
+                    }
+                    // Keep internal state consistent as well.
+                    if (explodedPointIndex !== null && explodedPointIndex !== undefined) {
+                        setExplodedPointIndex(null);
+                    }
+                    return;
+                }
                 initAngles(series, chart.pieSeries);
                 //initProperties(layoutRef.current, layoutRef.current.visibleSeries[0]);
                 series.elementOptions = [];
@@ -414,6 +427,9 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
 
                     // Start tween
                     if (updateRafRef.current) { cancelAnimationFrame(updateRafRef.current); updateRafRef.current = null; }
+
+                    // Set updated flag BEFORE starting animation
+                    chart.updated = true;
                     updateAnimRef.current = { start: performance.now(), duration: 300 };
 
                     const step: (now: number) => void = (now: number) => {
@@ -438,7 +454,8 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                             updateRafRef.current = requestAnimationFrame(step);
                         } else {
                             updateAnimRef.current = null;
-                            // Commit data change and rebuild normally
+                            chart.updated = false; // Clear flag after animation completes
+
                             series.elementOptions = [];
                             renderPoints(chart);
                             if (series.dataLabel && series.dataLabel.visible) {
@@ -476,6 +493,9 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                     tweenPointsRef.current = nextPoints;
 
                     if (updateRafRef.current) { cancelAnimationFrame(updateRafRef.current); updateRafRef.current = null; }
+
+                    // Set updated flag BEFORE starting animation
+                    chart.updated = true;
                     updateAnimRef.current = { start: performance.now(), duration: 300 };
 
                     const step: (now: number) => void = (now: number) => {
@@ -498,6 +518,8 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                             updateRafRef.current = requestAnimationFrame(step);
                         } else {
                             updateAnimRef.current = null;
+                            chart.updated = false; // Clear flag after animation completes
+
                             removePoint(removedIndex, series);
                             series.elementOptions = [];
                             renderPoints(chart);
@@ -548,6 +570,9 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                     tweenPointsRef.current = nextPoints;
 
                     if (updateRafRef.current) { cancelAnimationFrame(updateRafRef.current); updateRafRef.current = null; }
+
+                    // Set updated flag BEFORE starting animation
+                    chart.updated = true;
                     updateAnimRef.current = { start: performance.now(), duration: 500 };
 
                     const step: (now: number) => void = (now: number) => {
@@ -569,9 +594,10 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                             updateRafRef.current = requestAnimationFrame(step);
                         } else {
                             updateAnimRef.current = null;
-                            // Commit the actual data change after animation
-                            series.dataSource = newDataSource; // Set the new data source
-                            series.points = []; // Clear points to force re-computation
+                            chart.updated = false; // Clear flag after animation completes
+
+                            series.dataSource = newDataSource;
+                            series.points = [];
                             series.elementOptions = [];
                             getPoints(newDataSource as Object[], series); // Final computation of points
                             renderPoints(chart); // Render the final state
@@ -665,7 +691,7 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
             for (const dataValue of Object.keys(point)) {
                 value = new regExp('${point' + '.' + dataValue + '}', 'gm');
                 if (dataValue in point) {
-                    format = format.replace(value.source, point[dataValue as keyof Points]?.toString());
+                    format = format.replace(value.source, point[dataValue as keyof Points]?.toString() as string);
                 }
             }
             for (const dataValue of Object.keys(Object.getPrototypeOf(series))) {
@@ -711,6 +737,7 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                 if (!isNaN(pointIndex)) {
                     setUserHasInteracted(true);
                     const series: SeriesProperties = layoutRef.current.visibleSeries[0];
+                    if (!series.explode) { return; }
                     const clickedPoint: Points = series.points[pointIndex as number];
                     setExplodedPointIndex(() => (clickedPoint?.isExplode ? null : pointIndex));
                     setHoveredPointIndex(undefined);
@@ -876,6 +903,13 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                     innerR > 0 ? innerR + hoverRadiusOffset : 0, borderRadius, false, seriesPoints);
                 option.d = path;
                 option.borderDirection = borderPath;
+                const colorHash: string = point.color.replace(/[^a-zA-Z0-9]/g, '');
+                if (series.applyPattern) {
+                    const customPattern: PieSelectionPattern = (point).pattern as PieSelectionPattern;
+                    const patternName: PieSelectionPattern = customPattern || patternForIndex(point.index);
+                    const patternID: string = `${accumulation.element.id}_${patternName}_Initial_${colorHash}_${point.index}`;
+                    option.fill = `url(#${patternID})`;
+                }
                 const animatedRadius: number = ((finalRadius + innerR) / 2);
                 point.symbolLocation = degreeToLocation(midAngle, animatedRadius, pieSeries.center);
                 series.elementOptions.push(option);
@@ -989,7 +1023,13 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
                 stringToNumber(point.sliceRadius, pieSeries.seriesRadius) : pieSeries.pieBaseRadius;
             const animatedRadius: number = ((finalRadius + pieSeries.innerRadius) / 2) * progres;
             point.symbolLocation = degreeToLocation(midAngle, animatedRadius, pieSeries.center);
-
+            const colorHash: string = point.color.replace(/[^a-zA-Z0-9]/g, '');
+            if (series.applyPattern) {
+                const customPattern: PieSelectionPattern = (point).pattern as PieSelectionPattern;
+                const patternName: PieSelectionPattern = customPattern || patternForIndex(point.index);
+                const patternID: string = `${chart.element.id}_${patternName}_Initial_${colorHash}_${point.index}`;
+                option.fill = `url(#${patternID})`;
+            }
             if (point.degree === undefined) {
                 point.degree = degree;
                 point.start = start;
@@ -1140,6 +1180,19 @@ export const ChartSeriesRenderer: React.ForwardRefExoticComponent<PieChartSeries
         return (
             phase === 'rendering' && visibleSeries && (
                 <>
+                    {visibleSeries.applyPattern && (
+                        <defs>
+                            {visibleSeries.points.map((point: Points) => {
+                                const customPattern: PieSelectionPattern | undefined =
+                                    (point).pattern;
+                                const patternName: PieSelectionPattern =
+                                    customPattern || patternForIndex(point.index);
+                                return ensureSelectionPattern(layoutRef.current.element.id, patternName, point.color,
+                                                              point.index, visibleSeries.opacity as number, 'Initial'
+                                );
+                            })}
+                        </defs>
+                    )}
                     <g
                         id={layoutRef.current.element.id + '_Series_' + visibleSeries.index}
                         ref={ref}

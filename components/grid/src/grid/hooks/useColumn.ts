@@ -1,11 +1,13 @@
 import { ComponentType, createElement, isValidElement, ReactElement, useMemo } from 'react';
 import { DateFormatOptions, IL10n, formatUnit, isNullOrUndefined, NumberFormatOptions } from '@syncfusion/react-base';
-import { IValueFormatter, CellTypes, IRow, EditType, ValueType, FilterBarType, TextAlign, ColumnType } from '../types';
+import { Skeleton, SkeletonProps } from '@syncfusion/react-notifications';
+import { IValueFormatter, CellTypes, IRow, EditType, ValueType, FilterBarType, TextAlign, ColumnType, LoadingIndicatorType, ServiceLocator, VirtualDomType, IGridBase } from '../types';
 import { ColumnProps, IColumnBase } from '../types/column.interfaces';
 import { AggregateColumnProps, AggregateData } from '../types/aggregate.interfaces';
 import { useGridComputedProvider } from '../contexts';
 import { setStringFormatter, getObject, getUid, headerValueAccessor as defaultHeaderValueAccessor,
-    valueAccessor as defaultValueAccessor, isDateOrNumber } from '../utils';
+    valueAccessor as defaultValueAccessor, isDateOrNumber, parseUnit,
+    updateUIColumnType} from '../utils';
 /**
  * CSS class names used in the Column component
  */
@@ -19,67 +21,86 @@ const CSS_CLASS_NAMES: Record<string, string> = {
  * Applies default column properties to the provided column configuration
  *
  * @param {IColumnBase} props - The column properties to enhance with defaults
+ * @param {ServiceLocator} serviceLocator - ServiceLocator for column formatting and parsing property updates.
+ * @param {IGridBase} gridProps - The grid configured properties.
+ * @param {ColumnProps[]} typeDetectedUIColumn - After getting data type updated ui column.
  * @returns {IColumnBase} The column properties with defaults applied
  * @private
  */
-export const defaultColumnProps: <T>(props: Partial<IColumnBase<T>>) => Partial<IColumnBase<T>> =
-    <T>(props: Partial<IColumnBase<T>>): Partial<IColumnBase<T>> => {
-        const commandColumn: boolean = !isNullOrUndefined(props.getCommandItems);
-        const isCheckboxColumn: boolean = props.type === ColumnType.Checkbox ||
-            (!!props.displayAsCheckBox && (props.edit?.type === EditType.CheckBox || props.type === ColumnType.Boolean));
-        // computed values should handle in component inside alone since react not allowed us to compute here using memo.
-        return {
-            visible: true,
-            textAlign: commandColumn || isCheckboxColumn ? TextAlign.Center : 'Left',
-            disableHtmlEncode: true,
-            allowEdit: commandColumn ? false : true,
-            edit: {type: EditType.TextBox},
-            filter: { type: 'FilterBar', filterBarType: FilterBarType.TextBox, filterOperators: [] },
-            ...props,
-            width: props.width ? formatUnit(props.width) : '',
-            valueAccessor: props.valueAccessor ?? defaultValueAccessor<T>,
-            headerValueAccessor: props.headerValueAccessor ?? defaultHeaderValueAccessor,
-            type: props.type === 'none' ? null : (props.type ? (typeof (props.type) === 'string' ? props.type.toLowerCase() : undefined) : props.type),
-            uid: isNullOrUndefined(props.uid) ? getUid('grid-column') : props.uid,
-            getFormatter: props.formatFn,
-            getParser: props.parseFn,
-            allowSort: commandColumn ? false : props.allowSort ?? true,
-            allowFilter: commandColumn ? false : props.allowFilter ?? true,
-            allowSearch: commandColumn ? false : props.allowSearch ?? true,
-            templateSettings: {
-                ariaLabel: '',
-                ...props.templateSettings
-            },
-            headerCheckbox: props.headerCheckbox ?? true
-        };
+export const defaultColumnProps: <T>(props: Partial<IColumnBase<T>>, serviceLocator: ServiceLocator, gridProps: IGridBase<T>,
+    typeDetectedUIColumn?: ColumnProps<T>) => Partial<IColumnBase<T>> = <T>(props: Partial<IColumnBase<T>>, serviceLocator: ServiceLocator,
+    gridProps: IGridBase<T>, typeDetectedUIColumn?: ColumnProps<T>):
+Partial<IColumnBase<T>> => {
+    const commandColumn: boolean = !isNullOrUndefined(props.getCommandItems);
+    const isCheckboxColumn: boolean = props.type === ColumnType.Checkbox ||
+        (!!props.displayAsCheckBox && (props.edit?.type === EditType.CheckBox || props.type === ColumnType.Boolean));
+    const typeFormatParseUpdatedColumn: Partial<IColumnBase<T>> =
+        updateUIColumnType({}, {...props}, serviceLocator) as Partial<IColumnBase<T>>;
+    const isColumnDOMVirtualizationDisabled: boolean = !isNullOrUndefined(gridProps?.virtualizationSettings) &&
+        (gridProps?.virtualizationSettings?.enabled === false || gridProps?.virtualizationSettings?.type === VirtualDomType.Row ||
+            props.autoHeight);
+    // computed values should handle in component inside alone since react not allowed us to compute here using memo.
+    return {
+        visible: true,
+        autoHeight: false,
+        textAlign: commandColumn || isCheckboxColumn ? TextAlign.Center : 'Left',
+        disableHtmlEncode: true,
+        allowEdit: commandColumn ? false : true,
+        edit: {type: EditType.TextBox},
+        filter: { type: props.filter?.type ?? gridProps?.filterSettings?.type ?? 'FilterBar', hideSearchbox: props.filter?.hideSearchbox ?? false,
+            filterBarType: FilterBarType.TextBox, filterOperators: [] },
+        formatFn: typeFormatParseUpdatedColumn?.formatFn ?? typeDetectedUIColumn?.formatFn,
+        parseFn: typeFormatParseUpdatedColumn?.parseFn ?? typeDetectedUIColumn?.parseFn,
+        getFormatter: typeFormatParseUpdatedColumn?.formatFn ?? typeDetectedUIColumn?.formatFn,
+        getParser: typeFormatParseUpdatedColumn?.parseFn ?? typeDetectedUIColumn?.parseFn,
+        ...props,
+        width: !isColumnDOMVirtualizationDisabled ? (!isNullOrUndefined(props.width) ? (parseUnit(props.width) + 'px') : '100px') :
+            props.width ? formatUnit(props.width) : '', // dom column virtualization only support pixels.
+        valueAccessor: props.valueAccessor ?? defaultValueAccessor<T>,
+        headerValueAccessor: props.headerValueAccessor ?? defaultHeaderValueAccessor,
+        type: props.type === 'none' ? null : (props.type ? (typeof (props.type) === 'string' ? props.type.toLowerCase() : undefined) :
+            (props.type ?? (commandColumn ? ColumnType.Command : typeDetectedUIColumn?.type))),
+        sortComparer: typeDetectedUIColumn?.sortComparer ?? typeFormatParseUpdatedColumn?.sortComparer,
+        uid: isNullOrUndefined(props.uid) ? getUid('grid-column') : props.uid,
+        allowSort: commandColumn ? false : props.allowSort ?? true,
+        allowFilter: commandColumn ? false : props.allowFilter ?? true,
+        allowSearch: commandColumn ? false : props.allowSearch ?? true,
+        templateSettings: {
+            ariaLabel: '',
+            ...props.templateSettings
+        },
+        headerCheckbox: props.headerCheckbox ?? true
     };
+};
 /**
  * `useColumn` is a custom hook that provides column configuration and formatting logic for grid columns.
  * It handles value formatting, alignment classes, visibility, and template rendering.
  *
  * @private
  * @param {IColumnBase} props - The column configuration properties
- * @returns {Object} Object containing publicAPI (ColumnProps) and privateAPI with cell formatting properties
+ * @returns {Object} Object containing gridAPI (ColumnProps) and gridInternal with cell formatting properties
  */
 export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
-    publicAPI: Partial<ColumnProps<T>>;
-    privateAPI: {
+    gridAPI: Partial<ColumnProps<T>>;
+    gridInternal: {
         cellType: CellTypes;
         row: IRow<ColumnProps<T>>;
         alignClass: string;
         alignHeaderClass: string;
         visibleClass: string;
         formattedValue: string | Object | ReactElement;
+        isMaskCell: boolean;
     };
 } = <T>(props: Partial<IColumnBase<T>>): {
-    publicAPI: Partial<ColumnProps<T>>;
-    privateAPI: {
+    gridAPI: Partial<ColumnProps<T>>;
+    gridInternal: {
         cellType: CellTypes;
         row: IRow<ColumnProps<T>>;
         alignClass: string;
         alignHeaderClass: string;
         visibleClass: string;
         formattedValue: string | Object | ReactElement;
+        isMaskCell: boolean;
     };
 } => {
     const {
@@ -108,7 +129,9 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
         headerTextAlign,
         ...rest
     } = column;
-    const { serviceLocator } = useGridComputedProvider();
+    const { serviceLocator, virtualizationSettings, loadingIndicatorSettings } =
+        useGridComputedProvider();
+    const { indicatorType, params } = loadingIndicatorSettings;
     const formatter: IValueFormatter = serviceLocator?.getService<IValueFormatter>('valueFormatter');
     const localization: IL10n = serviceLocator?.getService<IL10n>('localization');
     /**
@@ -197,6 +220,10 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
         return (cellType === CellTypes.Data && field && row && row.isDataRow) ?
             getObject(field, row.data) : undefined;
     }, [cellType, field, row]);
+    const isMaskCell: boolean = useMemo(() => {
+        return indicatorType === LoadingIndicatorType.Shimmer && cellType === CellTypes.Data && field && row && row.isDataRow &&
+            isNullOrUndefined(row.data);
+    }, [cellType, field, row, virtualizationSettings?.scrollMode, indicatorType]);
     /**
      * Retrieves the aggregate value from the data based on column information
      *
@@ -248,7 +275,7 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
             } else if (typeof template === 'string' || isValidElement(template)) {
                 return template;
             } else {
-                return createElement(template, { column: column, data: row.data, rowIndex: row.index });
+                return createElement(template, { column: column, data: row.data, rowIndex: row.rowIndex });
             }
         }
         // Apply type-specific formatting for values
@@ -263,7 +290,11 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
                 formattedVal = !isNaN(dateValue?.getTime?.()) ? dateValue : formattedVal;
             }
             return formatValue(formattedVal);
-        } else {
+        }
+        else if (isMaskCell) {
+            return createElement(Skeleton, { height: '10px', width: '100%', ...params as SkeletonProps });
+        }
+        else {
             return formattedVal as string;
         }
     }, [
@@ -273,7 +304,9 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
         cellType,
         template,
         headerTemplate,
+        isMaskCell,
         headerText,
+        params,
         type,
         valueAccessor,
         headerValueAccessor,
@@ -282,29 +315,31 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
     /**
      * Private API for internal component use
      *
-     * @type {{ cellType: CellTypes, row: IRow<IColumnBase>, alignClass: string, alignHeaderClass: string, visibleClass: string, formattedValue: string | ReactElement }}
+     * @type {{ cellType: CellTypes, row: IRow<IColumnBase>, alignClass: string, alignHeaderClass: string, visibleClass: string, formattedValue: string | ReactElement, isMaskCell: boolean }}
      */
-    const privateAPI: {
+    const gridInternal: {
         cellType: CellTypes;
         row: IRow<IColumnBase<T>>;
         alignClass: string;
         alignHeaderClass: string;
         visibleClass: string;
         formattedValue: string | Object | ReactElement;
+        isMaskCell: boolean;
     } = useMemo(() => ({
         cellType,
         row,
         alignClass,
         alignHeaderClass,
         visibleClass,
-        formattedValue
-    }), [cellType, row, alignClass, alignHeaderClass, visibleClass, formattedValue]);
+        formattedValue,
+        isMaskCell
+    }), [cellType, row, alignClass, alignHeaderClass, visibleClass, formattedValue, isMaskCell]);
     /**
      * Public API exposed to parent components
      *
      * @type {Partial<ColumnProps>}
      */
-    const publicAPI: Partial<ColumnProps<T>> = useMemo(() => ({
+    const gridAPI: Partial<ColumnProps<T>> = useMemo(() => ({
         field,
         headerText,
         textAlign,
@@ -317,5 +352,5 @@ export const useColumn: <T>(props: Partial<IColumnBase<T>>) => {
         disableHtmlEncode,
         ...rest
     }), [field, headerText, textAlign, headerTextAlign, type, format, width, customAttributes, visible, rest]);
-    return { publicAPI, privateAPI };
+    return { gridAPI, gridInternal };
 };

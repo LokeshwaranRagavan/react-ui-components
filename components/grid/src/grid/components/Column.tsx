@@ -1,6 +1,7 @@
 import {
     useEffect,
     useRef,
+    useState,
     useMemo,
     useCallback,
     memo,
@@ -13,8 +14,12 @@ import {
     CellType,
     CellTypes,
     ColumnType,
+    FilterPredicates,
+    UseDataResult,
     SelectionMode,
-    WrapMode
+    WrapMode,
+    ActionType,
+    FilterDialogBeforeOpenEvent
 } from '../types';
 import { IGrid } from '../types/grid.interfaces';
 import { SortDescriptor } from '../types/sort.interfaces';
@@ -26,18 +31,23 @@ import {
 import { useColumn } from '../hooks';
 import { IL10n, isNullOrUndefined, SanitizeHtmlHelper } from '@syncfusion/react-base';
 import { Checkbox, CheckboxChangeEvent } from '@syncfusion/react-buttons';
-import { ArrowUpIcon, ArrowDownIcon } from '@syncfusion/react-icons';
+import { ArrowUpIcon, ArrowDownIcon, FilterIcon, FilterActiveIcon } from '@syncfusion/react-icons';
 import { ColumnProps, IColumnBase, ColumnRef, CellClassProps } from '../types/column.interfaces';
 import { CommandColumnBase } from './CommandColumn';
+import { ExcelFilterArgs, ExcelFilter } from '../views/common/Excel-CheckBox-filter';
+import { DataManager, DataResult } from '@syncfusion/react-data';
 
 // CSS class constants following enterprise naming convention
 const CSS_HEADER_CELL_DIV: string = 'sf-grid-header-cell';
 const CSS_HEADER_TEXT: string = 'sf-grid-header-text';
 const CSS_SORT_ICON: string = 'sf-grid-sort-container sf-icons';
+const CSS_FILTER_ICON: string = 'sf-grid-filter-container sf-icons';
 const CSS_SORT_NUMBER: string = 'sf-grid-sort-order';
 const CSS_DESCENDING_SORT: string = 'sf-descending sf-icon-descending';
 const CSS_ASENDING_SORT: string = 'sf-ascending sf-icon-ascending';
 const CSS_COMMAND_CELL: string = 'sf-grid-command-cell';
+const CSS_FIXED_HEIGHT_TEMPLATE_CELL: string = 'sf-templatecell';
+const CSS_FIXED_HEIGHT_TEMPLATE_WRAPPER: string = 'fixed-height-wrapper';
 
 /**
  * ColumnBase component renders a table cell (th or td) with appropriate content
@@ -53,26 +63,33 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
     const { onHeaderCellRender, onCellRender, onAggregateCellRender, enableHtmlSanitizer, getColumnByField,
         textWrapSettings, clipMode, serviceLocator, selectionSettings } = grid;
     const { isInitialBeforePaint, cssClass, evaluateTooltipStatus, isInitialLoad, currentViewData,
-        selectionModule } = useGridMutableProvider<T>();
+        selectionModule, getParentElement, filterModule } = useGridMutableProvider<T>();
     const localization: IL10n = serviceLocator?.getService<IL10n>('localization');
+    const filterType: boolean = grid.filterSettings?.type === 'Excel' || grid.filterSettings?.type === 'CheckBox';
 
     // Get column-specific APIs and properties
-    const { publicAPI, privateAPI } = useColumn<T>(props);
+    const { gridAPI, gridInternal } = useColumn<T>(props);
 
     const {
         cellType,
         visibleClass,
         alignHeaderClass,
         alignClass,
-        formattedValue
-    } = privateAPI;
+        formattedValue,
+        isMaskCell
+    } = gridInternal;
 
-    const { ...column } = publicAPI;
+    const { ...column } = gridAPI;
+
+    const filterColumn: FilterPredicates[] = grid.filterSettings?.columns?.filter((col: FilterPredicates) => {
+        return column.field === col.field;
+    });
 
     const {
         index,
         field,
         headerText,
+        allowFilter,
         disableHtmlEncode,
         allowSort,
         customAttributes,
@@ -84,6 +101,58 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
     const cellRef: RefObject<ColumnRef> = useRef<ColumnRef>({
         cellRef: useRef<HTMLTableCellElement>(null)
     });
+
+    // Filter dialog open/close state and handlers
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    const openFilterDialog: () => void = useCallback(() : void => {
+        // prevent header click/sort and focus side-effects
+        setIsFilterOpen(true);
+    }, []);
+
+    const closeFilterDialog: () => void = useCallback(() : void => {
+        setIsFilterOpen(false);
+    }, []);
+
+    const updateFilterModel: (cell: React.RefObject<HTMLElement>) => ExcelFilterArgs = (
+        cell: React.RefObject<HTMLElement>): ExcelFilterArgs => {
+        const dataSource: Object = grid.dataSource as DataManager | DataResult;
+        const gridDataManager: DataManager = grid?.dataSource instanceof DataManager ? grid.dataSource :
+            new DataManager(grid?.dataSource as DataManager);
+        const updateColumn: ColumnProps =  grid.getColumns().find((col: ColumnProps) => col.field === column.field);
+        const option: ExcelFilterArgs = {
+            filterType: updateColumn.filter.type ?? grid.filterSettings.type, type: updateColumn.type, field: updateColumn.field,
+            column: updateColumn, dataSource: dataSource, format: updateColumn.format, height: 800, columns: grid.getColumns(),
+            filteredColumns: grid.filterSettings?.columns, target: cell.current, dataManager: gridDataManager,
+            isRemote: (grid.getDataModule() as UseDataResult)?.isRemote(),
+            parentCurrentViewDataCount: currentViewData.length, parentElement: getParentElement(),
+            cssClass: cssClass, handler: filterModule.filterHandler, query: grid.query?.clone(),
+            serviceLocator: grid.serviceLocator,
+            id: grid.id, loadingIndicator: grid.filterSettings?.loadingIndicator,
+            operators: filterModule.customOperators[updateColumn.type + 'Operator'],
+            ignoreAccent: grid.filterSettings?.ignoreAccent,
+            caseSensitive: grid.filterSettings?.caseSensitive,
+            enableSort: grid.sortSettings?.enabled,
+            disableSearchOption: updateColumn.filter.hideSearchbox,
+            disableSortOption: false,
+            isCustomDataSource: false,
+            formatFn: updateColumn.formatFn,
+            enableHtmlSanitizer : enableHtmlSanitizer
+        };
+        const args: FilterDialogBeforeOpenEvent = {
+            cancel: false, requestType: ActionType.FilterDialogBeforeOpen, columnType: option.type,
+            columnName: updateColumn.field, action: ActionType.FilterDialogBeforeOpen, options: option
+        };
+        args.type = ActionType.FilterDialogBeforeOpen;
+        grid.onFilterDialogBeforeOpen?.(args);
+        if (args.cancel) {
+            closeFilterDialog();
+        }
+        if (option.dataSource !== dataSource) {
+            option.isCustomDataSource = true;
+        }
+        return option;
+    };
 
     /**
      * Handle header cell info event
@@ -206,13 +275,13 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
     }, [getColumnByField]);
 
     const rowCheckBoxOnChange: (event: CheckboxChangeEvent) => void = useCallback((event: CheckboxChangeEvent) : void => {
-        if (!selectionModule || props.row?.index === undefined) { return; }
+        if (!selectionModule || props.row?.rowIndex === undefined) { return; }
         if (event?.value) {
-            selectionModule.selectRow(props.row.index);
+            selectionModule.selectRow(props.row?.rowIndex);
         } else {
-            selectionModule.clearRowSelection([props.row.index]);
+            selectionModule.clearRowSelection([props.row?.rowIndex]);
         }
-    }, [props.row?.index, selectionModule]);
+    }, [props.row?.rowIndex, selectionModule]);
 
     /**
      * Memoized header cell content
@@ -236,11 +305,14 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
 
         // Add custom header cell class.
         classNames.push(!isNullOrUndefined(cellClass) ? (typeof cellClass === 'function' ?
-            cellClass({rowIndex: props.row.index, column, cellType: CellType.Header}) : cellClass) : '');
-
+            cellClass({rowIndex: props.row.rowIndex, column, cellType: CellType.Header}) : cellClass) : '');
+        classNames.push(!isNullOrUndefined(props.cell.column.headerTemplate) ? CSS_FIXED_HEIGHT_TEMPLATE_CELL : '');
         // Remove duplicates and join
         const finalClassName: string = [...new Set(classNames)].filter((cls: string) => cls).join(' ');
-        const content: string | JSX.Element = !isNullOrUndefined(props.cell.column.headerTemplate) ? formattedValue as ReactElement
+        const content: string | JSX.Element = !isNullOrUndefined(props.cell.column.headerTemplate) ? (column?.autoHeight ||
+            (textWrapSettings?.enabled && textWrapSettings?.wrapMode !== WrapMode.Content) ? formattedValue :
+            <div className={CSS_FIXED_HEIGHT_TEMPLATE_WRAPPER} style={{height: props?.row?.height}}>
+                {formattedValue as ReactElement}</div>) as ReactElement
             : sanitizeContent(formattedValue as string || headerText || field);
 
         // Special rendering for checkbox selection column (select-all)
@@ -275,6 +347,19 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
                 className={finalClassName}
                 aria-sort={headerSortProperties.direction === 'Ascending' ? 'ascending' :
                     headerSortProperties.direction === 'Descending' ? 'descending' : 'none'}
+                {...(allowFilter && filterType
+                    ? {
+                        onKeyDown: (e: React.KeyboardEvent<HTMLTableCellElement>) => {
+                            const isAltArrowDown: boolean =
+                                e.altKey && (e.key === 'ArrowDown' || e.code === 'ArrowDown');
+                            if (isAltArrowDown) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openFilterDialog();
+                            }
+                        }
+                    }
+                    : {})}
             >
                 <div className='sf-cell-inner'>
                     <div className={CSS_HEADER_CELL_DIV} data-mappinguid={props.cell.column.uid} key={`header-cell-${props.cell?.column?.uid}`}>
@@ -294,6 +379,28 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
                             ) : null
                         )}
                         {headerSortProperties.index && <span className={CSS_SORT_NUMBER}>{headerSortProperties.index}</span>}
+                        {column.type !== 'checkbox' && column.type !== 'command' && allowFilter && filterType && (
+                            <>
+                                <span
+                                    className={CSS_FILTER_ICON}
+                                    onClick={openFilterDialog}
+                                    onKeyDown={(e: React.KeyboardEvent<HTMLSpanElement>) => {
+                                        if ((e as React.KeyboardEvent<HTMLInputElement>).key === 'Enter' || (e as React.KeyboardEvent<HTMLInputElement>).key === ' ') {
+                                            openFilterDialog();
+                                        }
+                                    }}
+                                >
+                                    {filterColumn.length ? <FilterActiveIcon color='#4285F4'/> : <FilterIcon />}
+                                </span>
+                                {isFilterOpen && (
+                                    <ExcelFilter
+                                        isOpen={isFilterOpen}
+                                        options={updateFilterModel(cellRef.current?.cellRef)}
+                                        onCancel={closeFilterDialog}
+                                    />
+                                )}
+                            </>
+                        )}
                     </div>
                 </div>
             </th>
@@ -309,10 +416,13 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
         field,
         headerText,
         disableHtmlEncode,
-        props.row?.index,
+        props.row?.rowIndex,
         grid.sortSettings,
         props.row,
-        currentViewData
+        column?.autoHeight,
+        currentViewData,
+        grid.filterSettings,
+        isFilterOpen
     ]);
 
     /**
@@ -337,9 +447,13 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
 
         // Add custom content cell class.
         classNames.push(!isNullOrUndefined(cellClass) ? (typeof cellClass === 'function' ?
-            cellClass({data: props.row.data, rowIndex: props.row.index, column, cellType: CellType.Content}) : cellClass) : '');
+            cellClass({data: props.row.data, rowIndex: props.row.rowIndex, column, cellType: CellType.Content}) : cellClass) : '');
+        classNames.push(!isNullOrUndefined(props.cell.column.template) ? CSS_FIXED_HEIGHT_TEMPLATE_CELL : '');
 
-        const content: string | JSX.Element = !isNullOrUndefined(props.cell.column.template) ? formattedValue as ReactElement
+        const content: string | JSX.Element = !isNullOrUndefined(props.cell.column.template) || isMaskCell ?
+            (column?.autoHeight || (textWrapSettings?.enabled && textWrapSettings?.wrapMode !== WrapMode.Header) || isMaskCell ?
+                formattedValue : <div className={CSS_FIXED_HEIGHT_TEMPLATE_WRAPPER} style={{height: props?.row?.height}}>
+                    {formattedValue as ReactElement}</div>) as ReactElement
             : sanitizeContent(formattedValue as string);
         classNames.push((column?.type !== ColumnType.Checkbox) && (content === '' || isNullOrUndefined(content) &&
             !props.cell.column.getCommandItems) ? 'sf-empty-cell' : '');
@@ -389,9 +503,10 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
         alignClass,
         visibleClass,
         formattedValue,
+        column?.autoHeight,
         index,
         disableHtmlEncode,
-        props.row?.index,
+        props.row?.rowIndex,
         props.row?.isSelected
     ]);
 
@@ -415,10 +530,13 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
 
         // Add custom aggregate class.
         classNames.push(!isNullOrUndefined(aggregateCellClass) ? (typeof aggregateCellClass === 'function' ?
-            aggregateCellClass({data: props.row.data, rowIndex: props.row.index, column, cellType: CellType.Aggregate}) : aggregateCellClass) : '');
+            aggregateCellClass({data: props.row.data, rowIndex: props.row.rowIndex, column, cellType: CellType.Aggregate}) : aggregateCellClass) : '');
+        classNames.push(!isNullOrUndefined(props.cell.isTemplate) ? CSS_FIXED_HEIGHT_TEMPLATE_CELL : '');
 
-        const content: string | JSX.Element = props.cell.isTemplate ? formattedValue as ReactElement
-            : sanitizeContent(formattedValue as string);
+        const content: string | JSX.Element = props.cell.isTemplate ? (column?.autoHeight ? formattedValue :
+            <div className={CSS_FIXED_HEIGHT_TEMPLATE_WRAPPER} style={{height: props?.row?.height}}>
+                {formattedValue as ReactElement}</div>) as ReactElement :
+            sanitizeContent(formattedValue as string);
 
         classNames.push(content === '' || isNullOrUndefined(content) ? 'sf-empty-cell' : '');
         // Remove duplicates and join
@@ -443,7 +561,8 @@ const ColumnBase: <T>(props: Partial<IColumnBase<T>>) => JSX.Element = memo(<T, 
         formattedValue,
         index,
         disableHtmlEncode,
-        props.row?.index
+        column?.autoHeight,
+        props.row?.rowIndex
     ]);
 
     // Return the appropriate cell content based on cell type

@@ -13,7 +13,10 @@ export const DEFAULT_LOCALE_STRINGS: Record<string, string> = {
     moreDetails: 'More details',
     close: 'Close',
     newEvent: 'New event',
+    editEvent: 'Edit event',
     today: 'Today',
+    previous: 'previous',
+    next: 'next',
     allDay: 'All day',
     day: 'Day',
     week: 'Week',
@@ -26,6 +29,7 @@ export const DEFAULT_LOCALE_STRINGS: Record<string, string> = {
     confirmDeleteMessage: 'Are you sure you want to delete this event?',
     cancel: 'Cancel',
     title: 'Title',
+    subject: 'Subject',
     location: 'Location',
     description: 'Description',
     startDate: 'Start date',
@@ -39,7 +43,21 @@ export const DEFAULT_LOCALE_STRINGS: Record<string, string> = {
     alert: 'Alert',
     invalidDateValue: 'The entered date value is invalid.',
     invalidTimeValue: 'The entered time value is invalid.',
-    invalidDateRange: 'The selected end date occurs before the start date.'
+    invalidDateRange: 'The selected end date occurs before the start date.',
+    repeat: 'Repeat',
+    customRecurrence: 'Custom recurrence',
+    seriesChangeAlert: 'Do you want to cancel the changes made to specific ' +
+        'instances of this series and match it to the whole series again?',
+    createError: 'The duration of the event must be shorter than how frequently it occurs. ' +
+        'Shorten the duration, or change the recurrence pattern in the recurrence event editor.',
+    sameDayAlert: 'Two occurrences of the same event cannot occur on the same day.',
+    occurenceAlert: 'Cannot reschedule an occurrence of the recurring appointment if it skips over ' +
+        'a later occurrence of the same appointment.',
+    editEventContent: 'How would you like to change the appointment in the series?',
+    editThisEvent: 'Edit Event',
+    editEntireSeries: 'Entire Series',
+    yes: 'Yes',
+    no: 'No'
 };
 
 /**

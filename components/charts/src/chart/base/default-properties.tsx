@@ -1,5 +1,5 @@
 
-import { AxisModel, MarginModel, SeriesProperties } from '../chart-area/chart-interfaces';
+import { AxisModel, ChartTrendlineModel, MarginModel, SeriesProperties } from '../chart-area/chart-interfaces';
 import { ChartAxisLabelProps, ChartAxisTitleProps } from '../chart-axis/base';
 import { ChartBorderProps, ChartAreaProps, ChartLegendProps, ChartStackLabelsProps, ChartTitleProps, Column, MajorGridLines, MajorTickLines, MinorGridLines, MinorTickLines, Row, ChartTooltipProps, ChartZoomSettingsProps, ChartStripLineProps, ChartAccessibilityProps, ChartCrosshairProps, ChartCrosshairTooltipProps, ChartSelectionProps, ChartHighlightProps, ChartAnnotationProps } from './interfaces';
 
@@ -73,6 +73,7 @@ interface ChartConfig {
     StripLines: ChartStripLineProps[];
     ChartSelection: ChartSelectionProps;
     ChartHighlight: ChartHighlightProps;
+    ChartTrendline: ChartTrendlineModel;
 }
 
 export const defaultChartConfigs: ChartConfig = {
@@ -665,7 +666,79 @@ export const defaultChartConfigs: ChartConfig = {
         high: '',
         low: '',
         open: '',
-        close: ''
+        close: '',
+        waterfallSettings: {
+            negativeColor: '#C64E4A',
+            positiveColor: '',
+            subtotalColor: '#4E81BC',
+            totalColor: '#4E81BC',
+            intermediateSumIndexes: [],
+            sumIndexes: [],
+            connectorLine: {
+                strokeWidth: 1,
+                strokeColor: '#5F6A6A',
+                dashArray: '',
+                strokeOpacity: 1
+            }
+        },
+
+        histogramSettings: {
+            binInterval: null,
+            showNormalDistribution: false,
+            normalCurveColor: '',
+            normalCurveOpacity: 1,
+            normalCurveWidth: 2,
+            normalCurveDashArray: ''
+        },
+        paretoOptions: {
+            fill: '',
+            width: 1,
+            dashArray: '',
+            marker: {
+                visible: false,
+                width: 7,
+                height: 7,
+                shape: null,
+                filled: true,
+                imageUrl: '',
+                fill: null,
+                border: {
+                    width: 2,
+                    color: '',
+                    dashArray: ''
+                },
+                offset: { x: 0, y: 0 },
+                opacity: 1,
+                highlightable: true,
+                dataLabel: {
+                    visible: false,
+                    showZero: true,
+                    labelField: null,
+                    fill: 'transparent',
+                    format: null,
+                    opacity: 1,
+                    rotationAngle: 0,
+                    enableRotation: false,
+                    template: undefined,
+                    position: 'Auto',
+                    borderRadius: { x: 5, y: 5 },
+                    textAlign: 'Center',
+                    border: { width: 1, color: '' },
+                    margin: {
+                        right: 5, bottom: 5, left: 5, top: 5
+                    },
+                    font: {
+                        fontStyle: 'Normal',
+                        fontSize: '12px',
+                        fontWeight: 'Normal',
+                        color: '',
+                        fontFamily: '',
+                        opacity: 1
+                    }
+                }
+            },
+            showAxis: true
+        }
     },
     ChartStackLabels: {
         visible: false,
@@ -807,6 +880,75 @@ export const defaultChartConfigs: ChartConfig = {
             tabIndex: 0
         }
     },
-    StripLines: [{ ...defaultStripLineSettings }]
+    StripLines: [{ ...defaultStripLineSettings }],
+    ChartTrendline: {
+        name: '',
+        dashArray: '',
+        visible: true,
+        type: 'Linear',
+        period: 2,
+        polynomialOrder: 2,
+        backwardForecast: 0,
+        forwardForecast: 0,
+        animation: {
+            enable: true,
+            duration: 1000,
+            delay: 0
+        },
+        marker: {
+            visible: false,
+            width: 7,
+            height: 7,
+            shape: null,
+            filled: true,
+            imageUrl: '',
+            fill: null,
+            border: {
+                width: 2,
+                color: '',
+                dashArray: ''
+            },
+            offset: { x: 0, y: 0 },
+            opacity: 1,
+            highlightable: true,
+            dataLabel: {
+                visible: false,
+                showZero: true,
+                labelField: null,
+                fill: 'transparent',
+                format: null,
+                opacity: 1,
+                rotationAngle: 0,
+                enableRotation: false,
+                template: undefined,
+                position: 'Auto',
+                borderRadius: { x: 5, y: 5 },
+                textAlign: 'Center',
+                border: { width: 1, color: '' },
+                margin: {
+                    right: 5, bottom: 5, left: 5, top: 5
+                },
+                font: {
+                    fontStyle: 'Normal',
+                    fontSize: '12px',
+                    fontWeight: 'Normal',
+                    color: '',
+                    fontFamily: '',
+                    opacity: 1
+                }
+            }
+        },
+        enableTooltip: true,
+        intercept: undefined,
+        stroke: '',
+        width: 1,
+        opacity: 1,
+        legendShape: 'SeriesType',
+        accessibility: {
+            ariaLabel: '',
+            focusable: true,
+            tabIndex: 0,
+            role: ''
+        }
+    }
 };
-

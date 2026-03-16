@@ -8,3 +8,5 @@ export * from './base/interfaces';
 export * from './elements/PieChartLegend';
 export * from './elements/PieChartDataLabel';
 export * from './user-interaction/PieChartTooltip';
+export * from './user-interaction/PieChartHighlight';
+export * from './user-interaction/PieChartSelection';

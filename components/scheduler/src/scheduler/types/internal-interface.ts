@@ -1,6 +1,6 @@
-import { View } from '../types/enums';
+import { AlertAction, CrudAction, View } from '../types/enums';
 import { ReactElement, CSSProperties, RefObject } from 'react';
-import { EventModel, TimeSlotProps, SchedulerProps, ViewSpecificProps } from './scheduler-types';
+import { EventModel, TimeSlotProps, SchedulerProps, ViewSpecificProps, EventDragProps, EventResizeProps } from './scheduler-types';
 import { CalendarView, CalendarChangeEvent } from '@syncfusion/react-calendars';
 import { IMorePopup } from '../components/popup/more-popup';
 import { IQuickInfoPopup } from '../components/popup/quick-info-popup';
@@ -74,6 +74,14 @@ export interface ActiveViewProps extends SchedulerProps, ViewSpecificProps {
     showDeleteAlert?: (callback: () => void, message?: string) => void;
 
     /**
+     * Handler to show recurrence confirmation dialog for recurring events
+     *
+     * @param action - The alert action type (RecurrenceEdit or RecurrenceDelete)
+     * @param onSelect - Callback function that receives the selected option (EditOccurrence, EditSeries, DeleteOccurrence, DeleteSeries)
+     */
+    showRecurrenceAlert?: (action: AlertAction, onSelect: (selectOption: CrudAction) => void) => void;
+
+    /**
      * return the available views (optional)
      */
     getAvailableViews?: () => ViewsInfo[];
@@ -82,6 +90,16 @@ export interface ActiveViewProps extends SchedulerProps, ViewSpecificProps {
      * Handler to show alert dialog
      */
     confirmationDialog?: ReturnType<typeof useConfirmationDialog>;
+
+    /**
+     * Configuration for event drag-and-drop behavior.
+     */
+    eventDrag?: EventDragProps;
+
+    /**
+     * Configuration for event resize behavior.
+     */
+    eventResize?: EventResizeProps;
 }
 
 /** @private */
@@ -206,3 +224,6 @@ export interface TimeSlot {
 
 /** @private */
 export type Point = { clientX: number; clientY: number; }
+
+/** @private */
+export type AlertDialog = { isValid: boolean; shouldAlert: boolean; messageKey?: string; }

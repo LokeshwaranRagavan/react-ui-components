@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { VirtualizedList } from './virtualizedList';
-import { CheckBoxPosition, DataSource, FieldsMapping, VirtualizationProps } from './types';
+import { DataSource, FieldsMapping, VirtualizationProps } from './types';
 import { ListItem } from './listItem';
-import { DataManager, Query } from '@syncfusion/react-data';
 import { SelectEvent, useListItemSelection, UseListItemSelectionResult } from './useListItemSelection';
 import { isNullOrUndefined } from '@syncfusion/react-base';
+import VirtualScroller from './virtualScroller';
+import { ScrollEvent } from '../list-view';
 
 const UL_CLASS: string = 'sf-list-parent sf-ul';
 
@@ -17,26 +17,22 @@ export interface GetItemPropsOptions {
  * Interface for ListItems common props.
  *
  */
-export interface ListItemsCommonProps {
+export interface ListItemBaseProps {
     /** ARIA roles/text for list and items; listRole is applied to the <ul>. */
     ariaAttributes?: ListAriaAttributes;
-    /** Render a checkbox for each list item. */
-    checkBox?: boolean;
-    /** Checkbox position relative to item content (effective when checkBox is true). */
-    checkBoxPosition?: CheckBoxPosition;
-    /** Virtualization settings; when set and no parentClass, renders via VirtualizedList. */
-    virtualization?: VirtualizationProps;
     /** Custom item content template (function or ReactNode). */
     itemTemplate?: Function | React.ReactNode;
     /** Custom group header template (function or ReactNode). */
     groupTemplate?: Function | React.ReactNode;
     /** Custom container class; also disables spacer path when set. */
     parentClass?: string;
+    /** Fields mapping for ListItem; falls back to options.fields when omitted. */
+    fields?: FieldsMapping;
     /*** Optional callback to provide additional/overridden HTML attributes for each rendered item. */
     getItemProps?: (args: GetItemPropsOptions) =>
     React.HTMLAttributes<HTMLElement> & React.RefAttributes<HTMLElement> | undefined;
     /** KeyDown handler for each ListItem (overrides options.itemKeyDown when provided). */
-    onItemKeyDown?: (e: React.KeyboardEvent<HTMLLIElement>, index: number) => void;
+    onItemKeyDown?: (e: React.KeyboardEvent<HTMLElement>, index: number) => void;
 }
 
 /**
@@ -47,10 +43,9 @@ export interface ListItemsCommonProps {
 export interface ListAriaAttributes {
     level?: number;
     listRole?: string;
+    listLabel?: string;
     itemRole?: string;
     groupItemRole?: string;
-    itemText?: string;
-    wrapperRole?: string;
 }
 
 /**
@@ -58,11 +53,10 @@ export interface ListAriaAttributes {
  */
 const defaultAriaAttributes: ListAriaAttributes = {
     level: 1,
-    listRole: 'presentation',
-    itemRole: 'presentation',
-    groupItemRole: 'group',
-    itemText: 'list-item',
-    wrapperRole: 'presentation'
+    listRole: 'list',
+    listLabel: 'list',
+    itemRole: 'listitem',
+    groupItemRole: 'group'
 };
 
 /**
@@ -72,53 +66,35 @@ export const defaultMappedFields: FieldsMapping = {
     id: 'id',
     text: 'text',
     url: 'url',
-    value: 'value',
-    selected: 'selected',
-    checked: 'checked',
     disabled: 'disabled',
     icon: 'icon',
-    child: 'child',
     visible: 'visible',
-    hasChildren: 'hasChildren',
     tooltip: 'tooltip',
     htmlAttributes: 'htmlAttributes',
     imageUrl: 'imageUrl',
-    groupBy: undefined,
-    sortBy: undefined
+    groupBy: undefined
 };
 
 /**
  * Props for the ListItems component.
  */
-export interface ListItemsProps extends ListItemsCommonProps {
+export interface ListItemsProps extends ListItemBaseProps {
     /** Items to render (objects or primitives). */
     items?: DataSource[];
-    /** Fields mapping for ListItem; falls back to options.fields when omitted. */
-    fields?: FieldsMapping;
-    /**Ref to the scrollable parent element for virtualization calculations. */
-    scrollParent?: React.RefObject<HTMLElement>
-    /** Data source for local/remote binding (used by virtualization). */
-    dataSource?: DataSource[] | DataManager;
-    /** Base query for DataManager operations. */
-    baseQuery?: Query;
-    /** Header element ref (used for offset calculations in virtualization). */
-    headerRef?: React.RefObject<HTMLDivElement | null>;
-    /** Focused item index for styling/focus parity. */
-    focusedIndex?: number;
-    /** Called before data action begins (e.g., fetch). */
-    onActionBegin?: () => void;
-    /** Called after data action completes successfully. */
-    onActionComplete?: () => void;
-    /** Called when a data action fails. */
-    onActionFailure?: (e: object) => void;
     /** Selection event handler triggered when item is selected/checked. */
-    onSelect?: (event: SelectEvent) => void;
+    onSelect?: (event: SelectEvent, isAlreadySelected: boolean) => void;
     /** Function to update list item data source. */
     setListItemDatas?: (data: DataSource[]) => void;
     /** Whether the list is disabled. */
     disabled?: boolean;
-    /** Current data source level for nested lists. */
-    curDSLevel?: string[];
+    /**Ref to the scrollable parent element for virtualization calculations. */
+    scrollParent?: React.RefObject<HTMLElement>
+    /** Virtualization settings; when set and no parentClass, renders via VirtualizedList. */
+    virtualization?: VirtualizationProps;
+    /** Disable the built-in keyboard navigation and click actions. */
+    disableDefaultInteractions?: boolean;
+    /** Called when the scroll reaches the end of the current virtual window. The consumer should append the next set starting at `startIndex` with `count` items. */
+    onScrollRequest?: (args: ScrollEvent) => void | Promise<void>;
 }
 
 /**
@@ -129,114 +105,117 @@ export const ListItems: React.NamedExoticComponent<ListItemsProps & React.RefAtt
         items,
         fields = defaultMappedFields,
         scrollParent,
-        headerRef,
-        dataSource,
-        baseQuery,
-        checkBox= false,
-        checkBoxPosition= CheckBoxPosition.Left,
         virtualization,
         parentClass,
         itemTemplate,
         groupTemplate,
-        ariaAttributes,
-        onActionBegin, onActionComplete, onActionFailure, getItemProps,
-        onItemKeyDown, onSelect, setListItemDatas, disabled = false, curDSLevel = [] }:
+        ariaAttributes, getItemProps,
+        onItemKeyDown, onSelect, setListItemDatas, onScrollRequest,
+        disableDefaultInteractions = false, disabled = false}:
     ListItemsProps, ref: React.ForwardedRef<HTMLDivElement>) => {
         const curAttributes: ListAriaAttributes = { ...defaultAriaAttributes, ...ariaAttributes };
         ariaAttributes = curAttributes;
-        const ParentTag: 'div' | 'ul' = (virtualization ? 'div' : 'ul') as 'div' | 'ul';
         const contentRef: React.RefObject<HTMLDivElement | null> = React.useRef<HTMLDivElement | null>(null);
+        const ULRef: React.RefObject<HTMLDivElement | HTMLUListElement | null> = React.useRef<HTMLDivElement>(null);
+
         React.useImperativeHandle(ref, () => contentRef.current as HTMLDivElement, []);
 
         const selectionHook: UseListItemSelectionResult = useListItemSelection({
-            disabled,
-            checkBox: checkBox as boolean,
-            fields: fields as FieldsMapping,
+            fields: fields,
             listItemDatas: items || [],
-            curDSLevel,
             onSelect,
             setListItemDatas: setListItemDatas || (() => undefined),
-            contentRef: contentRef as React.RefObject<HTMLDivElement>
+            scrollParent: (scrollParent?.current ? scrollParent : (ULRef as React.RefObject<HTMLElement>))
         });
+
+        const idField: string = fields?.id ?? 'id';
+        const focusedIndexNumber: number = React.useMemo(() => {
+            if (!selectionHook.focusedItem || !items) { return -1; }
+            const focussedId: string = String(selectionHook.focusedItem?.[String(idField)]);
+            if (isNullOrUndefined(focussedId)) { return -1; }
+            return items.findIndex((item: DataSource) => String(item?.[String(idField)]) === String(focussedId));
+        }, [selectionHook.focusedItem, items, idField]);
 
         const handleItemClick: (e: React.MouseEvent<HTMLLIElement, MouseEvent>, index: number) => void =
         React.useCallback((e: React.MouseEvent<HTMLLIElement>, index: number) => {
-            if (isNullOrUndefined(fields.id)) {
-                onSelect?.({event: e, index: index});
+            if (disabled) { return; }
+            if (disableDefaultInteractions) {
+                onSelect?.({event: e, index: index}, focusedIndexNumber === index);
                 return;
             }
-            const li: HTMLLIElement = e.currentTarget as HTMLLIElement;
-            if (!disabled && checkBox && selectionHook.isValidLI(li)) {
-                if (li.classList.contains('sf-has-child')) {
-                    selectionHook.handleSelection(li, e, index);
-                } else {
-                    selectionHook.setCheckboxLI(li, e, index);
-                }
-            } else {
-                selectionHook.handleSelection(li, e, index);
-            }
-        }, [disabled, checkBox, selectionHook]);
+            const currentData: DataSource | undefined = items?.[Number(index)];
+            if (!currentData) { return; }
+            selectionHook.handleSelection(currentData, e, index);
+        }, [disableDefaultInteractions, disabled, selectionHook]);
 
-        const handleItemKeyDown: (e: React.KeyboardEvent<HTMLLIElement>, index: number) => void =
-        React.useCallback((e: React.KeyboardEvent<HTMLLIElement>, index: number) => {
-            if (!isNullOrUndefined(fields.id)) {
-                selectionHook.keyActionHandler(e, index);
+        const handleItemKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void =
+        React.useCallback((e: React.KeyboardEvent<HTMLElement>) => {
+            if (disabled) { return; }
+            if (!disableDefaultInteractions) {
+                selectionHook.keyActionHandler(e);
             }
-            onItemKeyDown?.(e, index);
-        }, [selectionHook, onItemKeyDown]);
+            onItemKeyDown?.(e, focusedIndexNumber);
+        }, [disableDefaultInteractions, selectionHook, onItemKeyDown, focusedIndexNumber, disabled]);
+
+        const wrapperClass: string = React.useMemo(() => { return [
+            parentClass ? parentClass : 'sf-list-container',
+            virtualization ? 'sf-virtualization' : ''
+        ].filter(Boolean).join(' ').trim();
+        }, [virtualization, parentClass]);
+
+        const renderItem: (index: number, item: DataSource) => React.JSX.Element = React.useCallback(
+            (index: number, item: DataSource) => (
+                <ListItem
+                    key={`sf-item-${index}`}
+                    item={item}
+                    fields={fields}
+                    index={index}
+                    onItemClick={handleItemClick}
+                    getItemProps={getItemProps}
+                    itemTemplate={itemTemplate}
+                    groupTemplate={groupTemplate}
+                    parentClass={parentClass}
+                    ariaAttributes={ariaAttributes}
+                    focusedIndex={focusedIndexNumber}
+                    as={!virtualization ? 'li' : 'div'}
+                />
+            ),
+            [fields, handleItemClick, getItemProps, itemTemplate, groupTemplate, parentClass, ariaAttributes,
+                focusedIndexNumber]);
+
+        const handleScrollRequest: React.UIEventHandler<HTMLUListElement>
+        = React.useCallback((e: React.UIEvent<HTMLUListElement, UIEvent>) => {
+            onScrollRequest?.({
+                originalEvent: e.nativeEvent as Event,
+                startIndex: 0,
+                count: 0
+            });
+        }, [onScrollRequest]);
 
         return (
-            <div ref={contentRef} className={parentClass ? parentClass : 'sf-list-container'}>
-                <ParentTag className={UL_CLASS} role={ariaAttributes?.listRole ?? undefined}
-                    aria-label={ariaAttributes.listRole ?? undefined}>
-                    {virtualization ? (
-                        <VirtualizedList
-                            items={items}
-                            fields={fields}
-                            onItemClick={handleItemClick}
-                            onItemKeyDown={handleItemKeyDown}
-                            scrollParent={scrollParent}
-                            dataSource={dataSource}
-                            baseQuery={baseQuery}
-                            headerRef={headerRef}
-                            onActionBegin={onActionBegin}
-                            onActionComplete={onActionComplete}
-                            onActionFailure={onActionFailure}
-                            setListItemDatas={setListItemDatas}
-                            getItemProps={getItemProps}
-                            activeItemsId={selectionHook.activeItemsId}
-                            focusedIndex={selectionHook.focusedItemIndex}
-                            itemTemplate={itemTemplate}
-                            groupTemplate={groupTemplate}
-                            checkBoxPosition={checkBoxPosition}
-                            virtualization={virtualization}
-                            parentClass={parentClass}
-                            ariaAttributes={ariaAttributes}
-                            checkBox={checkBox}
-                        />
-                    ) : (items?.map((item: DataSource, index: number) => {
-                        return (
-                            <ListItem
-                                key={`item-${index}`}
-                                item={item}
-                                fields={fields as FieldsMapping}
-                                index={index}
-                                onItemClick={handleItemClick}
-                                onItemKeyDown={handleItemKeyDown}
-                                getItemProps={getItemProps}
-                                focusedIndex={selectionHook.focusedItemIndex}
-                                itemTemplate={itemTemplate}
-                                groupTemplate={groupTemplate}
-                                checkBoxPosition={checkBoxPosition}
-                                virtualization={virtualization}
-                                parentClass={parentClass}
-                                ariaAttributes={ariaAttributes}
-                                checkBox={checkBox}
-                            />
-                        );
-                    })
-                    )}
-                </ParentTag>
+            <div ref={contentRef} className={wrapperClass}>
+                {!virtualization ? (
+                    <ul ref={ULRef as React.RefObject<HTMLUListElement>} className={UL_CLASS}
+                        role={ariaAttributes?.listRole ?? undefined} aria-label={ariaAttributes?.listLabel ?? undefined}
+                        tabIndex={0} onKeyDown={handleItemKeyDown} onScroll={handleScrollRequest}>
+                        {items?.map((item: DataSource, index: number) => {
+                            return renderItem(index, item);
+                        })}
+                    </ul>
+
+                ) : (<div ref={ULRef as React.RefObject<HTMLDivElement>} className={UL_CLASS} role={ariaAttributes?.listRole ?? undefined}
+                    aria-label={ariaAttributes?.listLabel ?? undefined} tabIndex={0} onKeyDown={handleItemKeyDown}>
+                    <VirtualScroller
+                        items={items as DataSource[]}
+                        itemSize={virtualization?.itemSize}
+                        pageSize={virtualization?.pageSize}
+                        overscanCount={virtualization?.overscanCount}
+                        showSkeleton={virtualization.showSkeleton}
+                        scrollParent={scrollParent || ULRef as React.RefObject<HTMLElement>}
+                        onScrollRequest={onScrollRequest}
+                        itemContent={renderItem}
+                    />
+                </div>)}
             </div>
         );
     }));

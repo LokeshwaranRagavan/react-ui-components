@@ -44,6 +44,7 @@ export interface IThemeStyle {
     chartSubTitleFont: TextStyleModel;
     crosshairLabelFont: TextStyleModel;
     stripLineLabelFont: TextStyleModel;
+    histogram: string;
 }
 
 /**
@@ -89,6 +90,7 @@ export function getThemeColor(theme: Theme): IThemeStyle {
             toolkitIconRectOverFill: '#EADDFF',
             toolkitIconRectSelectionFill: '#EADDFF',
             toolkitIconRect: { x: -4, y: -5, height: 26, width: 26 },
+            histogram: '#D21020',
             chartTitleFont: {
                 color: '#1C1B1F', fontFamily: 'Roboto', fontSize: '16px', fontStyle: 'Regular', fontWeight: '400'
             },
@@ -154,6 +156,7 @@ export function getThemeColor(theme: Theme): IThemeStyle {
             toolkitIconRectOverFill: '#4F378B',
             toolkitIconRectSelectionFill: '#4F378B',
             toolkitIconRect: { x: -4, y: -5, height: 26, width: 26 },
+            histogram: '#FF9E45',
             chartTitleFont: {
                 color: '#E6E1E5', fontFamily: 'Roboto', fontSize: '16px', fontStyle: 'SemiBold', fontWeight: '600'
             },

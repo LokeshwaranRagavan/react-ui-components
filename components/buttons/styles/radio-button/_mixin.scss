@@ -1,5 +1,6 @@
 @mixin radio-base(
   $font-size,
+  $line-height,
   $padding-inline-start,
   $height,
   $icon-height,
@@ -10,6 +11,7 @@
   .sf-label {
     padding-inline-start: $padding-inline-start;
     font-size: $font-size;
+    line-height: $line-height;
   }
 
   &::before {

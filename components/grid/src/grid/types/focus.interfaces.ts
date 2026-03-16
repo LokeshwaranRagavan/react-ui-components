@@ -168,6 +168,26 @@ export interface CellFocusEvent<T = unknown> {
     columnIndex: number;
 
     /**
+     * Specifies the zero-based row index of the focused cell.
+     * Identifies the row position of the cell within the grid’s data or structure.
+     * Used to track the focused cell’s location for navigation or processing.
+     *
+     * @private
+     * @default -
+     */
+    virtualAriaRowIndex?: number;
+
+    /**
+     * Specifies the zero-based column index of the focused cell.
+     * Identifies the column position of the cell within the grid’s data or structure.
+     * Used to track the focused cell’s location for navigation or processing.
+     *
+     * @private
+     * @default -
+     */
+    virtualAriaColIndex?: number;
+
+    /**
      * References the DOM element of the focused cell.
      * Provides access to the cell’s HTMLElement for manipulation or inspection.
      * Used internally to manage focus state and UI updates.
@@ -591,6 +611,7 @@ export interface FocusStrategyResult {
      * @returns {void}
      */
     navigateToLastCell: () => void;
+    debounceLastVirtualRowCellFocusHelper: (isCellNotRequiredToUpdate?: boolean) => void;
 
     /**
      * Determines whether a keyboard event corresponds to a navigation key.
@@ -770,6 +791,24 @@ export interface FocusedCellInfo {
      * @default -
      */
     colIndex: number;
+
+    /**
+     * Specifies the zero-based row index of the focused cell.
+     * Identifies the row position of the cell within the grid’s data or structure.
+     * Used to track the focused cell’s location for navigation or processing.
+     *
+     * @default -
+     */
+    virtualAriaRowIndex?: number;
+
+    /**
+     * Specifies the zero-based column index of the focused cell.
+     * Identifies the column position of the cell within the grid’s data or structure.
+     * Used to track the focused cell’s location for navigation or processing.
+     *
+     * @default -
+     */
+    virtualAriaColIndex?: number;
 
     /**
      * Indicates whether the focused cell is located in the header section of the grid.

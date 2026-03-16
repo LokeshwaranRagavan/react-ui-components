@@ -47,7 +47,6 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
     const touchTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null> =
       useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const [tooltipVisible, setTooltipVisible] = useState<boolean>(false);
     const [tooltipLocation, setTooltipLocation] = useState<PieChartLocationProps>({ x: 0, y: 0 });
     const [tooltipState, setTooltipState] = useState<TooltipState>({
         header: '',
@@ -65,13 +64,16 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
     useEffect(() => {
         if (phase === 'rendering' && layoutRef.current) {
             const chart: Chart = layoutRef.current as Chart;
-
             const unregisterMouseMove: () => void = registerChartEventHandler(
                 'mouseMove',
-                (e: Event, c: Chart) => handleMouseMove(e, c),
+                (e: Event, c: Chart, ...args: (string | number | boolean | { x?: number | undefined; y?: number | undefined;
+                    targetId?: string | undefined; } | null | undefined)[]) => {
+                    const [, , isKeyboardNavArg] = args;
+                    const isKeyboardNav: boolean = isKeyboardNavArg === true;
+                    handleMouseMove(e, c, isKeyboardNav);
+                },
                 chart.element.id
             );
-
             const unregisterMouseDown: () => void = registerChartEventHandler(
                 'mouseDown',
                 (e: Event, c: Chart) => handleMouseDown(e, c),
@@ -114,15 +116,16 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
      *
      * @param {Event} event - Source DOM event
      * @param {Chart} chart - Chart instance
+     * @param {boolean} [isKeyboardNav] - Indicates whether the tooltip is triggered via keyboard navigation
      * @returns {void} Nothing
      */
-    function handleMouseMove(event: Event, chart: Chart): void {
+    function handleMouseMove(event: Event, chart: Chart, isKeyboardNav?: boolean): void {
         if (isWithinBounds(chart.mouseX, chart.mouseY, chart.clipRect as Rect)) {
             if (hideTooltipTimeoutRef.current) {
                 clearTimeout(hideTooltipTimeoutRef.current);
                 hideTooltipTimeoutRef.current = null;
             }
-            renderSeriesTooltip(event as PointerEvent, chart);
+            renderSeriesTooltip(event as PointerEvent, chart, isKeyboardNav === true);
         } else {
             scheduleFadeOut(fadeOutDuration);
         }
@@ -182,7 +185,6 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
             }
             touchTimeoutRef.current = setTimeout((): void => {
                 tooltipRef.current?.fadeOut();
-                setTooltipVisible(false);
                 touchTimeoutRef.current = null;
             }, 2000);
         }
@@ -204,7 +206,6 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
         if (hideTooltipTimeoutRef.current) { clearTimeout(hideTooltipTimeoutRef.current); }
         hideTooltipTimeoutRef.current = setTimeout((): void => {
             tooltipRef.current?.fadeOut();
-            setTooltipVisible(false);
             hideTooltipTimeoutRef.current = null;
         }, delay);
     }
@@ -240,9 +241,10 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
      *
      * @param {PointerEvent} e - Pointer event
      * @param {Chart} chart - Chart instance
+     * @param {boolean} [isKeyboardNav] - Indicates whether the tooltip is triggered via keyboard navigation
      * @returns {void} Nothing
      */
-    function renderSeriesTooltip(e: PointerEvent, chart: Chart): void {
+    function renderSeriesTooltip(e: PointerEvent, chart: Chart, isKeyboardNav?: boolean): void {
         const targetEl: Element | null = e.target as Element | null;
         let resolved: PointData = { point: null, series: null };
 
@@ -266,19 +268,6 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
             return;
         }
 
-        const isSamePoint: boolean =
-          !!previousPointRef.current &&
-          previousPointRef.current.pointIndex === (resolved.point as Points).index &&
-          previousPointRef.current.seriesIndex === (resolved.series as SeriesProperties).index;
-
-        if (isSamePoint) {
-            if (!tooltipVisible && tooltipRef.current) {
-                tooltipRef.current.fadeIn();
-                setTooltipVisible(true);
-            }
-            return;
-        }
-
         previousPointRef.current = {
             pointIndex: (resolved.point as Points).index,
             seriesIndex: (resolved.series as SeriesProperties).index
@@ -295,15 +284,24 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
         if (typeof customText === 'string') {
             content = customText;
         }
+        const keyboardNav: boolean = isKeyboardNav === true;
 
-        const symbolLocX: number = (resolved.point as Points).symbolLocation.x;
-        const symbolLocY: number = (resolved.point as Points).symbolLocation.y;
+        const shouldFollowPointer: boolean =
+            (props.followPointer ?? true) && !keyboardNav;
+
+        const padding: number = 10;
+        const symbolLocX: number = chart.mouseX;
+        const symbolLocY: number = chart.mouseY;
+        const pointX: number = (resolved.point as Points).symbolLocation.x;
+        const pointY: number = (resolved.point as Points).symbolLocation.y;
+        const baseX: number = shouldFollowPointer ? symbolLocX : pointX;
+        const baseY: number = shouldFollowPointer ? symbolLocY : pointY;
         const hasFixedX: boolean = props.location !== undefined && props.location.x !== undefined;
         const hasFixedY: boolean = props.location !== undefined && props.location.y !== undefined;
 
         const location: PieChartLocationProps = {
-            x: hasFixedX ? (props.location?.x as number) : symbolLocX,
-            y: hasFixedY ? (props.location?.y as number) : symbolLocY
+            x: hasFixedX ? (props.location?.x as number) : baseX,
+            y: hasFixedY ? (props.location?.y as number) : (shouldFollowPointer ? baseY - padding : baseY)
         };
 
         setTooltipState({
@@ -317,8 +315,6 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
 
         const color: string = resolveColor(resolved);
         setPalette([color]);
-
-        setTooltipVisible(true);
         tooltipRef.current?.fadeIn();
     }
 
@@ -408,6 +404,8 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
     const areaBounds: Rect = chartInstance?.rect;
     const hasFixedPosition: boolean = props.location !== undefined;
     const arrowPadding: number = hasFixedPosition ? 0 : 7;
+    const followPointer: boolean = props.followPointer ?? true;
+
 
     return (
         <g id={`${layoutRef.current.element.id}_tooltip`} pointerEvents="none">
@@ -428,7 +426,7 @@ export const PieChartTooltipRenderer: React.FC<PieChartTooltipProps> = (props: P
                 areaBounds={areaBounds}
                 isFixed={hasFixedPosition}
                 controlName="CircularChart"
-                enableAnimation={props.enableAnimation}
+                enableAnimation={!followPointer && props.enableAnimation}
                 textStyle={tooltipState.textStyle}
                 duration={props.duration}
                 opacity={props.opacity}

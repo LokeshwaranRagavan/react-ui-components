@@ -1,6 +1,7 @@
 import { forwardRef, HTMLAttributes, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
-import { preRender, useProviderContext, SvgIcon, useRippleEffect } from '@syncfusion/react-base';
+import { preRender, useProviderContext, useRippleEffect } from '@syncfusion/react-base';
 import * as React from 'react';
+import { CheckTickIcon, CloseIcon } from '@syncfusion/react-icons';
 
 /**
  * Represents the variant types for the Chip component.
@@ -93,6 +94,20 @@ export interface ChipBaseProps {
      * @default -
      */
     color?: ChipColor;
+
+    /**
+     * Specifies the icon element to indicate the chip’s selected state.
+     * When provided, replaces the default selection indicator.
+     * @default -
+     */
+    selectIcon?: React.ReactNode;
+
+    /**
+     * Specifies the icon element to render for the chip’s remove action.
+     * When provided, replaces the default close/remove icon.
+     *@default -
+     */
+    removeIcon?: React.ReactNode;
 }
 
 /**
@@ -166,6 +181,8 @@ React.memo(forwardRef<IChip, ChipProps>((props: ChipComponentProps, ref: React.R
         color,
         onDelete,
         onClick,
+        selectIcon= <CheckTickIcon/>,
+        removeIcon= <CloseIcon/>,
         ...otherProps
     } = props;
 
@@ -180,14 +197,14 @@ React.memo(forwardRef<IChip, ChipProps>((props: ChipComponentProps, ref: React.R
         trailingIconUrl,
         removable,
         variant,
-        color
+        color,
+        selectIcon,
+        removeIcon
     };
 
     const chipRef: React.RefObject<HTMLDivElement | null> = useRef<HTMLDivElement>(null);
     const [isFocused, setIsFocused] = useState<boolean>(false);
     const { dir, ripple } = useProviderContext();
-    const closeIcon: string = 'M10.5858 12.0001L2.58575 4.00003L3.99997 2.58582L12 10.5858L20 2.58582L21.4142 4.00003L13.4142 12.0001L21.4142 20L20 21.4142L12 13.4143L4.00003 21.4142L2.58581 20L10.5858 12.0001Z';
-    const selectIcon: string = 'M21.4142 6L9.00003 18.4142L2.58582 12L4.00003 10.5858L9.00003 15.5858L20 4.58578L21.4142 6Z';
     const IconClasses: string = 'sf-content-center sf-overflow-hidden';
     const { rippleMouseDown, Ripple} = useRippleEffect(ripple);
 
@@ -304,7 +321,7 @@ React.memo(forwardRef<IChip, ChipProps>((props: ChipComponentProps, ref: React.R
         >
             {chipClassName.includes('sf-selectable') && (
                 <span className='sf-chip-selectable-icon sf-content-center'>
-                    <SvgIcon d={ selectIcon }></SvgIcon>
+                    {selectIcon}
                 </span>
             )}
             {(avatar) && (
@@ -329,7 +346,7 @@ React.memo(forwardRef<IChip, ChipProps>((props: ChipComponentProps, ref: React.R
                     onClick={handleSpanDelete}
                 >
                     {removable && (
-                        <SvgIcon d={closeIcon} ></SvgIcon>
+                        removeIcon
                     )}
                     {!removable && typeof trailingIcon !== 'string' && trailingIcon}
                     {!removable && trailingIconUrl && (

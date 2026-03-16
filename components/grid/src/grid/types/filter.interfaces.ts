@@ -1,8 +1,9 @@
 import { Dispatch, SetStateAction } from 'react';
-import { FilterType, FilterBarMode, ActionType, ValueType } from './index';
+import { FilterType, FilterBarMode, ActionType, ValueType, IndicatorType } from './index';
 import { ColumnProps } from '../types/column.interfaces';
 import { ICustomOptr } from '../types/interfaces';
 import { GridActionEvent } from '../types/grid.interfaces';
+import { ExcelFilterArgs } from '../views/common/Excel-CheckBox-filter';
 
 /**
  * Defines the configuration for filtering functionality in the Data Grid component.
@@ -42,14 +43,23 @@ export interface FilterSettings {
     columns?: FilterPredicates[];
 
     /**
-     * Configures the type of filter UI to be used in the grid, such as `FilterBar`.
+     * Configures the type of filter UI to be used in the grid.
      * Determines the visual interface for applying filters to columns.
+     * Supported values are `'FilterBar'`, `'Excel'`, and `'CheckBox'`.
      *
      * @type {FilterType}
      * @default 'FilterBar'
-     * @private
      */
     type?: FilterType;
+
+    /**
+     * Defines the loading indicator. The available loading indicator are:
+     * * Spinner
+     * * Shimmer
+     *
+     * @default Shimmer
+     */
+    loadingIndicator?: IndicatorType;
 
     /**
      * Specifies the operational mode of the filter bar, controlling when filtering is triggered.
@@ -170,6 +180,126 @@ export interface FilterEvent extends GridActionEvent {
      */
     cancel?: boolean;
 }
+
+/**
+ * Represents the event triggered before the Excel filter dialog opens in the Data Grid component.
+ * Provides details about the filter dialog that is about to be displayed, including the column being filtered.
+ * Used to customize or cancel the filter dialog opening based on custom logic or validation.
+ */
+export interface FilterDialogBeforeOpenEvent extends GridActionEvent {
+    /**
+     * Specifies the name of the column for which the Excel filter dialog is being opened.
+     * Identifies the field in the data source associated with the filter dialog.
+     * Used to determine which column's data will be available for filtering.
+     *
+     * @type {string}
+     * @default -
+     */
+    columnName?: string;
+
+    /**
+     * Indicates the type of action that triggered the filter dialog.
+     * Typically represents the filter dialog opening action for Excel-style filtering.
+     * Helps identify the context in which the dialog is being displayed.
+     *
+     * @type {string | ActionType}
+     * @default -
+     */
+    action?: string | ActionType;
+
+    /**
+     * Provides configuration options for the Excel filter dialog.
+     * Contains settings such as available filter values, search options, and UI customization.
+     * Used to customize the Excel filter dialog appearance and behavior before it opens.
+     *
+     * @type {ExcelFilterArgs}
+     * @default -
+     */
+    options?: ExcelFilterArgs;
+
+    /**
+     * Specifies the data type of the column being filtered (e.g., 'string', 'number', 'date', 'boolean').
+     * Determines the filtering capabilities and UI elements available in the Excel filter dialog.
+     * Used internally to render appropriate filter controls based on column type.
+     *
+     * @type {string}
+     * @default -
+     */
+    columnType?: string;
+
+    /**
+     * Allows cancellation of the Excel filter dialog opening.
+     * When set to true, prevents the filter dialog from being displayed, useful for implementing
+     * custom validation, conditional access, or alternative filter UI logic.
+     * Typically used in event handlers to control filter dialog behavior.
+     *
+     * @type {boolean}
+     * @default false
+     */
+    cancel?: boolean;
+}
+
+
+/**
+ * Represents the event triggered after the Excel filter dialog opens in the Data Grid component.
+ * Provides comprehensive details about the opened filter dialog and its current state.
+ * Used to perform post-open customization, track user interactions, or apply additional logic
+ * after the Excel filter dialog is displayed.
+ */
+export interface FilterDialogAfterOpenEvent extends GridActionEvent {
+    /**
+     * Specifies the name of the column for which the Excel filter dialog has been opened.
+     * Identifies the field in the data source associated with the currently displayed filter dialog.
+     * Used to track which column is actively being filtered.
+     *
+     * @type {string}
+     * @default -
+     */
+    columnName?: string;
+
+    /**
+     * Indicates the type of action that resulted in the filter dialog being opened.
+     * Represents the completed action of displaying the Excel filter dialog.
+     * Helps in tracking and logging filter dialog interactions.
+     *
+     * @type {string | ActionType}
+     * @default -
+     */
+    action?: string | ActionType;
+
+    /**
+     * Provides the current configuration and state of the Excel filter dialog.
+     * Contains information such as available filter values, selected items, search query,
+     * and dialog UI settings that are now active.
+     * Used to inspect or further customize the Excel filter dialog after it has opened.
+     *
+     * @type {ExcelFilterArgs}
+     * @default -
+     */
+    options?: ExcelFilterArgs;
+
+    /**
+     * Specifies the data type of the column being filtered (e.g., 'string', 'number', 'date', 'boolean').
+     * Indicates which type-specific filter options are available in the opened Excel filter dialog.
+     * Used for type-aware customization or additional processing after dialog opens.
+     *
+     * @type {string}
+     * @default -
+     */
+    columnType?: string;
+
+    /**
+     * Reserved for future use to allow closing the dialog programmatically.
+     * When set to true, could trigger the Excel filter dialog to close after opening.
+     * Currently not applicable for after-open events but maintained for API consistency.
+     *
+     * @type {boolean}
+     * @default false
+     */
+    cancel?: boolean;
+}
+
+
 
 /**
  * Configures filter predicates for individual columns in the Data Grid component.
@@ -728,6 +858,8 @@ export interface FilterAPI {
      * @returns {void}
      */
     removeFilteredColsByField(field?: string, isClearFilterBar?: boolean): void;
+
+    filterHandler(fColl: FilterPredicates[], action?: string): void;
 
     /**
      * Handles keyboard input events during filter operations.

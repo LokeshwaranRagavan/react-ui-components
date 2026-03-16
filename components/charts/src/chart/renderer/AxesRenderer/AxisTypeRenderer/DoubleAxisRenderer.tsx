@@ -136,7 +136,8 @@ export function calculateRange(axis: AxisModel, chart: Chart, doubleRange: Doubl
                 if (chart.requireInvertedAxis) {
                     yAxisRange(series, doubleRange);
                 } else {
-                    findMinMax((series.xMin as number) - axis.paddingInterval, (series.xMax as number) + axis.paddingInterval, doubleRange);
+                    findMinMax((series.xMin as number) - axis.paddingInterval, (series.xMax as number) + axis.paddingInterval,
+                               doubleRange);
                 }
             }
 
@@ -155,7 +156,7 @@ export function calculateRange(axis: AxisModel, chart: Chart, doubleRange: Doubl
 
 /**
  * Prepares and configures the actual range for a given axis based on chart settings.
- * This function initializes the double range and adjusts it according to specific conditions.
+ * This function initializes the double range and adjusts it according to specific conditihistoons.
  *
  * @param {AxisModel} axis - The axis model to update with the actual range.
  * @param {ChartSizeProps} size - The dimensions of the chart affecting calculations.
@@ -236,31 +237,27 @@ export function createDoubleRange(start: number, end: number): DoubleRangeType {
  * @returns {void} This function modifies the provided double range and does not return a value.
  */
 function yAxisRange(series: SeriesProperties, doubleRange: DoubleRange): void {
-    // if (series.dragSettings.enable && chart.dragY) {
-    //     if (chart.dragY >= axis.visibleRange.max) {
-    //         series.yMax = chart.dragY + axis.visibleRange.interval;
-    //     }
-    //     if (chart.dragY <= axis.visibleRange.min) {
-    //         series.yMin = chart.dragY - axis.visibleRange.interval;
-    //     }
-    // }
+    if (series.type === 'Waterfall') {
+        let cumulativeMax: number = 0;
+        let cumulativeValue: number = 0;
+        const values: number[] = series.yData ?? [];
+        const intermediate: number[] = series?.waterfallSettings?.intermediateSumIndexes ?? [];
+        const summaries: number[] = series?.waterfallSettings?.sumIndexes ?? [];
 
-    // if (series.type === 'Waterfall') {
-    //     let cumulativeMax = 0;
-    //     let cumulativeValue = 0;
-    //     for (let i = 0; i < series.yData.length; i++) {
-    //         if (!(series.intermediateSumIndexes && series.intermediateSumIndexes.includes(i)) &&
-    //             !(series.sumIndexes && series.sumIndexes.includes(i))) {
-    //             cumulativeValue += series.yData[i];
-    //         }
-    //         if (cumulativeValue > cumulativeMax) {
-    //             cumulativeMax = cumulativeValue;
-    //         }
-    //     }
-    //     findMinMax(series.yMin, cumulativeMax);
-    // } else {
-    //     findMinMax(series.yMin, series.yMax);
-    // }
+        for (let i: number = 0; i < values.length; i++) {
+            const isIntermediate: boolean = intermediate.includes(i);
+            const isSummary: boolean = summaries.includes(i);
+            if (!isIntermediate && !isSummary) {
+                cumulativeValue += (values[i as number] ?? 0);
+            }
+            if (cumulativeValue > cumulativeMax) {
+                cumulativeMax = cumulativeValue;
+            }
+        }
+        const min: number = series.yAxis?.minimum === undefined ? 0 : (series.yMin as number);
+        findMinMax(min, cumulativeMax, doubleRange);
+        return;
+    }
     findMinMax(series.yMin as number, series.yMax as number, doubleRange);
 }
 

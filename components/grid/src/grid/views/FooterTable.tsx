@@ -7,7 +7,9 @@ import {
     useMemo,
     memo,
     JSX,
-    RefObject
+    RefObject,
+    useState,
+    useLayoutEffect
 } from 'react';
 import { FooterRowsBase } from './FooterRows';
 import {
@@ -19,6 +21,7 @@ import {
     FooterTableRef,
     IFooterTableBase
 } from '../types';
+import { parseUnit } from '../utils';
 
 /**
  * FooterTableBase component renders the table structure for grid footer
@@ -37,25 +40,55 @@ const FooterTableBase: ForwardRefExoticComponent<Partial<IFooterTableBase> & Ref
         (props: Partial<IFooterTableBase>, ref: RefObject<FooterTableRef>) => {
             const { tableScrollerPadding, ...rest } = props;
             // Access grid context providers
-            const { colElements: ColElements } = useGridMutableProvider();
-            const { id } = useGridComputedProvider();
+            const { colElements: ColElements, offsetX, virtualSettings } = useGridMutableProvider();
+            const { id, scrollModule } = useGridComputedProvider();
 
             // Refs for DOM elements and child components
             const footerTableRef: RefObject<HTMLTableElement> = useRef<HTMLTableElement>(null);
             const rowSectionRef: RefObject<FooterRowsRef> = useRef<FooterRowsRef>(null);
+            const [forceRerender, setForceRerender] = useState<Object>({});
+            const totalWidth: RefObject<number> = useRef(0);
 
             /**
              * Memoized colgroup element to prevent unnecessary re-renders
              * Contains column definitions for the table
              */
-            const colGroupContent: JSX.Element = useMemo<JSX.Element>(() => (
-                <colgroup
-                    key={`summarycontent-${id}-colgroup`}
-                    id={`summarycontent-${id}-colgroup`}
-                >
-                    {ColElements}
-                </colgroup>
-            ), [ColElements, id]);
+            const colGroupContent: JSX.Element = useMemo(() => {
+                let visibleCols: JSX.Element[] = [];
+
+                if (!virtualSettings.enableColumn) {
+                    visibleCols = ColElements;
+                } else {
+                    const startIndex: number = scrollModule?.virtualColumnInfo?.startIndex;
+                    const endIndex: number = scrollModule?.virtualColumnInfo?.endIndex;
+                    totalWidth.current = 0;
+                    for (let i: number = startIndex; i < endIndex; i++) {
+                        const col: JSX.Element = ColElements[i as number];
+                        visibleCols.push(col);
+
+                        // Optional: If you ever need cumulative width, you can calculate here
+                        const styleWidth: number = col?.props?.style?.width;
+                        totalWidth.current += parseUnit(styleWidth);
+                    }
+                }
+
+                return (
+                    <colgroup
+                        key={`content-${id}-colgroup`}
+                        id={`content-${id}-colgroup`}
+                    >
+                        {visibleCols.length > 0 ? visibleCols : null}
+                    </colgroup>
+                );
+            }, [
+                ColElements,
+                id,
+                offsetX,
+                virtualSettings.enableColumn,
+                scrollModule?.virtualColumnInfo?.startIndex,
+                scrollModule?.virtualColumnInfo?.endIndex,
+                forceRerender, totalWidth.current
+            ]);
 
             /**
              * Expose internal elements and methods through the forwarded ref
@@ -63,8 +96,13 @@ const FooterTableBase: ForwardRefExoticComponent<Partial<IFooterTableBase> & Ref
             useImperativeHandle(ref, () => ({
                 footerTableRef: footerTableRef.current,
                 getFooterTable: () => footerTableRef.current,
+                columnClientWidth: totalWidth.current,
                 ...(rowSectionRef.current)
-            }), [footerTableRef.current, rowSectionRef.current]);
+            }), [footerTableRef.current, rowSectionRef.current, totalWidth.current]);
+
+            useLayoutEffect(() => {
+                setForceRerender({});
+            }, [offsetX]);
 
             /**
              * Memoized footer rows component to prevent unnecessary re-renders

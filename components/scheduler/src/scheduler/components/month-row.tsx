@@ -19,7 +19,7 @@ export const MonthRow: FC = () => {
         hideOtherMonths
     } = useMonthRows();
 
-    const rowHeightsRef: RefObject<string[]> = useRef<string[]>(new Array(weeksToRender.length).fill('124px'));
+    const rowHeightsRef: RefObject<string[]> = useRef<string[]>([]);
 
     const [weekRowHeights, setWeekRowHeights] = useState<string[]>([]);
 
@@ -28,10 +28,19 @@ export const MonthRow: FC = () => {
             rowHeightsRef.current[Number(rowIndex)] = height;
             setWeekRowHeights([...rowHeightsRef.current]);
         }
-    }, [weeksToRender.length]);
+    }, []);
 
     useEffect(() => {
-        rowHeightsRef.current = new Array(weeksToRender.length).fill('124px');
+        const newLength: number = weeksToRender.length;
+        const currentLength: number = rowHeightsRef.current.length;
+        if (newLength !== currentLength) {
+            const defaultHeight: string = rowHeightsRef.current[0];
+            const newHeights: string[] = new Array(newLength).fill(defaultHeight).map((defaultHeight: string, index: number) =>
+                rowHeightsRef.current[parseInt(index.toString(), 10)] || defaultHeight
+            );
+            rowHeightsRef.current = newHeights;
+            setWeekRowHeights([...newHeights]);
+        }
     }, [weeksToRender.length]);
 
     const renderWeekNumbers: () => ReactNode[] = useCallback(() => {

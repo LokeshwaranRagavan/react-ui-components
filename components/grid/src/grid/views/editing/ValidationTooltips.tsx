@@ -14,20 +14,21 @@ export const ValidationTooltips: React.FC<ValidationTooltipsProps> = ({ formStat
     rowRef?: RefObject<HTMLTableRowElement>
 }) => {
     const grid: Partial<GridRef> & Partial<MutableGridSetter> = useGridComputedProvider();
-    const { editModule, commandColumnModule } = useGridMutableProvider();
+    const { editModule, commandColumnModule, offsetX, virtualSettings } = useGridMutableProvider();
     const { commandEdit } = commandColumnModule;
     const [tooltipTargets, setTooltipTargets] = useState<Record<string, React.RefObject<HTMLElement>>>({});
     const [activeTooltips, setActiveTooltips] = useState<Set<string>>(new Set());
 
     // Create container refs for all error fields - moved outside the render loop
-    const [containerRefs, setContainerRefs] = useState<Record<string, RefObject<HTMLDivElement>>>({});
+    const [containerRefs, setContainerRefs] =
+        useState<Record<string, { openedTranslateX?: number, container: RefObject<HTMLDivElement> }>>({});
 
     // Create proper React refs for tooltip targets and manage tooltip visibility
     // Target the table cell (td) instead of the input element for proper arrow positioning
     useEffect(() => {
         const newTargets: Record<string, React.RefObject<HTMLElement>> = {};
         const newActiveTooltips: Set<string> = new Set<string>();
-        const newContainerRefs: Record<string, RefObject<HTMLDivElement>> = {};
+        const newContainerRefs: Record<string, { openedTranslateX?: number, container: RefObject<HTMLDivElement> }> = {};
 
         Object.keys(formState.errors).forEach((field: string) => {
             // Target the table cell (td) containing the input for proper tooltip positioning
@@ -52,29 +53,24 @@ export const ValidationTooltips: React.FC<ValidationTooltipsProps> = ({ formStat
             newActiveTooltips.add(field);
 
             // Create or reuse container ref for this field
-            newContainerRefs[field as string] = containerRefs[field as string] || { current: null };
+            newContainerRefs[field as string] = {
+                container: containerRefs[field as string]?.container || { current: null },
+                ...(virtualSettings.enableColumn ? {
+                    openedTranslateX: containerRefs[field as string]?.container.current ?
+                        containerRefs[field as string]?.openedTranslateX : offsetX
+                } : {})
+            };
         });
 
         setTooltipTargets(newTargets);
         setActiveTooltips(newActiveTooltips);
         setContainerRefs(newContainerRefs);
-    }, [formState?.errors, editCellRefs]);
-
-    // Cleanup effect for container refs
-    useEffect(() => {
-        return () => {
-            Object.values(containerRefs).forEach((ref: RefObject<HTMLDivElement>) => {
-                if (ref.current) {
-                    ref.current = null;
-                }
-            });
-        };
-    }, [containerRefs]);
+    }, [formState?.errors, editCellRefs, offsetX]);
 
     return (
         <>
             {Object.entries(formState.errors).map(([field, error]: [string, string]) => {
-                const containerRef: RefObject<HTMLDivElement> = containerRefs[field as string];
+                const containerRef: { openedTranslateX?: number, container: RefObject<HTMLDivElement> } = containerRefs[field as string];
                 const targetRef: RefObject<HTMLElement> = tooltipTargets[field as string];
                 const isActive: boolean = activeTooltips.has(field);
 
@@ -84,14 +80,16 @@ export const ValidationTooltips: React.FC<ValidationTooltipsProps> = ({ formStat
 
                 return (
                     <Fragment key={field}>
-                        <div ref={containerRef} style={{
-                            position: 'relative'
+                        <div ref={containerRef.container} style={{
+                            position: 'relative',
+                            ...(virtualSettings.enableColumn ? { left: containerRef.openedTranslateX < offsetX ?
+                                -(offsetX - containerRef.openedTranslateX) : containerRef.openedTranslateX - offsetX } : {})
                         }}></div>
                         <Tooltip
                             key={`${field}_ValidationError`}
                             content={<label className="sf-error" htmlFor={field} id={`${field}-info`} style={{display: 'block'}}>{error}</label>}
                             target={targetRef}
-                            container={containerRef}
+                            container={containerRef.container}
                             style={{
                                 maxWidth: formatUnit(targetRef.current?.getBoundingClientRect?.()?.width -
                                 (parseUnit(getComputedStyle(targetRef.current)?.paddingRight) * 2))

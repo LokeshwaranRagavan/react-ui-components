@@ -122,7 +122,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
          */
         const handleSyncfusionBlur: () => void = useCallback(() => {
             setTimeout(() => {
-                onBlur?.(value);
+                onBlur?.(inputRef.current?.value ?? value);
             }, 0); // Datepicker blur validation remove fix
         }, [onBlur, value, formState]);
 
@@ -162,7 +162,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
                     return (
                         <TextBox
                             ref={inputRef as React.Ref<ITextBox>}
-                            className={`sf-field${formState?.errors[column.field] ?
+                            className={`sf-field${formState?.errors?.[column.field] ?
                                 ' sf-error' : ''}` + (cssClass !== '' ? (' ' + cssClass) : '')}
                             value={value?.toString() || ''}
                             onChange={isDisabled ? undefined : (event: TextBoxChangeEvent) =>
@@ -182,7 +182,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
                     return (
                         <NumericTextBox
                             ref={inputRef as React.Ref<INumericTextBox>}
-                            className={`sf-field${formState?.errors[column.field] ?
+                            className={`sf-field${formState?.errors?.[column.field] ?
                                 ' sf-error' : ''}` + (cssClass !== '' ? (' ' + cssClass) : '')}
                             format={(typeof (column.format) === 'object' ? getNumberPattern(column.format, false)?.toLowerCase() :
                                 (column.format as string)?.toLowerCase()) ?? 'n2'} // only provided string format support.
@@ -206,7 +206,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
                     return (
                         <Checkbox
                             ref={inputRef as React.Ref<ICheckbox>}
-                            className={`sf-field${formState?.errors[column.field] ?
+                            className={`sf-field${formState?.errors?.[column.field] ?
                                 ' sf-error' : ''}` + (cssClass !== '' ? (' ' + cssClass) : '')}
                             checked={Boolean(value)}
                             onChange={isDisabled ? undefined : (event: CheckboxChangeEvent) =>
@@ -233,7 +233,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
                     return (
                         <DatePicker
                             ref={inputRef as React.Ref<IDatePicker>}
-                            className={`sf-field${formState?.errors[column.field] ?
+                            className={`sf-field${formState?.errors?.[column.field] ?
                                 ' sf-error' : ''}` + (cssClass !== '' ? (' ' + cssClass) : '')}
                             value={value ? new Date(value as Date) : null}
                             onChange={isDisabled ? undefined : ((args: DatePickerChangeEvent) => {
@@ -256,7 +256,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
                     return (
                         <DropDownList
                             ref={inputRef as React.Ref<IDropDownList>}
-                            className={`sf-field${formState?.errors[column.field] ?
+                            className={`sf-field${formState?.errors?.[column.field] ?
                                 ' sf-error' : ''}` + (cssClass !== '' ? (' ' + cssClass) : '')}
                             value={value}
                             dataSource={(dataSource instanceof DataManager ? dataSource :
@@ -301,7 +301,7 @@ export const EditCell: <T>(props: EditCellProps<T> & RefAttributes<EditCellRef>)
                     return (
                         <TextBox
                             ref={inputRef as React.Ref<ITextBox>}
-                            className={`sf-field${formState?.errors[column.field] ?
+                            className={`sf-field${formState?.errors?.[column.field] ?
                                 ' sf-error' : ''}` + (cssClass !== '' ? (' ' + cssClass) : '')}
                             value={value?.toString() || ''}
                             onChange={isDisabled ? undefined : (event: TextBoxChangeEvent) =>

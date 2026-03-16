@@ -1,4 +1,4 @@
-import { FC, ReactNode, MouseEvent, useEffect } from 'react';
+import { FC, ReactNode, MouseEvent, useLayoutEffect } from 'react';
 import { useSchedulerPropsContext } from '../context/scheduler-context';
 import { MonthCellsProps, ProcessedEventsData } from '../types/internal-interface';
 import { useMonthCells, MonthCell } from '../hooks/useMonthCells';
@@ -96,12 +96,12 @@ export const MonthCells: FC<MonthCellsProps> = (props: MonthCellsProps) => {
         );
     };
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         onHeightCalculated(rowIndex, calculatedRowHeight);
     }, [calculatedRowHeight]);
 
     return (
-        <div className={CSS_CLASSES.WORK_CELLS_ROW} style={{ height: rowAutoHeight ? calculatedRowHeight : '' }}>
+        <div className={CSS_CLASSES.WORK_CELLS_ROW} style={{ height: (rowAutoHeight || maxEventsPerRow >= 3) ? calculatedRowHeight : '' }}>
             {workCells.map((monthCell: MonthCell): ReactNode => {
                 if (hideOtherMonths && monthCell.className.includes('sf-other-month')) {
                     return (

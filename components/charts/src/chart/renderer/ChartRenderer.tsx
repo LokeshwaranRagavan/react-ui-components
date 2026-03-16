@@ -8,9 +8,11 @@ import { getSeriesColor, getThemeColor } from '../utils/theme';
 import { processChartSeries } from './SeriesRenderer/ProcessData';
 import { ChartContext } from '../layout/ChartProvider';
 import { defaultChartConfigs } from '../base/default-properties';
-import { AxisModel, Chart, ColumnProps, ElementWithSize, RowProps, SeriesProperties, ChartSizeProps } from '../chart-area/chart-interfaces';
+import { AxisModel, Chart, ColumnProps, ElementWithSize, RowProps, SeriesProperties, ChartSizeProps, ChartTrendlineModel } from '../chart-area/chart-interfaces';
 import { markerShapes } from './SeriesRenderer/MarkerRenderer';
 import { Theme } from '../../common';
+import { initTrendlineSeriesCollection } from './SeriesRenderer/TrendlinesRenderer';
+import { initSeries } from './SeriesRenderer/ParetoSeriesRenderer';
 
 /**
  * ChartRenderer - Core functional component responsible for rendering the complete chart layout and structure.
@@ -36,10 +38,12 @@ export const ChartRenderer: React.FC<ChartComponentProps> = (props: ChartCompone
             const rectWidth: number = availableSize.width - borderWidth;
             const rectHeight: number = availableSize.height - borderWidth;
             const theme: Theme = props.theme || 'Material';
-            let visibleSeries: SeriesProperties[] = calculateVisibleSeries(chartSeries as SeriesProperties[], props, theme);
+            const paretoAxes: AxisModel[] = [];
+            let visibleSeries: SeriesProperties[] = calculateVisibleSeries(chartSeries as SeriesProperties[], props, theme,
+                                                                           axisCollection, paretoAxes);
             const requireInvertedAxis: boolean = calculateAreaType(visibleSeries, props);
             const visibleAxisCollection: AxisModel[] = calculateVisibleAxis(
-                requireInvertedAxis, axisCollection, visibleSeries);
+                requireInvertedAxis, axisCollection, visibleSeries, paretoAxes);
 
             visibleSeries = processChartSeries(visibleSeries);
 
@@ -164,10 +168,13 @@ export function calculateAreaType(seriesCollection: SeriesProperties[], chart: C
  * @param {SeriesProperties} chartSeries - The series of the chart that needs to be evaluated for visibility.
  * @param {ChartComponentProps} chart - The chart component props.
  * @param {Theme} theme - The theme applied to the chart.
+ * @param {AxisModel[]} axisCollection - Chart's available axes.
+ * @param {AxisModel[]} paretoAxes - Axes used for rendering the Pareto line.
  * @returns {SeriesProperties[]} An array of series that are deemed visible according to the given criteria.
  * @private
  */
-export function calculateVisibleSeries(chartSeries: SeriesProperties[], chart: ChartComponentProps, theme: Theme): SeriesProperties[] {
+export function calculateVisibleSeries(chartSeries: SeriesProperties[], chart: ChartComponentProps, theme: Theme,
+                                       axisCollection: AxisModel[], paretoAxes: AxisModel[]): SeriesProperties[] {
     let series: SeriesProperties;
     const visibleSeries: SeriesProperties[] = [];
     const palettes: string[] = getSeriesColor(theme);
@@ -184,12 +191,37 @@ export function calculateVisibleSeries(chartSeries: SeriesProperties[], chart: C
         if (series.marker && series.marker.visible && !series.marker.shape) {
             series.marker.shape = markerShapes[i % (markerShapes.length - 1)];
         }
-        series.category = 'Series';
+        series.category = seriesCollection[0].type === 'Pareto' ? 'Pareto' : 'Series';
         series.index = i;
         series.interior = series.fill || colors[i % count];
         series.chartProps = chart;
         visibleSeries.push(series);
         seriesCollection[i as number] = series;
+    }
+    for (const series of seriesCollection) {
+        let trendIndex: number = 0;
+        if (series && series.trendlines) {
+            for (let index: number = 0; index < series.trendlines.length; index++) {
+                const trendline: ChartTrendlineModel = series.trendlines[index as number];
+                if (trendline.visible) {
+                    initTrendlineSeriesCollection(series, trendline, chart);
+                    if (trendline.targetSeries) {
+                        trendline.targetSeries.trendIndex = trendIndex;
+                        trendline.targetSeries.index = (visibleSeries.length - 1) + 1;
+                        visibleSeries.push(trendline.targetSeries);
+                    }
+                    trendIndex++;
+                }
+            }
+        }
+    }
+    for (const series of seriesCollection) {
+        if (series && series.type === 'Pareto') {
+            const secondaryLineSeries: SeriesProperties = initSeries(series, axisCollection, colors, visibleSeries, paretoAxes);
+            if (secondaryLineSeries) {
+                visibleSeries.push(secondaryLineSeries);
+            }
+        }
     }
     return visibleSeries;
 }

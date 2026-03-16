@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react';
+import { AlertAction, CrudAction } from '../types/enums';
 
 export interface ConfirmationDialogState {
     visible: boolean;
@@ -6,7 +7,8 @@ export interface ConfirmationDialogState {
     message?: string;
     confirmText?: string;
     showCancel?: boolean;
-    onConfirm?: () => void;
+    action?: AlertAction;
+    onConfirm?: (selectOption?: CrudAction) => void;
 }
 
 export const useConfirmationDialog: () => {

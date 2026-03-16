@@ -78,4 +78,39 @@
       border-bottom-color: $grid-validation-error-bg-color;
     }
   }
+
+  .sf-selection-delete-option.selected {
+    background-color: $grid-delete-option-bg-color-selected;
+  }
+
+  .sf-selection-delete-option-label {
+    color: $grid-delete-option-color;
+  }
+
+  .sf-selection-delete-option-description {
+    color: $grid-delete-option-description-color;
+  }
+
+  .sf-excel-contextmenu-wrapper ul {
+    .sf-menu-item:focus-visible {
+      box-shadow: $grid-cell-focus-shadow;
+    }
+
+    .sf-menu-item:hover {
+      background-color: $grid-hover-bg-color;
+    }
+
+    .sf-excel-separator {
+      border-bottom-color: $excel-seperator-border-color;
+    }
+  }
+
+  .sf-excel-filter .sf-search-container,
+  .sf-grid-excel-filter-container  {
+    border-top-color: rgb($border-light);
+  }
+
+  .sf-excel-filter .sf-virtual-scroll-container {
+    border-bottom-color:rgba($on-surface-variant, 0.12);
+  }
 }

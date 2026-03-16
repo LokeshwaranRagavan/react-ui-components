@@ -10,11 +10,9 @@ import type { PopupEvent } from '../types';
  * @private
  */
 interface PopupManagementParams {
-    isOpenControlled: boolean;
     isPopupOpen: boolean;
     open?: boolean;
     setIsPopupOpen: (v: boolean) => void;
-    setAriaExpanded: (v: boolean) => void;
     setIsSpanFocused: (v: boolean) => void;
     spanElementRef: React.RefObject<HTMLSpanElement>;
     inputElementRef: React.RefObject<HTMLInputElement>;
@@ -24,6 +22,7 @@ interface PopupManagementParams {
     popupWidth: string;
     popupHeight: string;
     className: string | undefined;
+    multiSelectable?: boolean;
 }
 
 /**
@@ -50,11 +49,9 @@ export const usePopupManagement: (params: PopupManagementParams) => PopupManagem
     }, [params.className]);
 
     const {
-        isOpenControlled,
         isPopupOpen,
         open,
         setIsPopupOpen,
-        setAriaExpanded,
         setIsSpanFocused,
         spanElementRef,
         inputElementRef,
@@ -62,27 +59,30 @@ export const usePopupManagement: (params: PopupManagementParams) => PopupManagem
         onOpen,
         onClose,
         popupWidth,
-        popupHeight
+        popupHeight,
+        multiSelectable
     } = params;
+
+    const isOpenControlled: boolean = useMemo(() => open !== undefined, [open]);
+    const previousHeightRef: React.RefObject<number | null> = React.useRef<number | null>(null);
+
 
     const showPopup: (e?: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>
     | Event) => void = useCallback((e?: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement> | Event) => {
         if (!isOpenControlled) {
             setIsPopupOpen(true);
-            setAriaExpanded(true);
-            spanElementRef.current?.focus();
+            inputElementRef.current?.focus();
         }
         if (onOpen) {
             const eventArgs: PopupEvent = {event: e};
             onOpen(eventArgs);
         }
-    }, [isOpenControlled, setIsPopupOpen, setAriaExpanded, spanElementRef, onOpen, popupRef]);
+    }, [isOpenControlled, setIsPopupOpen, inputElementRef, onOpen, popupRef]);
 
     const hidePopup: (e?: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>
     | Event) => void = useCallback((e?: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement> | Event) => {
         if (!isOpenControlled) {
             setIsPopupOpen(false);
-            setAriaExpanded(false);
         }
         if (onClose && popupRef.current) {
             const eventArgs: PopupEvent = {event: e};
@@ -90,13 +90,12 @@ export const usePopupManagement: (params: PopupManagementParams) => PopupManagem
         }
         if (!open) {
             setIsSpanFocused(true);
-            inputElementRef?.current?.focus();
         }
-    }, [isOpenControlled, setIsPopupOpen, setAriaExpanded, onClose, popupRef, open, setIsSpanFocused, inputElementRef]);
+    }, [isOpenControlled, setIsPopupOpen, onClose, popupRef, open, setIsSpanFocused, inputElementRef]);
 
     const handleDocumentClick: (e: MouseEvent) => void = useCallback((e: MouseEvent) => {
         const target: Node = e.target as Node;
-        const isOutsideInput: boolean = !!spanElementRef.current && !spanElementRef.current.contains(target);
+        const isOutsideInput: boolean = !!spanElementRef.current && !spanElementRef.current.contains(target) && target.isConnected;
         const isOutsidePopup: boolean = !!popupRef.current?.element && !popupRef.current.element.contains(target);
         const elementTarget: Element | null = target instanceof Element ? target : null;
         if ((isPopupOpen && isOutsideInput && isOutsidePopup) ||
@@ -106,7 +105,7 @@ export const usePopupManagement: (params: PopupManagementParams) => PopupManagem
         }
         if (
             isOutsideInput &&
-                !(elementTarget && elementTarget.matches('.sf-list-item')) &&
+                !(elementTarget && elementTarget.closest('.sf-list-item')) &&
                 !(elementTarget && elementTarget.matches('.sf-input-icon'))
         ) {
             setIsSpanFocused(false);
@@ -146,7 +145,7 @@ export const usePopupManagement: (params: PopupManagementParams) => PopupManagem
         return () => {
             document.removeEventListener('mousedown', handleDocumentClick);
         };
-    }, [isPopupOpen, handleDocumentClick]);
+    }, [isPopupOpen]);
 
     useEffect(() => {
         const handleScroll: (e: Event) => void = (e: Event) => {
@@ -164,6 +163,28 @@ export const usePopupManagement: (params: PopupManagementParams) => PopupManagem
             document.removeEventListener('scroll', handleScroll, true);
         };
     }, [isPopupOpen, hidePopup, popupRef, setIsSpanFocused]);
+
+    useEffect(() => {
+        if (!multiSelectable || !isPopupOpen || !spanElementRef.current || !popupRef.current) {
+            return;
+        }
+        const resizeObserver: ResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
+            entries.forEach((entry: ResizeObserverEntry) => {
+                const currentHeight: number = entry.contentRect.height;
+
+                if (previousHeightRef.current !== null && previousHeightRef.current !== currentHeight) {
+                    if (popupRef.current && typeof popupRef.current.refreshPosition === 'function') {
+                        popupRef.current.refreshPosition();
+                    }
+                }
+                previousHeightRef.current = currentHeight;
+            });
+        });
+        resizeObserver.observe(spanElementRef.current);
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, [isPopupOpen, spanElementRef, popupRef, previousHeightRef, multiSelectable]);
 
     return { showPopup, hidePopup, setPopupWidth: setPopupWidthCalc, setPopupHeight: setPopupHeightCalc, popupClassNames };
 };

@@ -216,15 +216,31 @@ export enum SortDirection {
 }
 
 /**
- * Defines types of Filter.
+ * Defines the type of filter UI to be used in the Data Grid component.
+ * Controls the visual interface and behavior for applying filters to columns.
  * ```props
  * * FilterBar :- Specifies the filter type as filter bar.
+ * * Excel :- Specifies the filter type as excel filter.
+ * * CheckBox :- Specifies the filter type as checkbox filter.
  * ```
  *
- * @private
+ * @default 'FilterBar'
  */
 export type FilterType =
-    'FilterBar';
+    'FilterBar' |
+    'Excel' |
+    'CheckBox';
+
+/**
+ * Defines Loading Indicator of the Grid.
+ * ```props
+ * * Spinner :- Defines Loading Indicator as Spinner.
+ * * Shimmer :- Defines Loading Indicator as Shimmer.
+ * ```
+ */
+export type IndicatorType =
+    'Spinner' |
+    'Shimmer';
 
 /**
  * Enumerates the filter bar types supported by Data Grid component for column-level filtering.
@@ -349,6 +365,33 @@ export enum SelectionMode {
     Multiple = 'Multiple'
 }
 
+
+/**
+ * Specifies the header checkbox click behavior for remote data sources.
+ * Controls how the header checkbox toggles between states for selection operations.
+ *
+ * @default AutoSelectMode.Default
+ * @example
+ * ```tsx
+ * <Grid selectionSettings={{ autoSelectMode: AutoSelectMode.Intermediate }} />
+ * ```
+ */
+export enum AutoSelectMode {
+    /**
+     * The header checkbox toggles between checked and unchecked (two-state behavior).
+     * When checked, all rows on the current page are selected.
+     * When unchecked, all rows on the current page are deselected.
+     */
+    Default = 'Default',
+
+    /**
+     * The header checkbox toggles through all three states: checked, unchecked, and intermediate (tri-state behavior).
+     * Allows more granular control over selection state representation.
+     * Particularly useful for partial selection scenarios.
+     */
+    Intermediate = 'Intermediate'
+}
+
 /**
  * Defines the structural category of a layout element.
  * Used to distinguish between header, content, and aggregate sections for styling and behavior customization.
@@ -462,6 +505,22 @@ export enum ActionType {
     Filtering = 'Filtering',
 
     /**
+     * Represents the event triggered before the filter dialog is opened.
+     * Used to customize dialog content, modify configuration, or prevent opening based on conditions.
+     *
+     * @default 'FilterDialogBeforeOpen'
+     */
+    FilterDialogBeforeOpen = 'FilterDialogBeforeOpen',
+
+    /**
+     * Represents the event triggered after the filter dialog has been opened.
+     * Used to perform post-open actions such as focusing elements or logging interactions.
+     *
+     * @default 'FilterDialogAfterOpen'
+     */
+    FilterDialogAfterOpen = 'FilterDialogAfterOpen',
+
+    /**
      * Represents a searching operation applied to fields.
      * Typically triggered by toolbar search input changes or programmatic search logic.
      *
@@ -510,7 +569,7 @@ export enum ActionType {
     Delete = 'Delete',
 
     /**
-     * Represents a pagination operation applied to grid component.
+     * Represents a pagination operation applied to Data Grid component.
      * Commonly triggered by interaction with pager component items or programmatic pagination logic.
      *
      * @default 'Paging'
@@ -631,6 +690,8 @@ export enum ClipMode {
 export type Action =
     'Filtering' |
     'ClearFiltering' |
+    'FilterDialogBeforeOpen' |
+    'FilterDialogAfterOpen' |
     'Sorting' |
     'ClearSorting' |
     'Searching' |
@@ -737,6 +798,118 @@ export enum EditType {
 }
 
 /**
+ * Defines the scrolling and data-loading strategy for the Data Grid component during virtualized row rendering.
+ * Determines how rows are fetched and rendered based on the current scroll position and viewport.
+ *
+ * This enum is used with VirtualizationSettings to control whether data is loaded dynamically from a server
+ * or rendered from locally available data.
+ *
+ * @default ScrollMode.Auto
+ * @example
+ * ```tsx
+ * <Grid virtualizationSettings={{ scrollMode: ScrollMode.Virtual }} />
+ * ```
+ */
+export enum ScrollMode {
+    /**
+     * Virtual scrolling mode with server-side data management.
+     * Renders only the visible row range and requests the required data segment from the server based on the current viewport.
+     * Works in conjunction with server-side paging and filtering.
+     *
+     * Caching behavior is controlled by VirtualizationSettings.enableCache:
+     * - When true (default), previously loaded data segments are cached to avoid re-requesting the same range.
+     * - When false, each revisit to a previously viewed range triggers a new server request.
+     *
+     * @default 'Virtual'
+     */
+    Virtual = 'Virtual',
+
+    /**
+     * Infinite scrolling mode for progressive data loading.
+     * Loads additional rows progressively as the user scrolls toward the end of the currently loaded dataset.
+     * New data is appended to the existing grid content without clearing previous rows.
+     * Suitable for continuous data feeds, real-time data streams, and incremental loading of large remote datasets.
+     *
+     * @private
+     * @default 'Infinite'
+     */
+    Infinite = 'Infinite',
+
+    /**
+     * Automatic scrolling mode with local data rendering.
+     * Renders all available rows from the in-memory data source without making additional server requests.
+     * No dynamic data loading occurs during scrolling.
+     * Suitable for scenarios where the complete dataset is available locally or where data size is manageable without virtualization.
+     *
+     * @default 'Auto'
+     */
+    Auto = 'Auto'
+}
+
+/**
+ * Specifies the theme configuration for the Data Grid component.
+ * Used internally to determine default values for theme-dependent properties (e.g., row height in virtualization).
+ *
+ * The theme property defines static default values and calculations used during grid initialization and rendering,
+ * such as the default rowHeight value when row DOM virtualization is enabled.
+ *
+ * Grid styling and visual appearance are controlled by importing the corresponding theme CSS files for the Data Grid,
+ * not by the theme property alone. The theme property must be coordinated with the appropriate CSS import.
+ *
+ * @default Theme.Material
+ *
+ * @example
+ * ```tsx
+ * // Import Material theme CSS for styling
+ * import '@syncfusion/react-grids/styles/material.css';
+ *
+ * // Specify theme for internal default calculations
+ * <Grid theme={Theme.Material} />
+ * ```
+ */
+export enum Theme {
+    /**
+     * Material Design theme configuration for the Data Grid component.
+     * Used internally for Material Design default calculations such as row height (50px) in the Data Grid.
+     * Requires importing Material theme CSS for the Data Grid: '@syncfusion/react-grids/styles/material.css'.
+     *
+     * @default 'Material'
+     */
+    Material = 'Material'
+}
+
+/**
+ * Specifies the type of visual loading indicator displayed during grid data operations.
+ * Used to provide user feedback when the grid is fetching, processing, or rendering data.
+ * Configured through LoadingIndicatorSettings.indicatorType.
+ *
+ * @default LoadingIndicatorType.Spinner
+ * @example
+ * ```tsx
+ * <Grid loadingIndicatorSettings={{ indicatorType: LoadingIndicatorType.Shimmer }} />
+ * ```
+ */
+export enum LoadingIndicatorType {
+    /**
+     * Displays a circular or linear spinner animation.
+     * Provides a traditional loading indicator suitable for data fetching, filtering, and paging operations.
+     * Recommended for minimalistic loading feedback without placeholder content.
+     *
+     * @default 'Spinner'
+     */
+    Spinner = 'Spinner',
+
+    /**
+     * Displays a shimmer (skeleton) effect as a loading placeholder.
+     * Simulates the structure and shape of content being loaded, providing a more modern and engaging user experience.
+     * Suitable for scenarios where previewing the expected content layout improves perceived performance.
+     *
+     * @default 'Shimmer'
+     */
+    Shimmer = 'Shimmer'
+}
+
+/**
  * @private
  */
 export type EditEndAction = 'Click' | 'Key';
@@ -819,3 +992,8 @@ export enum CommandItemType {
      */
     Cancel
 }
+
+/** @private */
+export const ThemeDefaults: Record<Theme, { rowHeight: number }> = {
+    [Theme.Material]: { rowHeight: 50 }
+};

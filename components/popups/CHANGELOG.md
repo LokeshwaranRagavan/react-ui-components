@@ -6,7 +6,7 @@
 
 The React Spinner component is a lightweight, accessible loading indicator with multiple animated styles. It supports sizing, overlay mode, and customizable content, making it ideal for indicating progress across pages or specific UI sections.
 
-Explore the demo <a href="https://react.syncfusion.com/react-ui/spinner" target="_blank" rel="noopener noreferrer">here</a>
+Explore the demo <a href="https://react.syncfusion.com/spinner" target="_blank" rel="noopener noreferrer">here</a>
 
 **Key features**
 

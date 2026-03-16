@@ -162,6 +162,7 @@ $chip-outline-variants: (
 
   &.sf-disabled {
     color: $chip-disabled-text-color;
+    background-color: $chip-disabled-filled-bg;
 
     .sf-chip-avatar {
       color: $chip-disabled-text-color;

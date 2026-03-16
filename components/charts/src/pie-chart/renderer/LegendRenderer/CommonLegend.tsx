@@ -4,6 +4,8 @@ import { createLegendOption, createPathOption, createRectOption, degreeToLocatio
 import { useRegisterSeriesRender } from '../../hooks/events';
 import { TextOverflow, Theme, LegendPosition } from '../../../common';
 import { BaseLegend, SeriesProperties, Chart, Rect, LegendOptions, TextOption, RectOption, PathOptions, Points } from '../../base/internal-interfaces';
+import { patternForIndex } from '../series-renderer/series-helper';
+import { PieSelectionPattern } from '../../base/enum';
 
 // === LEGEND INITIALIZATION & CONFIGURATION ===
 
@@ -26,9 +28,13 @@ export function getLegendOptions(chartLegend: BaseLegend, visibleSeriesCollectio
             'Doughnut' : 'Pie';
         for (const point of series.points) {
             if (!isNullOrUndefined(point.x) && !isNullOrUndefined(point.y)) {
+                const colorHash: string = point.color.replace(/[^\w]/g, '');
+                const customPattern: PieSelectionPattern | undefined = point.pattern as PieSelectionPattern | undefined;
+                const patternName: PieSelectionPattern = customPattern ?? patternForIndex(point.index);
+                const patternId: string = `${chart.element.id}_${patternName}_Initial_${colorHash}_${point.index}`;
                 chart.chartLegend.legendCollections.push(createLegendOption(
-                    point.x.toString(), point.color, chart.chartLegend.shape, point.visible,
-                    seriesType, chartLegend.imageUrl, point.index, series.index, null, point.x.toString()
+                    point.x.toString(), series.applyPattern ? `url(#${patternId})` : point.color, chart.chartLegend.shape,
+                    point.visible, seriesType, chartLegend.imageUrl, point.index, series.index, null, point.x.toString()
                 ));
             }
         }
@@ -1000,8 +1006,16 @@ export function LegendClick(index: number, chart: Chart, legend: BaseLegend): vo
             chartLegend.markerOption.stroke = chartLegend.visible ? point.color as Required<string> : '#D3D3D3';
         }
         if (chartLegend.symbolOption) {
-            chartLegend.symbolOption.fill = chartLegend.visible ? point.color as Required<string> : '#D3D3D3';
-            //chartLegend.symbolOption.stroke = chartLegend.visible ? point.color as Required<string> : '#D3D3D3';
+            if (chart.visibleSeries[0]?.applyPattern && chartLegend.visible) {
+                const colorHash: string = point.color.replace(/[^\w]/g, '');
+                const customPattern: PieSelectionPattern | undefined = point?.pattern;
+                const patternName: PieSelectionPattern = customPattern ?? patternForIndex(point.index);
+                const patternId: string = `${chart.element.id}_${patternName}_Initial_${colorHash}_${point.index}`;
+                chartLegend.symbolOption.fill = `url(#${patternId})`;
+            } else {
+                chartLegend.symbolOption.fill = chartLegend.visible ? point.color as Required<string> : '#D3D3D3';
+                //chartLegend.symbolOption.stroke = chartLegend.visible ? point.color as Required<string> : '#D3D3D3';
+            }
         }
         if (chartLegend.textOption) {
             chartLegend.textOption.fill = chartLegend.visible ? (legend.textStyle as Required<PieChartFontProps>).color ||

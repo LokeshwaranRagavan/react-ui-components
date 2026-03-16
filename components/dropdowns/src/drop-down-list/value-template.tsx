@@ -1,12 +1,12 @@
 import * as React from 'react';
 import { useEffect, useMemo } from 'react';
 import { getValue } from '@syncfusion/react-base';
-import { FieldSettingsModel } from './types';
+import { FieldSettingsModel, T } from './types';
 
 export interface ValueTemplateProps {
     valueTemplate?: Function | React.ReactNode;
-    dropdownValue?: number | string | boolean | object | null;
-    dataSource?: { [key: string]: unknown }[] | string[] | number[] | boolean[];
+    dropdownValue?: T[] | null;
+    dataSource?: T[];
     fields: FieldSettingsModel;
     allowObjectBinding?: boolean;
     onRenderedChange?: (rendered: boolean) => void;
@@ -20,16 +20,22 @@ const ValueTemplate: React.FC<ValueTemplateProps> = ({
     allowObjectBinding = false,
     onRenderedChange
 }: ValueTemplateProps) => {
-    const selectedItem: string | number | boolean | { [key: string]: unknown; } | null = useMemo(() => {
+    const selectedItem: T | null = useMemo(() => {
         if (!valueTemplate || dropdownValue == null || !Array.isArray(dataSource) || dataSource.length === 0) {
             return null;
         }
+        const selectedValue: T | null = Array.isArray(dropdownValue) && dropdownValue.length > 0 ?
+            dropdownValue[0] : null;
+        if (selectedValue == null) {
+            return null;
+        }
+
         const first: unknown = dataSource[0] as unknown;
         if (typeof first === 'string' || typeof first === 'number' || typeof first === 'boolean') {
             type DataItem = string | number | boolean | { [key: string]: object };
             const map: Map<DataItem, DataItem> = new Map((dataSource as DataItem[]).map((item: DataItem):
             [DataItem, DataItem] => [item, item]));
-            return map.get(dropdownValue as DataItem) ?? null;
+            return map.get(selectedValue as DataItem) ?? null;
         }
         const arr: (string | number | boolean | { [key: string]: unknown; })[] = dataSource as Array<
         | string | number | boolean | { [key: string]: unknown }>;
@@ -38,11 +44,11 @@ const ValueTemplate: React.FC<ValueTemplateProps> = ({
         arr.find((item: string | number | boolean | { [key: string]: unknown; }) => {
             const fieldValue: unknown = fields.value ? (getValue(fields.value as string, item) as unknown) : item;
             if (allowObjectBinding) {
-                return fieldValue === dropdownValue;
+                return item === selectedValue;
             }
             return (
-                fieldValue === dropdownValue ||
-                (fieldValue != null && dropdownValue != null && fieldValue.toString() === (dropdownValue as unknown as string).toString())
+                fieldValue === selectedValue ||
+                (fieldValue != null && selectedValue != null && fieldValue.toString() === (selectedValue as unknown as string).toString())
             );
         });
         return match ?? null;

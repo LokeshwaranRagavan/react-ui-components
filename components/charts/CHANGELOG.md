@@ -1,5 +1,27 @@
 # Changelog
 
+## 33.1.44 (2026-03-16)
+
+### Chart
+
+#### Features
+
+- **Waterfall**: Introduces the Waterfall series for visualizing the cumulative effect of sequential positive and negative values on a running total. Supports automatic cumulative calculations, start/end totals, intermediate subtotals, and customizable rise, fall, and total segment colors. Includes styling options for connector lines, column width, borders, and data labels, and integrates fully with legend, tooltip, zooming, and panning interactions.
+
+- **Histogram**: Adds the Histogram series for displaying the distribution of continuous numeric data by grouping values into bins. Supports automatic or manually defined bin widths, frequency or density modes, configurable bin boundaries, and full styling for gaps, borders, and fills. Compatible with numeric and datetime axes, and includes tooltip, crosshair/trackball, and animated transitions.
+
+- **Multi‑colored Area**: Introduces the Multi‑colored Area series for rendering area charts where the fill or stroke color changes across defined ranges or conditions.
+
+- **Pareto**: Adds the Pareto chart type, combining a column series with a cumulative‑percentage line to emphasize the most significant contributors based on the 80/20 principle. Automatically sorts categories in descending order, computes cumulative percentages, and renders the percentage line on a secondary axis. Supports reference lines (such as the 80% threshold) using striplines and offers independent styling for columns and lines with shared tooltips.
+
+- **Trendlines**: Introduces built‑in Trendline support for analyzing data direction and forecasting patterns. Supports common trendline types such as Linear, Exponential, Polynomial, Logarithmic, and Power. Each trendline can be styled independently with customizable stroke, dash patterns, markers, and forward/backward forecast options. Fully integrated with legend, tooltip, and animation support.
+
+### Pie Chart
+
+#### Features
+
+- **Highlight & Selection**: Adds highlight and selection interaction for Pie and Donut charts, enabling segment emphasis on hover or click. Supports point‑level selection with customizable fill, border, opacity, and pattern styles. Offers both single and multiple selection modes for enhanced user interaction and data exploration.
+
 ## 32.1.19 (2025-12-16)
 
 ### Chart

@@ -29,3 +29,5 @@ export * from './base/interfaces';
 export * from './base/enum';
 export * from './chart-axis/StripLines';
 export * from './series/ErrorBar';
+export * from './series/Trendlines';
+export * from './series/ParetoOptions';

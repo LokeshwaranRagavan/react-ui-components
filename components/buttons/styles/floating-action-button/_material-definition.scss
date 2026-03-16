@@ -14,3 +14,32 @@ $fab-large-border-radius: $radius-16 !default;
 $fab-large-min-dimension: $spacing-56 !default;
 $fab-large-padding: $spacing-0 $spacing-16 !default;
 $fab-box-shadow: $shadow-lg !default;
+$fab-sizes: (
+  'sm': (
+    'padding': $spacing-9 $spacing-16,
+    'font-size': $font-size-sm,
+    'line-height': $line-height-sm,
+    'svg-font-size': $font-size-xl,
+    'icon-padding': $spacing-9,
+    'border-radius': $radius-12,
+    'gap': $spacing-8
+  ),
+  'me': (
+    'padding': $spacing-13 $spacing-24,
+    'font-size': $font-size-lg,
+    'line-height': $line-height-lg,
+    'svg-font-size': $font-size-2xl,
+    'icon-padding': $spacing-15,
+    'border-radius': $radius-16,
+    'gap': $spacing-12
+  ),
+  'la': (
+    'padding': $spacing-23 $spacing-28,
+    'font-size': $font-size-2xl,
+    'line-height': $line-height-2xl,
+    'svg-font-size': $font-size-3xl,
+    'icon-padding': $spacing-23,
+    'border-radius': $radius-16,
+    'gap': $spacing-12
+  )
+) !default;

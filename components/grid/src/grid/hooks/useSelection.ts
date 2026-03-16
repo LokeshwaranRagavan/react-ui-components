@@ -1,6 +1,6 @@
 
-import { RefObject, useCallback, useRef, KeyboardEvent, MouseEvent, useMemo } from 'react';
-import { IRow, SelectionMode, UseDataResult } from '../types';
+import { RefObject, useCallback, useRef, KeyboardEvent, MouseEvent, useMemo, useEffect } from 'react';
+import { AutoSelectMode, IRow, ScrollMode, SelectionMode, UseDataResult, VirtualSettings } from '../types';
 import { RowSelectEvent, RowSelectingEvent, SelectionModel } from '../types/selection.interfaces';
 import { ColumnProps } from '../types/column.interfaces';
 import { closest, isNullOrUndefined } from '@syncfusion/react-base';
@@ -8,22 +8,28 @@ import { CellFocusEvent } from '../types/focus.interfaces';
 import { GridRef } from '../types/grid.interfaces';
 import { CheckboxChangeEvent } from '@syncfusion/react-buttons';
 import { Query, QueryOptions } from '@syncfusion/react-data';
+import { buildDeletepayload, getCurrentPageSelectedItems, parseUnit } from '../utils';
+import { payload } from '../types/edit.interfaces';
 
 /**
  * Custom hook to manage selection state and API
  *
+ * @template T
  * @private
  * @param {RefObject<GridRef>} gridRef - Reference to the grid component
  * @param {T[]} [currentViewData] - Current view data for the active page/view
  * @param {number} [totalRecordsCount] - Total records count across all pages
  * @param {boolean} [isCheckBoxColumn] - Specifies if the column renders a checkbox for selection
  * @param {UseDataResult} [dataModule] - The data module for data operations
+ * @param {VirtualSettings} [virtualSettings] - The virtual settings for virtual row checkbox selection handling purpose.
+ * @param {ScrollMode} [scrollMode] - The scroll mode for virtual scroll row checkbox selection handling purpose.
  * @returns {SelectionModel} An object containing selection-related state and API
  */
 export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?: T[], totalRecordsCount?: number,
-    isCheckBoxColumn?: boolean, dataModule?: UseDataResult<T>) => SelectionModel<T> =
-<T>(gridRef?: RefObject<GridRef<T>>, currentViewData?: T[], totalRecordsCount?: number, isCheckBoxColumn?: boolean,
-    dataModule?: UseDataResult<T>): SelectionModel<T> => {
+    isCheckBoxColumn?: boolean, dataModule?: UseDataResult<T>, virtualSettings?: VirtualSettings, scrollMode?: ScrollMode) =>
+SelectionModel<T> = <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?: T[], totalRecordsCount?: number,
+    isCheckBoxColumn?: boolean, dataModule?: UseDataResult<T>, virtualSettings?: VirtualSettings, scrollMode?: ScrollMode):
+SelectionModel<T> => {
     const selectedRowIndexes: RefObject<number[]> = useRef<number[]>([]);
     const selectedRowsRef: RefObject<HTMLTableRowElement[]> = useRef<HTMLTableRowElement[]>([]);
     const prevRowIndex: RefObject<number | null> = useRef(null);
@@ -35,8 +41,10 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
     const selectedRowState: RefObject<Set<string>> = useRef<Set<string>>(new Set());
     const persistSelectedData: RefObject<Map<string, T>> = useRef<Map<string, T>>(new Map());
     // Remote select-all tracking
-    const isRemoteHeaderSelection: RefObject<boolean> = useRef<boolean>(false);
+    const isHeaderSelectAllMode: RefObject<boolean> = useRef<boolean>(false);
     const unselectedRowState: RefObject<Set<string>> = useRef<Set<string>>(new Set());
+    const headerUpdateTimeoutHandle: RefObject<number> = useRef<number>(null);
+    const headerUpdateRafHandle: RefObject<number> = useRef<number>(null);
 
     // Resets the `selectedRowIndexes` when the current view data changes
     useMemo(() => selectedRowIndexes.current.length = 0, [currentViewData]);
@@ -44,9 +52,7 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
     // Update persistent selection collection - Defined early to be used by other functions
     const updatePersistCollection: (rowData: T, isSelected: boolean) => void =
         useCallback((rowData: T, isSelected: boolean): void => {
-            if (!gridRef?.current) { return; }
             const primaryKeys: string[] = gridRef?.current?.getPrimaryKeyFieldNames?.();
-            if (!primaryKeys?.length) { return; }
             const key: string = rowData?.[primaryKeys[0]];
             if (!key) { return; }
             if (isSelected) {
@@ -54,8 +60,8 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                     selectedRowState.current.add(key);
                     persistSelectedData.current.set(key, rowData);
                 }
-                // If global remote header select-all is active, remove from unselected set
-                if (isRemoteHeaderSelection.current && unselectedRowState.current.has(key)) {
+                // If header select-all is active, remove from unselected set
+                if (isHeaderSelectAllMode.current && unselectedRowState.current.has(key)) {
                     unselectedRowState.current.delete(key);
                 }
             } else {
@@ -63,12 +69,12 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                     selectedRowState.current.delete(key);
                     persistSelectedData.current.delete(key);
                 }
-                // If global remote header select-all is active, track manual unselection
-                if (isRemoteHeaderSelection.current) {
+                // If header select-all is active, track manual unselection
+                if (isHeaderSelectAllMode.current) {
                     unselectedRowState.current.add(key);
                 }
             }
-        }, [gridRef]);
+        }, [gridRef, currentViewData]);
 
     const getRowObj: (row: Element | number) => IRow<ColumnProps<T>> = useCallback((row: Element | number): IRow<ColumnProps<T>> => {
         if (isNullOrUndefined(row)) { return {} as IRow<ColumnProps<T>>; }
@@ -76,51 +82,112 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
             row = gridRef?.current?.getRowByIndex(row);
         }
         if (row) {
-            return gridRef?.current?.getRowObjectFromUID?.(row.getAttribute('data-uid')) || {} as IRow<ColumnProps<T>>;
+            return gridRef?.current?.getRowObjectFromUID?.(virtualSettings.enableRow ?
+                gridRef?.current?.cachedRowObjects.current?.get(parseUnit(row.getAttribute('aria-rowindex')) - 1)?.uid :
+                row.getAttribute('data-uid')) || {} as IRow<ColumnProps<T>>;
         }
         return {} as IRow<ColumnProps<T>>;
     }, [gridRef]);
 
     const updateHeaderSelectionState: () => void = useCallback((): void => {
+        if (headerUpdateTimeoutHandle.current) {
+            window.clearTimeout(headerUpdateTimeoutHandle.current);
+            headerUpdateTimeoutHandle.current = null;
+        }
+        if (headerUpdateRafHandle.current) {
+            cancelAnimationFrame(headerUpdateRafHandle.current);
+            headerUpdateRafHandle.current = null;
+        }
         if (!isCheckBoxColumn || !gridRef?.current) { return; }
         const row: IRow<ColumnProps> = gridRef?.current?.getHeaderRowsObject?.()?.[0];
         if (!row) { return; }
-        const setHeaderState: (isSelected: boolean, isIntermediateState: boolean) => void = (
-            isSelected: boolean, isIntermediateState: boolean): void => {
-            row?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({ ...prev, isSelected, isIntermediateState }));
-        };
-        const viewSelectedCount: number = selectedRowIndexes.current.length;
-        let totalSelectedCount: number = getSelectedRecords().length;
-        const totalCount: number = totalRecordsCount !== 0 ? totalRecordsCount : gridRef.current?.pageSettings?.totalRecordsCount;
-        const query: Query = dataModule?.generateQuery?.();
-        // Check if queries contain search or where
-        const hasFiltering: boolean = query.queries.some((q: QueryOptions) => {
-            const fnName: string = (q && (q.fn || q['fn'])) as string;
-            return fnName === 'onSearch' || fnName === 'onWhere';
-        });
-        if (hasFiltering) {
-            totalSelectedCount = (gridRef.current?.getData?.(true, false, getSelectedRecords()) as T[]).length;
-        }
-        let allSelected: boolean = false;
-        let isIntermediateState: boolean = false;
-        if (!gridRef.current?.selectionSettings.persistSelection) {
-            allSelected = currentViewData?.length > 0 && viewSelectedCount === currentViewData?.length;
-            if (!allSelected && viewSelectedCount > 0) {
-                isIntermediateState = true;
-            }
-        }
-        else {
-            if (totalCount === 0) {
-                allSelected = false;
-            } else {
-                allSelected = totalCount === totalSelectedCount;
-            }
-            if (!allSelected && !!totalCount) {
-                isIntermediateState = totalSelectedCount > 0;
-            }
-        }
-        setHeaderState(allSelected, isIntermediateState);
+        headerUpdateTimeoutHandle.current = window.setTimeout(() => { // use debounce, for preventing each fast/rapid row selection change action, ensure and update header state.
+            headerUpdateRafHandle.current = requestAnimationFrame(() => { // for smooth UI batch update
+                const setHeaderState: (isSelected: boolean, isIntermediateState: boolean) => void = (
+                    isSelected: boolean, isIntermediateState: boolean): void => {
+                    row?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({ ...prev, isSelected, isIntermediateState }));
+                };
+
+                const intermediateMode: boolean = gridRef.current?.selectionSettings.autoSelectMode === AutoSelectMode.Intermediate;
+                const viewSelectedCount: number = selectedRowIndexes.current.length;
+                const selectedRecords: T[] = gridRef.current?.selectionSettings.persistSelection ? getPersistSelectedData()
+                    : getSelectedRecords() as T[];
+                let totalSelectedCount: number = selectedRecords.length;
+                const totalCount: number = totalRecordsCount !== 0 ? totalRecordsCount : gridRef.current?.pageSettings?.totalRecordsCount;
+                const query: Query = dataModule?.generateQuery?.();
+                // Check if queries contain search or where
+                const hasFiltering: boolean = query.queries.some((q: QueryOptions) => {
+                    const fnName: string = (q && (q.fn || q['fn'])) as string;
+                    return fnName === 'onSearch' || fnName === 'onWhere';
+                });
+                if (hasFiltering) {
+                    const filteredRecords: T[] = (gridRef.current?.getData?.(true, false, selectedRecords) as T[]);
+                    totalSelectedCount = filteredRecords ? filteredRecords.length : 0;
+                }
+
+                // Use utility function to get selected count from current view
+                const { count: selectedViewCount } = getCurrentPageSelectedItems<T>(
+                    currentViewData,
+                    selectedRowState.current,
+                    gridRef.current,
+                    false
+                );
+
+                let allSelected: boolean = false;
+                let isIntermediateState: boolean = false;
+
+                if (!gridRef.current?.selectionSettings.persistSelection) {
+                    // Local data with Default mode: select all local rows
+                    allSelected = currentViewData?.length > 0 && viewSelectedCount === currentViewData?.length;
+                    // Tri-state visual based on any row selection
+                    if (!allSelected && viewSelectedCount > 0) {
+                        isIntermediateState = true;
+                    }
+                } else {
+                    // Persistent selection (local or remote)
+                    if (totalCount === 0) {
+                        allSelected = false;
+                    } else {
+                        allSelected = totalCount === totalSelectedCount;
+                    }
+
+                    // Remote data with dual-state: visual tri-state based on row selection, NOT header click state
+                    if (!intermediateMode && selectedViewCount) {
+                        // Row selection/deselection drives tri-state visual
+                        // Header checkbox click is two-state (checked/unchecked)
+                        if (!allSelected && totalCount) {
+                            allSelected = currentViewData?.length === selectedViewCount;
+                        }
+                        isIntermediateState = !allSelected && currentViewData?.length > selectedViewCount;
+                    } else {
+                        // Local data or remote with tri-state: standard behavior
+                        if (!allSelected && totalCount) {
+                            isIntermediateState = totalSelectedCount > 0;
+                        }
+                    }
+                }
+                setHeaderState(allSelected, isIntermediateState);
+                window.clearTimeout(headerUpdateTimeoutHandle.current);
+                headerUpdateTimeoutHandle.current = null;
+                cancelAnimationFrame(headerUpdateRafHandle.current);
+                headerUpdateRafHandle.current = null;
+            });
+        }, 10);
     }, [gridRef, currentViewData, totalRecordsCount, selectedRowIndexes]);
+
+    // Component-level cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (headerUpdateTimeoutHandle.current) {
+                window.clearTimeout(headerUpdateTimeoutHandle.current);
+                headerUpdateTimeoutHandle.current = null;
+            }
+            if (headerUpdateRafHandle.current) {
+                cancelAnimationFrame(headerUpdateRafHandle.current);
+                headerUpdateRafHandle.current = null;
+            }
+        };
+    }, []);
 
     const generateRowSelectArgs: (indexes?: number[], isDeselect?: boolean, shiftSelectableRowIndexes?: number[]) => RowSelectEvent<T> =
         useCallback((indexes?: number[], isDeselect?: boolean, shiftSelectableRowIndexes?: number[]): RowSelectEvent<T> => {
@@ -142,7 +209,7 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                 })),
                 event: activeEvent.current
             };
-        }, []);
+        }, [currentViewData]);
 
     const triggerRowSelect: (rowSelect: boolean, shiftSelectableRowIndexes?: number[], deselectedRowIndexes?: number[]) => void =
         useCallback((rowSelect: boolean, shiftSelectableRowIndexes?: number[], deselectedRowIndexes?: number[]): void => {
@@ -151,34 +218,40 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
             } else {
                 gridRef?.current?.onRowDeselect?.(generateRowSelectArgs(deselectedRowIndexes, !rowSelect, shiftSelectableRowIndexes));
             }
-        }, []);
+        }, [currentViewData]);
 
     /**
      * Updates row selection state
      */
     const updateRowSelection: (selectedRow: HTMLTableRowElement, rowIndex: number) => void =
         useCallback((selectedRow: HTMLTableRowElement, rowIndex: number): void => {
-            if (!selectedRow || !gridRef?.current) { return; }
-            selectedRowIndexes?.current?.push(rowIndex);
-            selectedRowsRef?.current?.push(selectedRow);
+            if ((!selectedRow || !gridRef?.current) && (!virtualSettings.enableRow || scrollMode !== ScrollMode.Auto ||
+                !currentViewData?.[rowIndex as number])) { return; }
+            if (!selectedRowIndexes.current?.includes(rowIndex)) {
+                selectedRowIndexes?.current?.push(rowIndex);
+            }
+            if (selectedRow) {
+                selectedRowsRef?.current?.push(selectedRow);
+            }
             const rowObj: IRow<ColumnProps<T>> = getRowObj(selectedRow);
-            if (!rowObj || !Object.keys(rowObj).length) { return; }
-            rowObj.isSelected = true;
-            rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: true}));
+            if ((!rowObj || !Object.keys(rowObj).length) && (!virtualSettings.enableRow || scrollMode !== ScrollMode.Auto ||
+                !currentViewData?.[rowIndex as number])) { return; }
+            if (rowObj && Object.keys(rowObj).length) {
+                rowObj.isSelected = true;
+                rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: true}));
+            }
             if (gridRef.current?.selectionSettings?.persistSelection) {
-                updatePersistCollection(rowObj.data as T, true);
+                updatePersistCollection(rowObj?.data as T ?? currentViewData?.[rowIndex as number], true);
             }
             updateHeaderSelectionState();
 
             // Dispatch custom event for toolbar refresh
             const gridElement: HTMLDivElement | null | undefined = gridRef?.current?.element;
-            if (gridElement) {
-                const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
-                    detail: { selectedRowIndexes: selectedRowIndexes?.current }
-                });
-                gridElement.dispatchEvent(selectionEvent);
-            }
-        }, [gridRef, getRowObj, updatePersistCollection, updateHeaderSelectionState]);
+            const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
+                detail: { selectedRowIndexes: selectedRowIndexes?.current }
+            });
+            gridElement?.dispatchEvent?.(selectionEvent);
+        }, [gridRef, getRowObj, currentViewData, updatePersistCollection, updateHeaderSelectionState]);
 
     /**
      * Deselects the currently selected rows.
@@ -192,16 +265,24 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
             const row: Element[] = [];
             const rowIndexes: number[] = [];
             for (let i: number = 0, len: number = selectedRowIndexes?.current.length; i < len; i++) {
-                const currentRow: Element = rows[selectedRowIndexes?.current[parseInt(i.toString(), 10)]];
+                const currentRow: Element = virtualSettings.enableRow ?
+                    gridRef.current?.cachedRowObjects.current?.get(selectedRowIndexes?.current[i as number])?.element :
+                    rows[selectedRowIndexes?.current[parseInt(i.toString(), 10)]];
                 const rowObj: IRow<ColumnProps<T>> = getRowObj(currentRow) as IRow<ColumnProps<T>>;
-                if (Object.keys(rowObj).length) {
-                    data.push(rowObj.data);
-                    row.push(currentRow);
+                if (Object.keys(rowObj).length || (virtualSettings.enableRow && scrollMode === ScrollMode.Auto &&
+                    currentViewData?.[selectedRowIndexes?.current[i as number] as number])) {
+                    data.push(rowObj?.data ?? currentViewData?.[selectedRowIndexes?.current[i as number] as number]);
+                    if (currentRow) {
+                        row.push(currentRow);
+                    }
                     rowIndexes.push(selectedRowIndexes?.current[parseInt(i.toString(), 10)]);
-                    rowObj.isSelected = false;
-                    rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: false}));
+                    if (rowObj && Object.keys(rowObj).length) {
+                        rowObj.isSelected = false;
+                        rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: false}));
+                    }
                     if (gridRef.current?.selectionSettings?.persistSelection) {
-                        updatePersistCollection(rowObj.data as T, false);
+                        updatePersistCollection(rowObj?.data as T ?? currentViewData?.[selectedRowIndexes?.current[i as number] as number],
+                                                false);
                     }
                 }
             }
@@ -224,7 +305,7 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
             isRowSelected.current = false;
 
             // Clear all persistent selection states
-            isRemoteHeaderSelection.current = false;
+            isHeaderSelectAllMode.current = false;
             unselectedRowState.current.clear();
             selectedRowState.current.clear();
             persistSelectedData.current.clear();
@@ -233,15 +314,13 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
 
             // Dispatch custom event for toolbar refresh after deselection
             const gridElement: HTMLDivElement | null | undefined = gridRef?.current?.element;
-            if (gridElement) {
-                const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
-                    detail: { selectedRowIndexes: [] }
-                });
-                gridElement.dispatchEvent(selectionEvent);
-            }
+            const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
+                detail: { selectedRowIndexes: [] }
+            });
+            gridElement?.dispatchEvent?.(selectionEvent);
             updateHeaderSelectionState();
         }
-    }, [gridRef, getRowObj, updatePersistCollection, triggerRowSelect, updateHeaderSelectionState]);
+    }, [gridRef, virtualSettings, getRowObj, updatePersistCollection, triggerRowSelect, updateHeaderSelectionState]);
 
     /**
      * Deselects specific rows by their indexes.
@@ -266,16 +345,21 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                     continue;
                 }
                 const currentRow: HTMLTableRowElement = rows[parseInt(rowIndex.toString(), 10)] as HTMLTableRowElement;
-                const rowObj: IRow<ColumnProps<T>> = getRowObj(currentRow) as IRow<ColumnProps<T>>;
+                const rowObj: IRow<ColumnProps<T>> = getRowObj(currentRow ?? rowIndex) as IRow<ColumnProps<T>>;
 
-                if (Object.keys(rowObj).length) {
-                    data.push(rowObj.data);
-                    deSelectedRows.push(currentRow);
+                if (Object.keys(rowObj).length || (virtualSettings.enableRow && scrollMode === ScrollMode.Auto &&
+                    currentViewData?.[rowIndex as number])) {
+                    data.push(rowObj?.data ?? currentViewData?.[rowIndex as number]);
+                    if (currentRow) {
+                        deSelectedRows.push(currentRow);
+                    }
                     rowIndexes.push(selectedRowIndexes?.current[parseInt(selectedIndex.toString(), 10)]);
-                    rowObj.isSelected = false;
-                    rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: false}));
+                    if (rowObj && Object.keys(rowObj).length) {
+                        rowObj.isSelected = false;
+                        rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: false}));
+                    }
                     if (gridRef.current?.selectionSettings?.persistSelection) {
-                        updatePersistCollection(rowObj.data as T, false);
+                        updatePersistCollection(rowObj.data as T ?? currentViewData?.[rowIndex as number], false);
                     }
                     updateHeaderSelectionState();
                 }
@@ -303,12 +387,10 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                 isRowSelected.current = selectedRowIndexes.current.length > 0;
                 triggerRowSelect(false, undefined, rowIndexes);
                 const gridElement: HTMLDivElement | null | undefined = gridRef?.current?.element;
-                if (gridElement) {
-                    const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
-                        detail: { selectedRowIndexes: selectedRowIndexes?.current }
-                    });
-                    gridElement.dispatchEvent(selectionEvent);
-                }
+                const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
+                    detail: { selectedRowIndexes: selectedRowIndexes?.current }
+                });
+                gridElement?.dispatchEvent?.(selectionEvent);
             }
         }
     }, [gridRef, getRowObj, triggerRowSelect, updateHeaderSelectionState]);
@@ -323,19 +405,34 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
     /**
      * Gets the selected row data
      */
-    const getSelectedRecords: () => T[] | null = useCallback((): T[] | null => {
-        if (gridRef?.current?.selectionSettings?.persistSelection) {
-            return Array.from(persistSelectedData.current.values());
-        }
-        // Fallback to current page selected rows
-        let selectedData: T[] = [];
-        if (selectedRowsRef?.current?.length && gridRef?.current) {
-            const rowsObj: IRow<ColumnProps<T>>[] = gridRef?.current?.getRowsObject?.();
-            selectedData = rowsObj.filter((row: IRow<ColumnProps<T>>) => row?.isSelected)
-                .map((m: IRow<ColumnProps<T>>) => m.data);
-        }
-        return selectedData;
-    }, [gridRef]);
+    const getSelectedRecords: () => T[] | { isSelectAll: boolean; primaryKeys: string[] } | null =
+        useCallback((): T[] | { isSelectAll: boolean; primaryKeys: string[] } | null => {
+            if (dataModule?.isRemote()) {
+                const payload: payload = buildDeletepayload<T>(gridRef.current as GridRef<T>, 'all');
+                return { isSelectAll: payload.isHeaderSelectAllMode, primaryKeys: payload.toggleKeys };
+            }
+            if (gridRef?.current?.selectionSettings?.persistSelection) {
+                return getPersistSelectedData();
+            }
+            // Fallback to current page selected rows
+            let selectedData: T[] = [];
+            if (selectedRowsRef?.current?.length && gridRef?.current) {
+                const rowsObj: IRow<ColumnProps<T>>[] = gridRef?.current?.getRowsObject?.();
+                selectedData = virtualSettings.enableRow ? selectedRowIndexes.current?.map((selectedIndex: number) => {
+                    return gridRef?.current?.cachedRowObjects.current?.get(selectedIndex)?.data ??
+                    currentViewData?.[selectedIndex as number];
+                }) : rowsObj.filter((row: IRow<ColumnProps<T>>) => row?.isSelected)
+                    .map((m: IRow<ColumnProps<T>>) => m.data);
+            }
+            return selectedData;
+        }, [gridRef, dataModule]);
+
+    /**
+     * Gets the persistent selected data as an array of record objects
+     */
+    const getPersistSelectedData: () => T[] = useCallback((): T[] => {
+        return Array.from(persistSelectedData.current.values());
+    }, []);
 
     /**
      * Gets a collection of indexes between start and end
@@ -357,20 +454,27 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                 indexes.reverse();
             }
             return indexes;
-        }, []);
+        }, [gridRef, currentViewData]);
 
     const selectedDataUpdate: (selectedData?: Object[], selectedRows?: HTMLTableRowElement[], rowIndexes?: number[]) => void =
         useCallback((selectedData?: Object[], selectedRows?: HTMLTableRowElement[], rowIndexes?: number[]): void => {
             if (!gridRef?.current || !rowIndexes?.length) { return; }
             for (let i: number = 0, len: number = rowIndexes.length; i < len; i++) {
-                const currentRow: HTMLTableRowElement = gridRef?.current.getRows()[rowIndexes[parseInt(i.toString(), 10)]];
-                const rowObj: IRow<ColumnProps<T>> = getRowObj(currentRow) as IRow<ColumnProps<T>>;
+                const currentRow: HTMLTableRowElement = virtualSettings.enableRow ?
+                    gridRef?.current?.cachedRowObjects.current?.get(rowIndexes[i as number])?.element :
+                    gridRef?.current.getRows()[rowIndexes[parseInt(i.toString(), 10)]];
+                const rowObj: IRow<ColumnProps<T>> = virtualSettings.enableRow ?
+                    gridRef?.current?.cachedRowObjects.current?.get(rowIndexes[i as number]) :
+                    getRowObj(currentRow) as IRow<ColumnProps<T>>;
                 if (rowObj && rowObj.isDataRow) {
                     selectedData.push(rowObj.data);
                     selectedRows.push(currentRow);
+                } else if ((!rowObj || !Object.keys(rowObj).length) && virtualSettings.enableRow && scrollMode === ScrollMode.Auto &&
+                    currentViewData?.[rowIndexes[i as number] as number]) {
+                    selectedData.push(currentViewData?.[rowIndexes[i as number] as number]);
                 }
             }
-        }, [gridRef, getRowObj]);
+        }, [gridRef, getRowObj, currentViewData]);
 
     const updateRowProps: (startIndex: number) => void = useCallback((startIndex: number): void => {
         prevRowIndex.current = startIndex;
@@ -401,10 +505,11 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
         };
         if (gridRef?.current.onRowSelecting) {
             gridRef?.current.onRowSelecting(selectingArgs);
-            if (selectingArgs.cancel) { return; } // If canceled, don't proceed with deselection
+            if (selectingArgs.cancel) {
+                return;
+            } // If canceled, don't proceed with deselection
         }
-        const clearSelectedRowIndexes: number[] = selectedRowIndexes.current
-            .filter((index: number) => !rowIndexes.includes(index));
+        const clearSelectedRowIndexes: number[] = selectedRowIndexes.current.filter((index: number) => !rowIndexes.includes(index));
         if (clearSelectedRowIndexes.length) {
             clearRowSelection(clearSelectedRowIndexes);
         }
@@ -429,13 +534,11 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
 
         // Dispatch custom event for toolbar refresh after multiple row selection
         const gridElement: HTMLDivElement | null | undefined = gridRef?.current?.element;
-        if (gridElement) {
-            const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
-                detail: { selectedRowIndexes: selectedRowIndexes?.current }
-            });
-            gridElement.dispatchEvent(selectionEvent);
-        }
-    }, [gridRef, selectedDataUpdate, clearRowSelection, updateRowSelection, updateRowProps, triggerRowSelect]);
+        const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
+            detail: { selectedRowIndexes: selectedRowIndexes?.current }
+        });
+        gridElement?.dispatchEvent?.(selectionEvent);
+    }, [gridRef, selectedDataUpdate, clearRowSelection, updateRowSelection, updateRowProps, triggerRowSelect, currentViewData]);
 
 
     /**
@@ -454,15 +557,18 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
      * Adds multiple rows to the current selection
      *
      * @param {number[]} rowIndexes - Array of row indexes to select
+     * @param {boolean} isVirtualHeaderSelectAll - DOM virtualization enabled Grid header select all action purpose
      * @returns {void}
      */
-    const addRowsToSelection: (rowIndexes: number[]) => void = useCallback((rowIndexes: number[]): void => {
+    const addRowsToSelection: (rowIndexes: number[], isVirtualHeaderSelectAll?: boolean) => void =
+    useCallback((rowIndexes: number[], isVirtualHeaderSelectAll?: boolean): void => {
         if (!gridRef?.current || !rowIndexes?.length) { return; }
         const indexes: number[] = getSelectedRowIndexes().concat(rowIndexes);
         const selectedRow: HTMLTableRowElement = gridRef?.current?.selectionSettings?.mode !== 'Single' ?
             gridRef?.current?.getRowByIndex?.(rowIndexes[0]) :
             gridRef?.current?.getRowByIndex?.(rowIndexes[rowIndexes.length - 1]);
-        if (!selectedRow) { return; }
+        if (!selectedRow && (!virtualSettings.enableRow || scrollMode !== ScrollMode.Auto ||
+            !currentViewData?.[rowIndexes[0] as number])) { return; }
         const selectedRows: HTMLTableRowElement[] = [];
         const selectedData: T[] = [];
         if (isMultiCtrlRequest?.current) {
@@ -474,7 +580,8 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
             let isUnSelected: boolean;
             if (gridRef.current?.selectionSettings?.persistSelection) {
                 const primaryKeys: string[] = gridRef?.current?.getPrimaryKeyFieldNames?.();
-                isUnSelected = selectedRowState.current.has(rowObj.data?.[primaryKeys[0]]);
+                isUnSelected = selectedRowState.current.has(rowObj.data?.[primaryKeys[0]] ??
+                    currentViewData?.[rowIndexes[rowIndex as number] as number]?.[primaryKeys[0]]);
             } else {
                 isUnSelected = !!(getRowObj(rowIndex)?.isSelected);
             }
@@ -498,14 +605,23 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                 if (idxInPage > -1) { selectedRowIndexes?.current.splice(idxInPage, 1); }
                 const idxRowEl: number = selectedRowsRef?.current.indexOf(selectedRow);
                 if (idxRowEl > -1) { selectedRowsRef?.current.splice(idxRowEl, 1); }
-                rowObj.isSelected = false;
-                rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: false}));
+                if (rowObj && Object.keys(rowObj).length) {
+                    rowObj.isSelected = false;
+                    rowObj?.setRowObject?.((prev: IRow<ColumnProps<T>>) => ({...prev, isSelected: false}));
+                }
                 if (gridRef.current?.selectionSettings?.persistSelection) {
-                    updatePersistCollection(rowObj.data as T, false);
+                    updatePersistCollection(rowObj.data as T ?? currentViewData?.[rowIndexes[rowIndex as number] as number], false);
                 }
                 updateHeaderSelectionState();
                 // Trigger the onRowDeselect event
                 triggerRowSelect(false, undefined, [rowIndex]);
+
+                // Dispatch custom event for toolbar refresh after row deselection
+                const gridElement: HTMLDivElement | null | undefined = gridRef?.current?.element;
+                const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
+                    detail: { selectedRowIndexes: selectedRowIndexes?.current }
+                });
+                gridElement?.dispatchEvent?.(selectionEvent);
             } else if (!isUnSelected) {
                 // Create arguments for the selecting event
                 const rowSelectArgs: RowSelectingEvent<T> = {
@@ -526,13 +642,13 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
                 if (gridRef?.current.selectionSettings.mode === 'Single') {
                     clearSelection();
                 }
-                updateRowSelection(selectedRow, rowIndex);
+                updateRowSelection(isVirtualHeaderSelectAll ? rowObj?.element : selectedRow, rowIndex);
                 // Trigger the onRowSelect event
                 triggerRowSelect(true);
                 updateRowProps(rowIndex);
             }
         }
-    }, [gridRef, getSelectedRowIndexes, getRowObj, selectedDataUpdate, clearSelection,
+    }, [gridRef, getSelectedRowIndexes, getRowObj, selectedDataUpdate, clearSelection, currentViewData,
         updateRowSelection, updatePersistCollection, triggerRowSelect, updateRowProps, updateHeaderSelectionState]);
 
     /**
@@ -588,12 +704,10 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
 
                 // Dispatch custom event for toolbar refresh after single row selection
                 const gridElement: HTMLDivElement | null | undefined = gridRef?.current?.element;
-                if (gridElement) {
-                    const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
-                        detail: { selectedRowIndexes: selectedRowIndexes?.current }
-                    });
-                    gridElement.dispatchEvent(selectionEvent);
-                }
+                const selectionEvent: CustomEvent = new CustomEvent('selectionChanged', {
+                    detail: { selectedRowIndexes: selectedRowIndexes?.current }
+                });
+                gridElement?.dispatchEvent?.(selectionEvent);
             } else {
                 const clearSelectedRowIndexes: number[] = selectedRowIndexes.current
                     .filter((index: number) => rowIndex !== index);
@@ -662,15 +776,15 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
     const ctrlPlusA: () => void = (): void => {
         if (gridRef?.current?.selectionSettings?.mode === 'Multiple' && gridRef?.current.selectionSettings.type === 'Row') {
             const rowObj: IRow<ColumnProps<T>>[] = gridRef?.current?.getRowsObject();
-            selectRowByRange(rowObj[0].index, rowObj[rowObj.length - 1].index);
+            selectRowByRange(virtualSettings.enableRow ? gridRef.current?.cachedRowObjects.current?.get(0)?.rowIndex : rowObj[0].rowIndex,
+                             virtualSettings.enableRow ? (currentViewData.length - 1) : rowObj[rowObj.length - 1].rowIndex);
         }
     };
 
     const onCellFocus: (e: CellFocusEvent) => void = (e: CellFocusEvent): void => {
         activeEvent.current = e.event;
         const isHeader: boolean = (e.container as {isHeader?: boolean}).isHeader;
-        const isHeaderCheckBox: boolean = e.element.querySelector('.sf-grid-checkselectall') !== null &&
-            gridRef?.current?.selectionSettings.mode === SelectionMode.Multiple;
+        const isHeaderCheckBox: boolean = e.element?.querySelector('.sf-grid-checkselectall') !== null;
         const headerAction: boolean = isHeader && e.byKey && !isHeaderCheckBox;
         if (!e.byKey || !gridRef?.current?.selectionSettings.enabled) {
             return;
@@ -716,23 +830,49 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
     // Extracted helper to decide header checkbox select-all action
     const shouldHeaderSelectAll: (row?: IRow<ColumnProps>, event?: CheckboxChangeEvent, isRemoteData?: boolean) => boolean =
         useCallback((row?: IRow<ColumnProps>, event?: CheckboxChangeEvent, isRemoteData?: boolean): boolean => {
-            const selectedRecordsCount: number = getSelectedRecords().length;
+            const selectedRecordsCount: number = gridRef.current?.selectionSettings.persistSelection ?
+                getPersistSelectedData().length : (getSelectedRecords() as T[]).length;
             const isPersistSelection: boolean = gridRef.current?.selectionSettings.persistSelection;
+            const autoSelectMode: boolean = gridRef.current?.selectionSettings.autoSelectMode === AutoSelectMode.Default;
+            const areAllSelectedByIndexes: boolean = selectedRowIndexes.current?.length === currentViewData.length;
+
             const isLocalData: () => boolean = () => {
-                if (event?.value) {
-                    return event.value;
+                if (autoSelectMode) {
+                    // Local data: always two-state (checked/unchecked)
+                    if (event?.value) {
+                        return event.value;
+                    } else {
+                        return isPersistSelection ? !(selectedRecordsCount === totalRecordsCount) :
+                            !(selectedRecordsCount === currentViewData.length);
+                    }
                 } else {
-                    return isPersistSelection ? !(selectedRecordsCount === totalRecordsCount) :
-                        !(selectedRecordsCount === currentViewData.length);
+                    // Local data with tri-state: legacy three-state behavior
+                    if (!!event && !event?.value) {
+                        return event?.value;
+                    } else {
+                        return !areAllSelectedByIndexes;
+                    }
                 }
             };
+
             const isRemoteDataFn: () => boolean = () => {
-                if (!!event && !event?.value) {
-                    return event?.value;
+                if (autoSelectMode) {
+                    // Remote data with dual-state: two-state behavior (checked/unchecked)
+                    if (event?.value !== undefined) {
+                        return event.value;
+                    } else {
+                        return !areAllSelectedByIndexes;
+                    }
                 } else {
-                    return !(selectedRowIndexes.current?.length === currentViewData.length);
+                    // Remote data with tri-state: legacy three-state behavior
+                    if (!!event && !event?.value) {
+                        return event?.value;
+                    } else {
+                        return !areAllSelectedByIndexes;
+                    }
                 }
             };
+
             return (
                 (!row?.isSelected && !row?.isIntermediateState && !!event) || (isRemoteData ? isRemoteDataFn() : isLocalData())
             );
@@ -741,42 +881,82 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
     const headerCheckBoxOnChange: (row?: IRow<ColumnProps>, event?: CheckboxChangeEvent) => void =
         useCallback(async (row?: IRow<ColumnProps>, event?: CheckboxChangeEvent) => {
             if (totalRecordsCount <= 0 && currentViewData?.length <= 0 && !gridRef.current) { return; }
+
+            const autoSelectMode: string = gridRef.current?.selectionSettings.autoSelectMode ?? AutoSelectMode.Default;
             const isRemoteData: boolean = (gridRef?.current?.getDataModule() as UseDataResult)?.isRemote();
 
+            const notSelectedRowIndexes: number[] =
+                gridRef.current?.getRowsObject?.()?.reduce<number[]>((acc: number[], rowObject: IRow<ColumnProps>) => {
+                    if (!rowObject.isSelected) {
+                        acc.push(rowObject.rowIndex);
+                    }
+                    return acc;
+                }, []) ?? [];
             const selectCurrentPage: () => void = () => {
-                if (gridRef.current?.selectionSettings.mode === SelectionMode.Multiple) {
-                    selectRowByRange?.(0, currentViewData?.length - 1);
-                }
+                selectRowByRange?.(0, currentViewData?.length - 1);
             };
 
             if (shouldHeaderSelectAll(row, event, isRemoteData)) {
-                if (!isRemoteData) {
-                    // Local data: persist selection for ALL local records using getData(skipPage=true)
-                    const allLocal: T[] = (await (gridRef.current?.getData?.(true) as unknown as Promise<T[]>)) ?? [];
-                    if (gridRef.current?.selectionSettings.persistSelection) {
-                        for (const item of allLocal) {
-                            updatePersistCollection(item as T, true);
+                // SELECT ALL action based on AutoSelectMode
+                if (gridRef.current?.selectionSettings.persistSelection) {
+                    isHeaderSelectAllMode.current = true;
+                }
+                switch (autoSelectMode) {
+                case AutoSelectMode.Default:
+                    if (!isRemoteData) {
+                        // Local data Default mode: select all local records
+                        const allLocal: T[] = (await (gridRef.current?.getData?.(true) as unknown as Promise<T[]>)) ?? [];
+                        if (gridRef.current?.selectionSettings.persistSelection || virtualSettings?.enableRow) {
+                            if (virtualSettings?.enableRow) {
+                                selectedRowIndexes.current.length = 0;
+                            }
+                            for (let index: number = 0; index < allLocal.length; index++) {
+                                if (virtualSettings?.enableRow && !notSelectedRowIndexes.includes(index) && index < currentViewData.length
+                                    && currentViewData.length > gridRef.current?.getRowsObject?.()?.length) {
+                                    selectedRowIndexes.current.push(index);
+                                    if (gridRef.current?.selectionSettings.persistSelection) {
+                                        updatePersistCollection(allLocal[index as number] as T, true);
+                                    }
+                                } else if (virtualSettings.enableRow && currentViewData.length <= gridRef.current?.getRowsObject?.()?.length
+                                    && gridRef.current?.selectionSettings.persistSelection) {
+                                    updatePersistCollection(allLocal[index as number] as T, true);
+                                } else if (!virtualSettings?.enableRow) {
+                                    updatePersistCollection(allLocal[index as number] as T, true);
+                                }
+                            }
                         }
+                        const isAllVirtualRowSelected: boolean = virtualSettings?.enableRow &&
+                            !notSelectedRowIndexes.length;
+                        if (isAllVirtualRowSelected) {
+                            updateHeaderSelectionState();
+                        } else {
+                            if (virtualSettings?.enableRow && currentViewData.length > gridRef.current?.getRowsObject?.()?.length) {
+                                addRowsToSelection(notSelectedRowIndexes, true);
+                            } else {
+                                selectCurrentPage();
+                            }
+                        }
+                    } else {
+                        // Remote data Default mode: activate select-all meta
+                        unselectedRowState.current.clear();
+                        selectCurrentPage();
                     }
-                    // Visually select current page
-                    selectCurrentPage();
-                } else {
+                    break;
+
+                case AutoSelectMode.Intermediate:
+                    // Intermediate mode: select current page only
                     unselectedRowState.current.clear();
-                    // Select current page visually; persistence will be ensured on page changes
                     selectCurrentPage();
-                    // Remote data: activate global header select-all and clear manual unselections
-                    if (gridRef.current?.selectionSettings.persistSelection) {
-                        isRemoteHeaderSelection.current = true;
-                    }
+                    break;
                 }
             } else {
-                isRemoteHeaderSelection.current = false;
+                isHeaderSelectAllMode.current = false;
                 unselectedRowState.current.clear();
                 selectedRowState.current.clear();
                 persistSelectedData.current.clear();
                 clearSelection?.();
             }
-        }, [currentViewData, totalRecordsCount, gridRef.current]);
+        }, [currentViewData, totalRecordsCount, gridRef.current, shouldHeaderSelectAll]);
 
     return {
         clearSelection,
@@ -784,6 +964,7 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
         selectRow,
         getSelectedRowIndexes,
         getSelectedRecords,
+        getPersistSelectedData,
         handleGridClick,
         selectRows,
         selectRowByRange,
@@ -799,9 +980,21 @@ export const useSelection: <T>(gridRef?: RefObject<GridRef<T>>, currentViewData?
         // Expose persistent selection for external usage if needed
         get selectedRowState(): Set<string> { return selectedRowState.current; },
         get persistSelectedData(): Map<string, T> { return persistSelectedData.current; },
-        // Remote select-all helpers
-        get isRemoteHeaderSelection(): boolean { return isRemoteHeaderSelection.current; },
+        // Header select-all mode helpers
+        get isHeaderSelectAllMode(): boolean { return isHeaderSelectAllMode.current; },
         clearAllPersistedSelection: () => { selectedRowState.current.clear(); persistSelectedData.current.clear(); },
+        clearDeletedSelections: (deletedRecords: T[]) => {
+            // Only remove selections for the deleted records
+            for (const record of deletedRecords) {
+                const primaryKeys: string[] = gridRef?.current?.getPrimaryKeyFieldNames?.();
+                const key: string = record?.[primaryKeys[0]];
+                if (key != null) {
+                    selectedRowState.current.delete(key);
+                    persistSelectedData.current.delete(key);
+                    unselectedRowState.current.delete(key);
+                }
+            }
+        },
         get unselectedRowState(): Set<string> { return unselectedRowState.current; }
     };
 };

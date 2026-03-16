@@ -33,6 +33,7 @@
 
     .sf-input-icon {
       padding: $input-large-close-icon-box-padding;
+      margin-inline: $input-large-close-icon-margin-inline;
 
       svg {
         font-size: $input-large-close-icon-font-size;
@@ -40,7 +41,8 @@
     }
 
     &.sf-outline {
-      .sf-input {
+      .sf-input,
+      .sf-multiselect-values {
         padding: $input-large-outlined-padding;
       }
 
@@ -75,7 +77,8 @@
       line-height: $input-large-filled-line-height;
       font-size: $input-large-filled-font-size;
 
-      .sf-input {
+      .sf-input,
+      .sf-multiselect-values {
         padding: $input-large-filled-padding;
       }
 
@@ -142,6 +145,7 @@
 
     .sf-input-icon {
       padding: $input-medium-close-icon-box-padding;
+      margin-inline: $input-medium-close-icon-margin-inline;
 
       svg {
         font-size: $input-medium-close-icon-font-size;
@@ -149,7 +153,8 @@
     }
 
     &.sf-outline {
-      .sf-input {
+      .sf-input,
+      .sf-multiselect-values {
         padding: $input-medium-outlined-padding;
       }
 
@@ -184,7 +189,8 @@
       line-height: $input-medium-filled-line-height;
       font-size: $input-medium-filled-font-size;
 
-      .sf-input {
+      .sf-input,
+      .sf-multiselect-values {
         padding: $input-medium-filled-padding;
       }
 
@@ -223,6 +229,7 @@
     border-style: solid;
     margin-bottom: $input-margin-bottom;
     overflow-inline: clip;
+    justify-content: flex-end;
 
     .sf-input-icon {
       display: flex;
@@ -234,6 +241,7 @@
       text-align: center;
       font-size: $input-medium-close-icon-font-size;
       padding: $input-close-icon-box-padding;
+      margin-inline: $input-close-icon-margin-inline;
       border-radius: $input-close-icon-border-radius;
       margin-block: $input-close-icon-box-margin;
       position: relative;
@@ -269,6 +277,7 @@
       transition: 0.25s ease-in-out;
       inset-block-start: $input-float-top;
       letter-spacing: $input-float-text-letter-spacing;
+      inset-inline-start: $input-float-prefix-focus-left;
     }
 
     &.sf-has-prefix {
@@ -320,7 +329,8 @@
         content: none;
       }
 
-      .sf-input {
+      .sf-input,
+      .sf-multiselect-values {
         padding: $input-outlined-padding;
       }
 
@@ -356,7 +366,8 @@
       font-size: $input-filled-font-size;
       line-height: $input-filled-line-height;
 
-      .sf-input {
+      .sf-input,
+      .sf-multiselect-values {
         padding: $input-filled-padding;
       }
 
@@ -407,6 +418,8 @@
   .sf-form-label {
     font-size: $input-form-label-font-size;
     line-height: $input-form-label-line-height;
+    letter-spacing: $input-form-label-letter-space;
+    color: $input-form-label-color;
   }
 
   .sf-form-error {

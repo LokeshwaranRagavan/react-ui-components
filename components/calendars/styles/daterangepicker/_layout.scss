@@ -1,0 +1,71 @@
+@use 'theme-variables' as *;
+
+@include export-module('daterangepicker-layout') {
+  .sf-daterangepicker {
+    .sf-calendar {
+      border: none;
+    }
+  }
+
+  .sf-daterangepicker.sf-popup {
+    background: $daterangepicker-background-color;
+    border: $daterangepicker-border-color;
+    border-radius: $daterangepicker-border-radius;
+    box-shadow: $daterangepicker-box-shadow;
+  }
+
+  .sf-daterangepicker-header,
+  .sf-daterangepicker-tab {
+    padding: $daterangepicker-header-padding;
+  }
+
+  .sf-daterangepicker-tab {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .sf-daterange-selected-days {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    color: $daterangepicker-count-color;
+  }
+
+  .sf-daterange-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: $daterangepicker-label-gap;
+    text-align: center;
+    line-height: $daterangepicker-line-height;
+    font-weight: $daterangepicker-toolbar-font-weight;
+  }
+
+  .sf-date-range-container {
+    float: inline-start;
+  }
+
+  .sf-daterangepicker-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: $daterangepicker-dialog-header-gap;
+    padding: $daterangepicker-footer-padding;
+    clear: both;
+  }
+
+  .sf-picker-popup {
+    .sf-daterangepicker-footer {
+      justify-content: space-between;
+    }
+  }
+
+  .sf-preset {
+    .sf-date-range-container {
+      border-inline-end: $daterangepicker-border-color;
+    }
+    .sf-daterangepicker-footer {
+      border-top: $daterangepicker-border-color;
+    }
+  }
+}

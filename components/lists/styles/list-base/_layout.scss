@@ -53,15 +53,9 @@
     &:active {
       background-color: $list-item-active-bg;
       color: $list-item-text-active-color;
-
-      &.sf-checklist {
-        background-color: $list-item-background;
-        color: $list-item-text-color;
-      }
     }
 
-    &.sf-focused,
-    &.sf-focused.sf-active.sf-checklist {
+    &.sf-focused {
       background-color: $list-focus-bg-color;
       color: $list-item-text-active-color;
     }
@@ -73,7 +67,6 @@
 
   .sf-list-group-item {
     border-bottom: $list-group-item-border-bottom;
-    line-height: $list-groupheader-item-line-height;
     font-weight: $font-weight-semibold;
     font-size: $list-groupheader-font-size;
     padding: $list-group-item-header-padding;
@@ -94,14 +87,19 @@
       flex-grow: 1;
     }
 
-    &:not(:first-child) {
-      border-top: $list-group-item-border-top;
+    &:not(.sf-list-group-first-item) {
+      box-shadow: $list-group-item-border-top;
     }
   }
 
-  .sf-checklist {
-    .sf-list-text {
-      padding-inline: $spacing-10;
+  .sf-pinned-group {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: inherit;
+
+    .sf-list-group-item {
+      box-shadow: none;
     }
   }
 
@@ -155,6 +153,7 @@
     border: $list-skeleton-border;
     border-radius: $list-skeleton-border-radius;
     background: $list-skeleton-background-color;
+    width: 100%;
 
     &::after {
       animation: sf-shimmer-wave $list-skeleton-shimmer-effect-duration $list-skeleton-shimmer-effect-timing-function infinite;
@@ -171,5 +170,18 @@
           $list-skeleton-shimmer-wave-color $list-skeleton-shimmer-wave-pos,
           $list-skeleton-shimmer-background-color $wave-end );
     }
+  }
+
+  .sf-virtualization .sf-ul {
+    scroll-padding-top: $list-virtual-scroll-padding-top;
+
+    .sf-list-group-item:not(.sf-list-group-first-item) {
+      top: auto;
+    }
+  }
+
+  .sf-virtual-scroll-parent {
+    overflow: auto;
+    position: relative;
   }
 }

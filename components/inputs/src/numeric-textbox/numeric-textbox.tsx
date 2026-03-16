@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect, forwardRef, Ref, useImperativeHandle, useMemo, useId } from 'react';
 import { InputBase, renderFloatLabelElement, renderClearButton, LabelMode, CLASS_NAMES, inputBaseProps } from '../common/inputbase';
-import { IL10n, isNullOrUndefined, L10n, preRender, RippleEffect, SvgIcon, useProviderContext, useRippleEffect } from '@syncfusion/react-base';
+import { IL10n, isNullOrUndefined, L10n, preRender, RippleEffect, useProviderContext, useRippleEffect } from '@syncfusion/react-base';
+import { ChevronDownFillIcon, ChevronUpFillIcon } from '@syncfusion/react-icons';
 import { formatUnit } from '@syncfusion/react-base';
 import { getNumberFormat, getNumberParser } from '@syncfusion/react-base';
 import { getValue, getNumericObject, Variant, Size } from '@syncfusion/react-base';
@@ -10,8 +11,6 @@ const ROOT: string = 'sf-numeric';
 const SPINICON: string = 'sf-input-icon sf-spin-icon';
 const SPINUP: string = 'sf-spin-up';
 const SPINDOWN: string = 'sf-spin-down';
-const SPINUP_PATH: string = 'M20.7929 17H3.20712C2.76167 17 2.53858 16.4615 2.85356 16.1465L11.6465 7.3536C11.8417 7.15834 12.1583 7.15834 12.3536 7.3536L21.1465 16.1465C21.4614 16.4615 21.2384 17 20.7929 17Z';
-const SPINDOWN_PATH: string = 'M20.7929 7H3.20712C2.76167 7 2.53858 7.53857 2.85356 7.85355L11.6465 16.6464C11.8417 16.8417 12.1583 16.8417 12.3536 16.6464L21.1465 7.85355C21.4614 7.53857 21.2384 7 20.7929 7Z';
 
 export interface NumericChangeEvent {
     /**
@@ -234,10 +233,12 @@ forwardRef<INumericTextBox, INumericTextBoxProps>((props: INumericTextBoxProps, 
         readOnly
     };
 
-    const { effectiveMin, effectiveMax } = useMemo(() => {
+    const { effectiveMin, effectiveMax, ariaMin, ariaMax } = useMemo(() => {
         const low: number = Math.min(min, max);
         const high: number = Math.max(min, max);
-        return { effectiveMin: low, effectiveMax: high };
+        const ariaMin: number | undefined = low !== -(Number.MAX_VALUE) ? low : undefined;
+        const ariaMax: number | undefined = high !== (Number.MAX_VALUE) ? high : undefined;
+        return { effectiveMin: low, effectiveMax: high, ariaMin, ariaMax };
     }, [min, max]);
 
     const getInitialValue: (initialValue: number | null | undefined) => number | null =
@@ -704,8 +705,8 @@ forwardRef<INumericTextBox, INumericTextBoxProps>((props: INumericTextBoxProps, 
                 onKeyDown={handleKeyDown}
                 floatLabelType={labelMode}
                 placeholder={placeholder}
-                aria-valuemin={effectiveMin}
-                aria-valuemax={effectiveMax}
+                aria-valuemin={ariaMin}
+                aria-valuemax={ariaMax}
                 value={displayValue}
                 aria-valuenow={currentValueRef.current || undefined}
                 autoComplete={autoComplete}
@@ -738,7 +739,7 @@ forwardRef<INumericTextBox, INumericTextBoxProps>((props: INumericTextBoxProps, 
                         title={decrementText}
                         tabIndex={-1}
                     >
-                        <SvgIcon d={SPINDOWN_PATH}></SvgIcon>
+                        <ChevronDownFillIcon />
                         {ripple && <rippleRef1.Ripple />}
                     </button>
                     <button
@@ -753,7 +754,7 @@ forwardRef<INumericTextBox, INumericTextBoxProps>((props: INumericTextBoxProps, 
                         title={incrementText}
                         tabIndex={-1}
                     >
-                        <SvgIcon d={SPINUP_PATH}></SvgIcon>
+                        <ChevronUpFillIcon />
                         {ripple && <rippleRef2.Ripple />}
                     </button>
                 </>

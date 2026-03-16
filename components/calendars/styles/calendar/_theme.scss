@@ -21,6 +21,10 @@
     border: $calendar-border-style;
     box-shadow: $calendar-box-shadow;
 
+    .sf-in-range:not(.sf-other-month) { 
+      background: $calendar-range-color; 
+    }
+
     .sf-day {
       color: $calendar-text-color;
     }

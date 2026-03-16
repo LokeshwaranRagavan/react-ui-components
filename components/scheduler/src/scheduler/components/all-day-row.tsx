@@ -6,6 +6,7 @@ import { DateService } from '../services/DateService';
 import { useAllDayEvents } from '../hooks/useAllDayEvents';
 import { AllDayRowCell } from './all-day-row-cell';
 import { useSchedulerPropsContext } from '../context/scheduler-context';
+import { CSS_CLASSES } from '../common/constants';
 
 export const AllDayRow: ForwardRefExoticComponent<AllDayRowProps & RefAttributes<IAllDayRow>> =
 forwardRef<IAllDayRow, AllDayRowProps>((props: AllDayRowProps, ref: Ref<IAllDayRow>): ReactNode => {
@@ -18,6 +19,7 @@ forwardRef<IAllDayRow, AllDayRowProps>((props: AllDayRowProps, ref: Ref<IAllDayR
     const { renderDates } = useSchedulerRenderDatesContext();
     const { timeScale } = useSchedulerPropsContext();
     const allDayRowRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
+    const prevAllDayHeightRef: RefObject<number> = useRef<number>(0);
     const maxEventsPerRow: number = 3;
     const [allDayRowHeight, setAllDayRowHeight] = useState<string>('auto');
 
@@ -49,9 +51,17 @@ forwardRef<IAllDayRow, AllDayRowProps>((props: AllDayRowProps, ref: Ref<IAllDayR
         if (!allDayRowRef.current) { return; }
         if (!timeScale.enable) {
             setAllDayRowHeight('auto');
+            prevAllDayHeightRef.current = 0;
         } else {
             const height: number = calculateHeight();
+            const prevHeight: number = prevAllDayHeightRef.current || 0;
+            const scrollOffset: number = height - prevHeight;
             setAllDayRowHeight(`${height}px`);
+            const scrollElement: HTMLElement = allDayRowRef.current?.closest(`.${CSS_CLASSES.MAIN_SCROLL_CONTAINER}`);
+            if (scrollElement && scrollOffset !== 0) {
+                scrollElement.scrollTop = scrollElement.scrollTop - scrollOffset;
+            }
+            prevAllDayHeightRef.current = height;
         }
     }, [isCollapsed, eventsByDate, calculateHeight]);
 

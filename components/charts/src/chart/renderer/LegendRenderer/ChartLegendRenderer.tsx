@@ -14,7 +14,7 @@ import {
 import { IThemeStyle } from '../../utils/theme';
 import { getTextAnchor } from '../../utils/helper';
 import { registerChartEventHandler, useLegendShapeRenderVersion } from '../../hooks/useClipRect';
-import { Chart, PathOptions, Rect, SeriesProperties, TextOption } from '../../chart-area/chart-interfaces';
+import { Chart, ChartTrendlineModel, PathOptions, Rect, SeriesProperties, TextOption } from '../../chart-area/chart-interfaces';
 import { LegendShape } from '../../base/enum';
 import { HorizontalAlignment } from '@syncfusion/react-base';
 import { TextAnchor } from '../../../common';
@@ -648,9 +648,9 @@ forwardRef<SVGGElement, ChartLegendProps>((props: ChartLegendProps, ref: React.R
             const legend: BaseLegend = layoutRef.current.chartLegend as BaseLegend;
 
             for (const series of chart.visibleSeries as SeriesProperties[]) {
-                if (series.name !== '') {
+                if (series.name !== '' && !(series.category === 'TrendLine' && chart.visibleSeries[series.sourceIndex].name === '')) {
                     (legend.legendCollections as LegendOptions[])[series.index as number].shape =
-            series.legendShape as LegendShape;
+                        series.legendShape as LegendShape;
                 }
             }
 
@@ -697,7 +697,53 @@ forwardRef<SVGGElement, ChartLegendProps>((props: ChartLegendProps, ref: React.R
             for (const id of legendItemsId) {
                 if (targetId.indexOf(id) > -1) {
                     const seriesIndex: number = parseInt(targetId.split(id)[1], 10);
+                    const visibleSeries: SeriesProperties[] = (layoutRef.current.chart as Chart).visibleSeries as SeriesProperties[];
+                    const clickedSeries: SeriesProperties = visibleSeries[seriesIndex as number];
+
+                    if (clickedSeries?.category === 'TrendLine') {
+                        const sourceIndex: number = clickedSeries.sourceIndex as number;
+                        const sourceSeries: SeriesProperties = visibleSeries[sourceIndex as number];
+                        if (!sourceSeries || !sourceSeries.visible) {
+                            continue;
+                        }
+                    }
+
                     LegendClick(props, seriesIndex, chart, currentLegend);
+
+                    if (clickedSeries && clickedSeries.category !== 'TrendLine' && Array.isArray(clickedSeries.trendlines)) {
+                        const collections: LegendOptions[] = legend.legendCollections as Required<LegendOptions[]>;
+                        const isReverse: boolean = !!legend.isReverse;
+
+                        for (const trendlineSeries of clickedSeries.trendlines as ChartTrendlineModel[]) {
+                            if (!trendlineSeries) { continue; }
+                            const target: SeriesProperties = trendlineSeries.targetSeries as SeriesProperties;
+                            if (!target || target.category !== 'TrendLine' || target.sourceIndex !== seriesIndex || target.name === '') { continue; }
+
+                            const legendIndex: number = !isReverse ? target.index : (collections.length - 1 - target.index);
+                            const chartLegend: LegendOptions | undefined = collections[legendIndex as number];
+                            if (!chartLegend || !chartLegend.visible) { continue; }
+
+                            if (props.toggleVisibility) {
+                                const visible: boolean = clickedSeries.visible as Required<boolean>;
+                                const fillColor: string = visible ? (target.interior as Required<string>) : '#D3D3D3';
+                                if (chartLegend.markerOption) {
+                                    chartLegend.markerOption.fill = fillColor;
+                                    chartLegend.markerOption.stroke = fillColor;
+                                }
+                                if (chartLegend.symbolOption) {
+                                    if (!((target.type === 'Spline') && chartLegend.shape === 'SeriesType')) {
+                                        chartLegend.symbolOption.fill = fillColor;
+                                    }
+                                    chartLegend.symbolOption.stroke = fillColor;
+                                }
+                                if (chartLegend.textOption) {
+                                    chartLegend.textOption.fill = clickedSeries.visible
+                                        ? (legend.textStyle as Required<ChartFontProps>).color ||
+                                        chart.themeStyle.legendLabelFont.color : '#D3D3D3';
+                                }
+                            }
+                        }
+                    }
                     dispatch({ type: 'TRIGGER_UPDATE' });
                     break;
                 }

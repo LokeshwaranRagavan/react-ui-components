@@ -1,10 +1,12 @@
-import { forwardRef, ForwardRefExoticComponent, RefAttributes, useImperativeHandle, useRef, useMemo, memo, CSSProperties, RefObject, JSX } from 'react';
+import { forwardRef, ForwardRefExoticComponent, RefAttributes, useImperativeHandle, useRef, useMemo, memo, CSSProperties, RefObject, JSX, useState, useLayoutEffect } from 'react';
 import { HeaderTableBase } from './index';
 import { HeaderPanelRef, HeaderTableRef, IHeaderPanelBase } from '../types';
-import { useGridComputedProvider } from '../contexts';
+import { useGridComputedProvider, useGridMutableProvider } from '../contexts';
 
 // CSS class constants following enterprise naming convention
 const CSS_HEADER_TABLE: string = 'sf-grid-table';
+const CSS_VIRTUAL_TABLE: string = 'sf-virtual-table';
+const CSS_VIRTUAL_TRACK: string = 'sf-virtual-track';
 
 /**
  * Default styles for header table to ensure consistent rendering
@@ -34,11 +36,14 @@ const HeaderPanelBase: ForwardRefExoticComponent<Partial<IHeaderPanelBase> & Ref
         (props: Partial<IHeaderPanelBase>, ref: RefObject<HeaderPanelRef>) => {
             const { panelAttributes, scrollContentAttributes } = props;
             const { filterSettings, gridLines } = useGridComputedProvider();
+            const { offsetX, totalVirtualColumnWidth, virtualSettings } = useGridMutableProvider();
 
             // Refs for DOM elements and child components
             const headerPanelRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
             const headerScrollRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
             const headerTableRef: RefObject<HeaderTableRef> = useRef<HeaderTableRef>(null);
+            const headerVirtualTableRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
+            const [columnClientWidth, setColumnClientWidth] = useState<number>(0);
 
             /**
              * Expose internal elements and methods through the forwarded ref
@@ -50,11 +55,32 @@ const HeaderPanelBase: ForwardRefExoticComponent<Partial<IHeaderPanelBase> & Ref
                 headerScrollRef: headerScrollRef.current,
 
                 // Forward all properties from HeaderTable
-                ...(headerTableRef.current)
-            }), [headerPanelRef.current, headerScrollRef.current, headerTableRef.current]);
+                ...(headerTableRef.current),
+                columnClientWidth: columnClientWidth
+            }), [headerPanelRef.current, headerScrollRef.current, headerTableRef.current, columnClientWidth]);
 
             const headerTableFilter: string = filterSettings?.enabled && gridLines === 'Default' ? 'sf-filter-bar-table' : '';
             const headerRightBorder: string = !filterSettings?.enabled || (filterSettings.enabled && (gridLines === 'Vertical' || gridLines === 'None'))  ? ' sf-grid-header-border' : '';
+            const virtualWrapperStyle: CSSProperties = useMemo(() => {
+                return {
+                    transform: `translate3d(${offsetX || 0}px, 0px, 0) translateZ(0)`,
+                    // resizeSettings Auto based currently handled, columns occupied whitespaces, each columns render beyond configured widths.
+                    ...(virtualSettings.enableColumn && totalVirtualColumnWidth > headerScrollRef.current?.clientWidth &&
+                        totalVirtualColumnWidth > columnClientWidth ? { width: columnClientWidth } : {}),
+                    zIndex: 1
+                };
+            }, [offsetX, headerScrollRef.current?.clientWidth, columnClientWidth, totalVirtualColumnWidth]);
+
+            const virtualTrackStyle: CSSProperties = useMemo(() => ({
+                position: 'relative',
+                width: totalVirtualColumnWidth || undefined,
+                zIndex: 0
+            }), [totalVirtualColumnWidth, columnClientWidth]);
+
+            useLayoutEffect(() => {
+                setColumnClientWidth(headerTableRef.current?.columnClientWidth);
+            }, [offsetX, headerTableRef.current?.columnClientWidth]);
+
             /**
              * Memoized header table component to prevent unnecessary re-renders
              */
@@ -77,7 +103,16 @@ const HeaderPanelBase: ForwardRefExoticComponent<Partial<IHeaderPanelBase> & Ref
                         {...scrollContentAttributes}
                         className={scrollContentAttributes.className + headerRightBorder}
                     >
-                        {headerTable}
+                        { !virtualSettings.enableRow && !virtualSettings.enableColumn ? (
+                            headerTable
+                        ) : (
+                            <>
+                                <div ref={headerVirtualTableRef} className={CSS_VIRTUAL_TABLE} style={virtualWrapperStyle}>
+                                    {headerTable}
+                                </div>
+                                <div className={CSS_VIRTUAL_TRACK} style={virtualTrackStyle} />
+                            </>
+                        )}
                     </div>
                 </div>
             );

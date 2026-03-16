@@ -64,6 +64,168 @@ export default function App() {
 }
 ```
 
+## React Autocomplete
+
+The Autocomplete component enables users to type and search for a single option from a predefined list, with automatic suggestions displayed as they type. It combines input functionality with filtering to provide a fast and intuitive selection experience.
+
+**Key features**
+
+- **Controlled and Uncontrolled Usage:** Manage state with value/defaultValue properties for flexible integration patterns.
+
+- **Autofill:** Automatically completes the input field with the first matching suggestion while highlighting the auto-filled portion, allowing users to press Enter or Tab to accept.
+
+- **Auto Highlight:** Highlights matched search text within each suggestion, making it easier to identify relevant matches.
+
+- **Minimum Characters:** Use minLength to require a minimum number of characters before suggestions are displayed, reducing unnecessary filtering on short inputs.
+
+- **Maximum Suggestions:** Control the maximum number of suggestions displayed using maxSuggestions to improve performance and UX with large datasets.
+
+- **Custom Values:** Enable customValue to allow users to commit free-form text values not present in the data source by pressing Enter.
+
+- **Templates:** Customize appearance with itemTemplate, headerTemplate, footerTemplate, groupTemplate, and valueTemplate.
+
+- **Local and Remote Data:** Bind to local arrays or remote data sources through the dataSource property.
+
+- **Customizable Appearance:** Adjust size and variant properties for different UI contexts.
+
+**Usage**
+
+```tsx
+import { Autocomplete } from '@syncfusion/react-dropdowns';
+
+const languages = [
+  { text: 'JavaScript', value: 'js' },
+  { text: 'TypeScript', value: 'ts' },
+  { text: 'Python', value: 'python' }
+];
+
+export default function App() {
+  return (
+    <Autocomplete
+      id="languages"
+      dataSource={languages}
+      fields={{ text: 'text', value: 'value' }}
+      placeholder="Search language..."
+      autofill={true}
+      autoHighlight={true}
+      minLength={1}
+    />
+  );
+}
+```
+
+## React ComboBox
+
+The ComboBox component combines an input field with a dropdown list, allowing users to either type a value or select from predefined options. It's ideal for scenarios where users need both the flexibility of free-form input and the convenience of predefined choices.
+
+**Key features**
+
+- **Controlled and Uncontrolled Usage:** Support for both value/defaultValue state management patterns for flexible component integration.
+
+- **Autofill Support:** Automatically complete input with the first matching suggestion, with visual highlighting of the completed portion.
+
+- **Auto Highlight:** Display highlighted text within suggestions to emphasize matching characters based on user input.
+
+- **Custom Values:** Allow users to enter and commit custom text values not in the data source by pressing Enter, enabling flexible data entry.
+
+- **Filtering:** Enable or disable filtering with the filterable property to control search capabilities.
+
+- **Configurable Dropdown Icon:** Show or hide the dropdown arrow using the dropdownIcon property for different UI preferences.
+
+- **Clear Button:** Include a clearButton to reset the selected value and input field.
+
+- **Templates:** Customize rendering with itemTemplate, headerTemplate, footerTemplate, groupTemplate, and valueTemplate options.
+
+- **Data Binding:** Support for both primitive and complex object data sources with field mapping.
+
+- **Responsive Design:** Adjust size and variant for various screen sizes and design contexts.
+
+**Usage**
+
+```tsx
+import { ComboBox } from '@syncfusion/react-dropdowns';
+
+const cities = [
+  { text: 'New York', value: 'ny' },
+  { text: 'London', value: 'london' },
+  { text: 'Tokyo', value: 'tokyo' }
+];
+
+export default function App() {
+  return (
+    <ComboBox
+      id="cities"
+      dataSource={cities}
+      fields={{ text: 'text', value: 'value' }}
+      placeholder="Select or type a city"
+      filterable={true}
+      clearButton={true}
+    />
+  );
+}
+```
+
+## React MultiSelect
+
+The MultiSelect component enables users to select multiple options from a list, with support for advanced features like checkboxes, custom selection limits, and flexible display modes including chip and delimiter modes. It's perfect for scenarios requiring bulk selection with fine-grained control.
+
+**Key features**
+
+- **Multiple Selection:** Allow users to select multiple items from the data source simultaneously.
+
+- **Controlled and Uncontrolled Usage:** Support for both value/defaultValue patterns for flexible state management.
+
+- **Checkbox Support:** Display checkboxes next to each item for explicit multi-selection feedback with the checkbox property.
+
+- **Selection Limits:** Restrict the number of selectable items using maximumSelectionLength to enforce business rules.
+
+- **Display Modes:** Choose between Auto, Box, and Delimiter display modes using the mode property to customize how selected items appear:
+  - **Box Mode:** Display selected items as styled chips.
+  - **Delimiter Mode:** Show selected items separated by a custom delimiter character.
+  - **Auto Mode:** Automatically choose the best display mode based on focus.
+
+- **Custom Chip Templates:** Customize the appearance of selected item chips using chipTemplate for styling.
+
+- **Hide Selected Items:** Use hideSelectedItem to remove selected items from the dropdown.
+
+- **Close on Select:** Control dropdown closure behavior with closeOnSelect to automatically close the dropdown immediately after an item is selected or keep it open for continuous multi-selection workflow.
+
+- **Select All Functionality:** Enable select/unselect all items with showSelectAll and customize text using selectAllText and unSelectAllText.
+
+- **Add Tag on Blur:** Allow users to commit typed values as new selections when leaving the input field using addTagOnBlur.
+
+- **Flexible Templates:** Support for itemTemplate, headerTemplate, footerTemplate, groupTemplate, and valueTemplate for complete customization.
+
+- **Data Source Options:** Bind to local arrays or remote data sources with field mapping.
+
+**Usage**
+
+```tsx
+import { MultiSelect, DisplayMode } from '@syncfusion/react-dropdowns';
+
+const skills = [
+  { text: 'JavaScript', value: 'js' },
+  { text: 'React', value: 'react' },
+  { text: 'TypeScript', value: 'ts' },
+  { text: 'Node.js', value: 'nodejs' }
+];
+
+export default function App() {
+  return (
+    <MultiSelect
+      id="skills"
+      dataSource={skills}
+      fields={{ text: 'text', value: 'value' }}
+      placeholder="Select skills"
+      checkbox={true}
+      showSelectAll={true}
+      mode={DisplayMode.Box}
+      maximumSelectionLength={3}
+    />
+  );
+}
+```
+
 <p align="center">
 Trusted by the world's leading companies
   <a href="https://www.syncfusion.com/">

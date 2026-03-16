@@ -10,11 +10,12 @@ import { ColumnProps, ColumnValidationParams } from '../types';
  * @param {ColumnProps<T>[]} columns - Array of column definitions from the grid.
  * @returns {ValidationRules} Object containing validation rules keyed by field name, formatted for FormValidator.
  */
-export const useFormValidationRules: <T>(columns: ColumnProps<T>[]) => ValidationRules =
-    <T>(columns: ColumnProps<T>[]): ValidationRules => {
+export const useFormValidationRules: <T>(columns: ColumnProps<T>[]) => { rules: ValidationRules, columns: Map<string, ColumnProps<T>> } =
+    <T>(columns: ColumnProps<T>[]): { rules: ValidationRules, columns: Map<string, ColumnProps<T>> } => {
 
         return useMemo(() => {
             const rules: ValidationRules = {};
+            const validationColumns: Map<string, ColumnProps<T>> = new Map();
 
             columns.forEach((column: ColumnProps<T>) => {
                 if (column.field && column.visible && (column.validationRules || column.type || column.edit?.type)) {
@@ -108,10 +109,11 @@ export const useFormValidationRules: <T>(columns: ColumnProps<T>[]) => Validatio
                     // Only add rules if there are actual validation rules defined
                     if (Object.keys(columnRules).length > 0) {
                         rules[column.field] = columnRules;
+                        validationColumns.set(column.field, column);
                     }
                 }
             });
 
-            return rules;
+            return {rules: rules, columns: validationColumns};
         }, [columns]);
     };

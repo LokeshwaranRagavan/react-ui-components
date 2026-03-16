@@ -1,0 +1,47 @@
+@use 'theme-variables' as *;
+
+@include export-module('recurrence-editor-layout') {
+
+  .sf-re-content,
+  .sf-re-repeat-on-week-container {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    gap: $recurrence-editor-spacing-4;
+  }
+
+  .sf-re-container-width-50 {
+    width: 50%;
+  }
+
+  .sf-re-row,
+  .sf-re-repeat-week-button-container,
+  .sf-re-month-day-row,
+  .sf-re-week-number-day-mode-row {
+    display: flex;
+    flex-direction: row;
+    gap: $recurrence-editor-spacing-16;
+    align-items: center;
+  }
+
+  .sf-re-align-end {
+    display: flex;
+    align-items: end;
+  }
+
+  .sf-re-day-radio-button {
+    display: flex;
+    align-items: center;
+  }
+
+  .sf-re-repeat-week-button-container {
+    gap: $recurrence-editor-spacing-12;
+    flex-wrap: wrap;
+  }
+
+  .sf-re-week-button {
+    border-radius: $radius-full;
+    height: $recurrence-editor-week-button-size;
+    width: $recurrence-editor-week-button-size;
+  }
+}

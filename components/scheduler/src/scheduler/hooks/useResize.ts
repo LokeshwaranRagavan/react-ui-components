@@ -11,6 +11,8 @@ import { useSchedulerRenderDatesContext } from '../context/scheduler-render-date
 import { useCloneEventContext, CloneEventContextValue } from '../context/clone-event-context';
 import { EventService } from '../services/EventService';
 import { useSchedulerLocalization } from '../common/locale';
+import { getRecurrenceStringFromDate } from '../../recurrence-editor/util';
+import { updateDatasource } from '../utils/event-base';
 
 type UseResizeResult = {
     resizeStart: (direction: Position, e: React.MouseEvent | React.TouchEvent) => void;
@@ -26,8 +28,8 @@ type UseResizeResult = {
  */
 export function useResize(data: EventModel):
 UseResizeResult {
-    const { onResizeStart, onResizing, onResizeStop, timeScale, startHour, endHour, schedulerRef, eventSettings, showWeekend, workDays,
-        eventOverlap, confirmationDialog } = useSchedulerPropsContext();
+    const { onResizeStart, onResizing, onResizeStop, timeScale, startHour, endHour, schedulerRef, showWeekend, workDays,
+        eventOverlap, confirmationDialog, eventResize, eventSettings } = useSchedulerPropsContext();
     const { eventsData } = useSchedulerEventsContext();
     const { renderDates: scheduleRenderDates } = useSchedulerRenderDatesContext();
     const cloneEventState: CloneEventContextValue = useCloneEventContext();
@@ -45,6 +47,9 @@ UseResizeResult {
     const currentEndTimeRef: React.RefObject<Date | undefined> = useRef<Date | undefined>(undefined);
     const scrollAnimationRef: React.RefObject<number | null> = useRef<number | null>(null);
     const resizeInfoRef: React.RefObject<MouseEvent | TouchEvent | undefined> = useRef<MouseEvent | TouchEvent | undefined>(undefined);
+    const isStepDragging: React.RefObject<boolean> = useRef<boolean>(false);
+    const cellHeightRef: React.RefObject<number> = useRef<number>(0);
+    const minutesPerPixel: React.RefObject<number> = useRef<number>(0);
     const { getString } = useSchedulerLocalization();
     const eventData: React.RefObject<{
         startTime: Date;
@@ -53,8 +58,7 @@ UseResizeResult {
 
     useEffect(() => {
         return () => {
-            clearScrollRef();
-            unWireEvents();
+            clearProperties();
             resizeInfo.current = null;
             elementRef.current = null;
         };
@@ -74,6 +78,14 @@ UseResizeResult {
         EventHandler.remove(document, 'touchend', resizeStop);
     };
 
+    const clearProperties: () => void = (): void => {
+        clearScrollRef();
+        unWireEvents();
+        isStepDragging.current = false;
+        cellHeightRef.current = 0;
+        minutesPerPixel.current = 0;
+    };
+
     const setResizeCursorIcon: () => void = (): void => {
         document.body.style.userSelect = 'none';
         document.body.style.cursor =
@@ -90,8 +102,10 @@ UseResizeResult {
         const isAllDaySource: boolean = target.classList.contains(CSS_CLASSES.ALL_DAY_APPOINTMENT);
         const isMonthView: boolean = !!target.closest(`.${CSS_CLASSES.MONTH_VIEW}`);
         const slotInterval: number = resizeInfo.current.slotInterval;
-        currentStartTimeRef.current = data?.startTime ? new Date(data.startTime as Date) : undefined;
-        currentEndTimeRef.current = data?.endTime ? new Date(data.endTime as Date) : undefined;
+        cellHeightRef.current = workCell?.offsetHeight || 0;
+        minutesPerPixel.current = cellHeightRef.current > 0 ? slotInterval / cellHeightRef.current : 0;
+        currentStartTimeRef.current = data?.startTime ? new Date(data.startTime) : undefined;
+        currentEndTimeRef.current = data?.endTime ? new Date(data.endTime) : undefined;
         extend(resizeInfo.current, {
             cellWidth,
             isAllDaySource,
@@ -103,8 +117,8 @@ UseResizeResult {
 
     const createClone: () => void = (): void => {
         if (!elementRef.current) { return; }
-        const parent: HTMLElement | null = (elementRef.current.offsetParent as HTMLElement) ||
-            (elementRef.current.parentElement as HTMLElement);
+        const parent: HTMLElement | Element | null = (elementRef.current.offsetParent) ||
+            (elementRef.current.parentElement);
         if (!parent) { return; }
         const clone: HTMLElement = resizeInfo.current.cloneFromSource(elementRef.current);
         resizeInfo.current.cloneRef = clone;
@@ -112,18 +126,17 @@ UseResizeResult {
 
     const resizeStart: (direction: Position, e: React.MouseEvent | React.TouchEvent) => void =
     useCallback((direction: Position, e: React.MouseEvent | React.TouchEvent) => {
+        schedulerRef?.current?.closeQuickInfoPopup?.();
         const nativeEvent: MouseEvent | TouchEvent = e.nativeEvent;
         const target: HTMLElement = (e.target as HTMLElement)?.closest(`.${CSS_CLASSES.APPOINTMENT}`);
         if (!target) { return; }
         resizeInfo.current = new CloneBase();
         resizeInfo.current.slotInterval = (timeScale?.interval && timeScale?.slotCount)
             ? timeScale.interval / timeScale.slotCount : 30;
-        resizeInfo.current.eventSettings = eventSettings;
-        resizeInfo.current.eventsData = eventsData;
         resizeInfo.current.isActionPerformed = false;
         directionRef.current = direction;
         resizeInfo.current.direction = dir;
-        elementRef.current = target as HTMLDivElement;
+        elementRef.current = target;
         startTopRef.current = target.offsetTop;
         startHeightRef.current = target.offsetHeight;
         const workCell: HTMLElement = resizeInfo.current.getCellUnderPointer(e.nativeEvent);
@@ -137,13 +150,21 @@ UseResizeResult {
         resizeInfoRef.current = nativeEvent;
         onResizeStart?.(args);
         if (args.cancel) { return; }
-        if (args.interval) {
-            resizeInfo.current.slotInterval = args.interval;
-        }
         eventData.current = {
             startTime: new Date(data.startTime),
             endTime: new Date(data.endTime)
         };
+        if (eventResize) {
+            if (eventResize.interval > 0 && !resizeInfo.current.isAllDaySource && !resizeInfo.current.isMonthView) {
+                isStepDragging.current = resizeInfo.current.slotInterval !== eventResize.interval;
+                if (isStepDragging.current) {
+                    resizeInfo.current.slotInterval = eventResize.interval;
+                }
+            }
+            resizeInfo.current.enableScroll = eventResize.scroll?.enable ?? true;
+            resizeInfo.current.minScrollSpeed = eventResize.scroll?.scrollBy ?? resizeInfo.current.minScrollSpeed;
+            resizeInfo.current.minScrollThreshold = eventResize.scroll?.timeDelay ?? resizeInfo.current.minScrollThreshold;
+        }
         wireEvents();
     }, [onResizeStart, scheduleRenderDates, data]);
 
@@ -154,8 +175,7 @@ UseResizeResult {
             cancel: false,
             startTime: currentStartTimeRef.current,
             endTime: currentEndTimeRef.current,
-            data: elementRef.current ? data : undefined,
-            interval: resizeInfo.current.slotInterval
+            data: elementRef.current ? data : undefined
         };
     };
 
@@ -202,14 +222,15 @@ UseResizeResult {
         const args: SchedulerResizeEvent = getResizeInfoArgs(evt);
         onResizing?.(args);
         if (args.cancel) { return; }
+        CloneBase.currentActionName = 'resize';
         if (args.startTime) {
             currentStartTimeRef.current = args.startTime;
         }
         if (args.endTime) {
             currentEndTimeRef.current = args.endTime;
         }
-        const target: HTMLElement = elementRef.current as HTMLElement;
-        if (!resizeInfo.current.isAllDaySource) {
+        const target: HTMLElement = elementRef.current;
+        if (!resizeInfo.current.isAllDaySource && resizeInfo.current.enableScroll) {
             performAutoScroll(evt);
         }
         const currentTargetCell: HTMLElement | null = resizeInfo.current.getCellUnderPointer(evt);
@@ -229,10 +250,8 @@ UseResizeResult {
             cancelAnimationFrame(resizeInfo.current.scrollInterval);
         }
         resizeInfo.current.scrollInterval = null;
-        clearScrollRef();
-        unWireEvents();
+        clearProperties();
         if (document?.body) { setDefaultCursorIcon(); }
-        CloneBase.currentActionName = 'resize';
         resizeInfo.current.cloneRef = null;
         cloneEventState?.hide?.();
         if (!resizeInfo.current.isActionPerformed) {
@@ -264,9 +283,10 @@ UseResizeResult {
                     : 0;
             original.endTime = DateService.addDays(original.endTime, days);
         }
-        if (resizeInfo.current.isAllDaySource || resizeInfo.current.isMonthView) {
+        if (resizeInfo.current.isAllDaySource || resizeInfo.current.isMonthView || !timeScale.enable) {
             const cell: HTMLElement = resizeInfo.current.getCellUnderPointer(evt);
             const cellDateAttr: string | number = cell?.getAttribute('data-date') ?? resizeInfo.current.getCurrentTargetDate(evt.target as HTMLElement, cell);
+            if (!cellDateAttr) { return; }
             const cellDate: Date = new Date(Number(cellDateAttr));
             let targetDate: Date = cellDate;
             if (directionRef.current === Position.Right) {
@@ -298,8 +318,6 @@ UseResizeResult {
                 showCancel: false,
                 onConfirm: () => confirmationDialog.hide()
             });
-            resizeInfo.current?.updateDatasource(eventInfo, eventInfo.startTime, eventInfo.endTime, schedulerRef);
-            resizeInfo.current = null;
         };
 
         if (!eventOverlap && EventService.checkEventOverlap(updatedEvent, eventsData, true)) {
@@ -311,7 +329,10 @@ UseResizeResult {
             revertAndAlert('alert', 'blockAlert');
             return;
         }
-        resizeInfo.current.updateDatasource(original, original.startTime, original.endTime, schedulerRef);
+        if (original.recurrenceRule && original.recurrenceID) {
+            original.recurrenceException = original.recurrenceException ?? getRecurrenceStringFromDate(eventData.current.startTime);
+        }
+        updateDatasource(original, original.startTime, original.endTime, schedulerRef, eventSettings.fields, eventsData);
         resizeInfo.current = null;
     }, [resizeInfo.current?.isActionPerformed, elementRef.current, resizeInfo, resizeInfo.current?.cloneRef, resizing, onResizeStop]);
 
@@ -324,23 +345,49 @@ UseResizeResult {
         const endTime: Date | undefined = currentEndTimeRef.current ? new Date(currentEndTimeRef.current) : undefined;
         let isOverFlowTop: boolean = false;
         let isOverFlowBottom: boolean = false;
+        let computedTime: Date = cellDate;
 
-        if (elementRef.current.querySelector('.sf-indicator')) {
-            isOverFlowTop = elementRef.current.querySelector('.sf-indicator').classList.contains('sf-up-icon');
-            isOverFlowBottom = elementRef.current.querySelector('.sf-indicator').classList.contains('sf-down-icon');
+        if (elementRef.current.querySelector(`.${CSS_CLASSES.INDICATOR}`)) {
+            isOverFlowTop = elementRef.current.querySelector(`.${CSS_CLASSES.INDICATOR}`).classList.contains(`${CSS_CLASSES.UP_ARROW_ICON}`);
+            isOverFlowBottom = elementRef.current.querySelector(`.${CSS_CLASSES.INDICATOR}`).classList.contains(`${CSS_CLASSES.DOWN_ARROW_ICON}`);
         }
+
+        if (isStepDragging.current) {
+            const lastEvt: MouseEvent | TouchEvent | undefined = resizeInfoRef.current;
+            const containerEl: HTMLElement | null = resizeInfo.current?.getContentWrap(cell);
+            if (containerEl && lastEvt) {
+                const { schedulerStartMinutes } = DateService.getSchedulerStartAndEndMinutes(startHour, endHour);
+                computedTime = resizeInfo.current.getSteppedCellDate(schedulerStartMinutes, lastEvt, 0, minutesPerPixel.current,
+                                                                     Number(cellDateAttr), containerEl);
+            }
+        }
+
         if (directionRef.current === Position.Top) {
             const originalCellMinutes: number = endTime.getHours() * MINUTES_PER_HOUR + endTime.getMinutes();
             if (isOverFlowBottom || (originalCellMinutes > cellMinutes) || originalCellMinutes === 0) {
-                startTime.setHours(cellDate.getHours(), cellDate.getMinutes());
+                startTime.setTime(computedTime.getTime());
                 requiredTimeRef.current = startTime;
+            } else if (eventResize.resizeToZero) {
+                requiredTimeRef.current = endTime;
             }
         } else if (directionRef.current === Position.Bottom) {
             cellMinutes = cellMinutes + resizeInfo.current.slotInterval;
             const originalCellMinutes: number = startTime.getHours() * MINUTES_PER_HOUR + startTime.getMinutes();
-            if (isOverFlowTop || (originalCellMinutes < cellMinutes)) {
-                endTime.setHours(cellDate.getHours(), cellDate.getMinutes() + resizeInfo.current.slotInterval);
-                requiredTimeRef.current = endTime;
+            if (isStepDragging.current) {
+                const computedMinutes: number = computedTime.getHours() * MINUTES_PER_HOUR + computedTime.getMinutes();
+                if (isOverFlowTop || (originalCellMinutes < computedMinutes)) {
+                    endTime.setTime(computedTime.getTime());
+                    requiredTimeRef.current = endTime;
+                } else if (eventResize.resizeToZero) {
+                    requiredTimeRef.current = startTime;
+                }
+            } else {
+                if (isOverFlowTop || (originalCellMinutes < cellMinutes)) {
+                    endTime.setHours(cellDate.getHours(), cellDate.getMinutes() + resizeInfo.current.slotInterval);
+                    requiredTimeRef.current = endTime;
+                } else if (eventResize.resizeToZero) {
+                    requiredTimeRef.current = startTime;
+                }
             }
         }
     };
@@ -352,8 +399,7 @@ UseResizeResult {
         const original: EventModel = { ...currentData, startTime: new Date(currentData.startTime), endTime: new Date(currentData.endTime) };
         const isDayEvent: boolean = resizeInfo.current?.isMonthView || resizeInfo.current?.isAllDaySource;
         if (!isDayEvent && timeScale.enable) {
-            const tempEvent: EventModel =
-                { ...original } as EventModel;
+            const tempEvent: EventModel = { ...original };
             if (directionRef.current === Position.Top) {
                 DateService.setHours((tempEvent).startTime, requiredTimeRef.current);
             } else if (directionRef.current === Position.Bottom) {
@@ -365,7 +411,8 @@ UseResizeResult {
                         : 0;
                 tempEvent.endTime = DateService.addDays(tempEvent.endTime, days);
             }
-            const segments: ProcessedEventsData[] = EventService.processTimeSlotCloneEvent(schedulerRef, scheduleRenderDates, tempEvent,
+            const segments: ProcessedEventsData[] = EventService.processTimeSlotCloneEvent(schedulerRef.current?.element,
+                                                                                           scheduleRenderDates, tempEvent,
                                                                                            timeScale, startHour, endHour,
                                                                                            resizeInfo.current.cellWidth, dir === 'rtl');
             cloneEventState?.show({ guid: data.guid, segments, isDayEvent: false });
@@ -394,7 +441,7 @@ UseResizeResult {
                 DateService.setYear(original.startTime, targetDate);
             }
         }
-        const segments: ProcessedEventsData[] = EventService.processCloneEvent(schedulerRef, scheduleRenderDates, original,
+        const segments: ProcessedEventsData[] = EventService.processCloneEvent(schedulerRef.current?.element, scheduleRenderDates, original,
                                                                                showWeekend, workDays,
                                                                                resizeInfo.current.cellWidth,
                                                                                resizeInfo.current.isAllDaySource, dir === 'rtl',
@@ -412,7 +459,7 @@ UseResizeResult {
             let cell: HTMLElement | null = resizeInfo.current.getCellUnderPointer(lastEvt);
             if (!cell) {
                 const target: HTMLElement | null = (lastEvt as any).target || null;
-                cell = target?.closest(`.${CSS_CLASSES.WORK_CELLS}, .${CSS_CLASSES.DAY_WRAPPER}, .${CSS_CLASSES.ALL_DAY_CELL}`) as HTMLElement | null;
+                cell = target?.closest(`.${CSS_CLASSES.WORK_CELLS}, .${CSS_CLASSES.DAY_WRAPPER}, .${CSS_CLASSES.ALL_DAY_CELL}`);
             }
             if (cell) {
                 if (resizeInfo.current.cloneRef && !(resizeInfo.current.isAllDaySource || resizeInfo.current.isMonthView)) {

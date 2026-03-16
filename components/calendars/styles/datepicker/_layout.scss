@@ -9,12 +9,9 @@
     pointer-events: auto;
   }
 
-  .sf-datepick-popup-wrap {
+  .sf-picker-popup {
     align-items: center;
     display: flex;
-    min-width: 100%;
-    min-height: 100%;
-    flex-direction: column;
     height: 100%;
     justify-content: center;
     left: 0;
@@ -23,11 +20,9 @@
     top: 0;
     width: 100%;
     z-index: 1002;
-
-    .sf-popup {
-      min-width: 100%;
-      min-height: 100%;
-      position: relative;
+  
+    .sf-overlay {
+      position: absolute;
     }
   }
 }

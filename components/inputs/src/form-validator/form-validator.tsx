@@ -18,7 +18,7 @@ const VALIDATION_REGEX: { [key: string]: RegExp } = {
 export type FormValueType = string | number | boolean | Date | File | FileList | string[] | number[] | React.ReactNode | null | undefined;
 
 interface FormContextProps {
-    registerField?: (fieldName: string) => void;
+    registerField?: (fieldName: string, rules?: FieldValidationRules) => void;
 }
 
 const FormContext: React.Context<FormContextProps | null> = createContext<FormContextProps | null>(null);
@@ -626,6 +626,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
         notifyStateChange();
     }, [notifyStateChange]);
     const rulesRef: React.RefObject<ValidationRules> = useRef<ValidationRules>(rules);
+    const fieldLevelRulesRef: React.RefObject<ValidationRules> = useRef<ValidationRules>({});
     const formStateRef: React.RefObject<FormState | null> = useRef<FormState>(null);
     const l10nRef: React.RefObject<IL10n | null> = useRef<IL10n>(null);
     const defaultErrorMessages: { [rule: string]: string } = {
@@ -648,8 +649,35 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
         equalTo: 'Please enter the same value again.'
     };
     const registeredFields: React.RefObject<Record<string, boolean>> = useRef<Record<string, boolean>>({});
-    const registerField: (fieldName: string) => void = (fieldName: string) => {
-        registeredFields.current[fieldName as string] = true;
+    const registerField: (fieldName: string, rules?: FieldValidationRules) => void =
+        (fieldName: string, rules?: FieldValidationRules) => {
+            registeredFields.current[fieldName as string] = true;
+            if (rules) {
+                fieldLevelRulesRef.current[fieldName as string] = rules;
+            }
+        };
+
+    const getMergedRulesForField: (fieldName: string) => FieldValidationRules | undefined =
+        (fieldName: string): FieldValidationRules | undefined => {
+            const formLevelRules: FieldValidationRules = rulesRef.current[fieldName as string];
+            const fieldLevelRules: FieldValidationRules = fieldLevelRulesRef.current[fieldName as string];
+
+            if (!formLevelRules && !fieldLevelRules) {
+                return undefined;
+            }
+
+            return {
+                ...formLevelRules,
+                ...fieldLevelRules
+            };
+        };
+
+    const getAllFieldNames: () => string[] = (): string[] => {
+        const names: Set<string> = new Set<string>([
+            ...Object.keys(rulesRef.current || {}),
+            ...Object.keys(fieldLevelRulesRef.current || {})
+        ]);
+        return Array.from(names);
     };
 
     useEffect(() => {
@@ -666,6 +694,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
         return () => {
             l10nRef.current = null;
             rulesRef.current = {};
+            fieldLevelRulesRef.current = {};
             registeredFields.current = {};
             if (formRef.current) {
                 formRef.current = null;
@@ -738,7 +767,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
 
     const validateFieldValue: (fieldName: string, value: FormValueType) => string | null =
         (fieldName: string, value: FormValueType): string | null => {
-            const fieldRules: FieldValidationRules = rulesRef.current[fieldName as string];
+            const fieldRules: FieldValidationRules | undefined = getMergedRulesForField(fieldName);
             if (!fieldRules || !registeredFields.current[fieldName as string]) {return null; }
             const isValueEmpty: boolean = value === undefined || value === null || value.toString().trim() === '';
             const isRequired: boolean = fieldRules.required != null &&  fieldRules.required[0] !== false;
@@ -856,7 +885,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
 
     const validateForm: () => Record<string, string> = (): Record<string, string> => {
         const errors: Record<string, string> = {};
-        const fields: string[] = Object.keys(rulesRef.current);
+        const fields: string[] = getAllFieldNames();
 
         for (const field of fields) {
             const error: string | null = validateFieldValue(field, stateRef.current.values[field as string]);
@@ -878,7 +907,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
                 setFieldError(field, formErrors[field as string]);
             }
         }
-        const fields: string[] = Object.keys(rulesRef.current);
+        const fields: string[] = getAllFieldNames();
         for (const field of fields) {
             if (!formErrors[field as string]) {
                 setFieldError(field, null);
@@ -942,6 +971,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
 
     const getFormState: () => FormState = (): FormState => {
         const state: FormData = stateRef.current;
+        const fields: string[] = getAllFieldNames();
         return {
             values: state.values,
             errors: state.errors,
@@ -949,7 +979,7 @@ forwardRef<IFormValidator, FormComponentProps>((props: FormComponentProps, ref: 
             touched: state.touched,
             visited: state.visited,
             modified: state.modified,
-            valid: Object.keys(rulesRef.current).reduce((acc: Record<string, boolean>, fieldName: string) => {
+            valid: fields.reduce((acc: Record<string, boolean>, fieldName: string) => {
                 acc[fieldName as string] = !state.errors[fieldName as string];
                 return acc;
             }, {} as Record<string, boolean>),
@@ -1034,6 +1064,15 @@ export interface FormFieldProps {
      * Specifies the children content for the form field. Children should include the actual form control elements like inputs, textarea, etc.
      */
     children: React.ReactNode;
+
+    /**
+     * Specifies field-level validation rules that apply only to this specific field. These rules override any form-level rules
+     * with the same name defined in the Form component's rules. This allows for field-specific validation that takes
+     * precedence over form-wide defaults.
+     *
+     * @default undefined
+     */
+    rules?: FieldValidationRules;
 }
 
 /**
@@ -1071,7 +1110,7 @@ export interface FormFieldProps {
  * @returns {React.ReactNode} - Returns the children with access to form validation context
  */
 export const FormField: React.FC<FormFieldProps> = (props: FormFieldProps): React.ReactNode => {
-    const { name, children } = props;
+    const { name, children, rules } = props;
     if (!name) {
         return null;
     }
@@ -1080,9 +1119,11 @@ export const FormField: React.FC<FormFieldProps> = (props: FormFieldProps): Reac
     if (!formContext) {
         return null;
     }
-    if (formContext.registerField) {
-        formContext.registerField(name);
-    }
+
+    React.useEffect(() => {
+        formContext?.registerField?.(name, rules);
+    }, [name, rules, formContext]);
+
     return <>{children}</>;
 };
 

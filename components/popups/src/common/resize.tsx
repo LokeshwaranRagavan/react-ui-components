@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { useProviderContext, ResizeDirections } from '@syncfusion/react-base';
 import { ResizeEvent } from '../index';
 export { ResizeDirections };
@@ -168,14 +168,18 @@ export function useResize(
     } = options;
 
     const { dir } = useProviderContext();
-    const [width, setWidth] = useState<number>(0);
-    const [height, setHeight] = useState<number>(0);
+    const width: React.RefObject<number> = useRef<number>(0);
+    const height: React.RefObject<number> = useRef<number>(0);
     const currentDirectionRef: React.RefObject<ResizeDirections | undefined> = useRef<ResizeDirections | undefined>(undefined);
     const originalStateRef: React.RefObject<ResizeOriginState> = useRef<ResizeOriginState>({
         width: 0, height: 0, left: 0, top: 0, mouseX: 0, mouseY: 0 });
     const limitsRef: React.RefObject<ResizeLimits> = useRef<ResizeLimits>({ minWidthPx: DEFAULT_MIN_SIZE,
         minHeightPx: DEFAULT_MIN_SIZE, maxWidthPx: Number.MAX_SAFE_INTEGER, maxHeightPx: Number.MAX_SAFE_INTEGER });
     const allDirections: ResizeDirections[] = ['North', 'East', 'South', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest'];
+
+    const getStableElement: () => HTMLElement | null = useCallback((): HTMLElement | null => {
+        return elementRef.current && 'element' in elementRef.current ? elementRef.current.element as HTMLElement : elementRef.current;
+    }, [elementRef]);
 
     const parseToPixels: (value: number | string | undefined, defaultValue: number, referenceSize: number) => number = useCallback((
         value: number | string | undefined, defaultValue: number, referenceSize: number ): number => {
@@ -190,8 +194,9 @@ export function useResize(
         if (value.endsWith('px')) {
             return parseFloat(value);
         }
-        if (elementRef.current && typeof window !== 'undefined') {
-            const computedStyle: CSSStyleDeclaration = window.getComputedStyle(elementRef.current);
+        const stableElement: HTMLElement | null = getStableElement();
+        if (stableElement && typeof window !== 'undefined') {
+            const computedStyle: CSSStyleDeclaration = window.getComputedStyle(stableElement);
             const fontSize: number = parseFloat(computedStyle.fontSize);
             const rootFontSize: number = parseFloat(getComputedStyle(document.documentElement).fontSize);
             if (value.endsWith('em')) {
@@ -226,9 +231,10 @@ export function useResize(
     }, [elementRef]);
 
     const updateResizeLimits: () => void = useCallback(() => {
-        if (!elementRef.current) {return; }
+        const stableElement: HTMLElement | null = getStableElement();
+        if (!stableElement) {return; }
 
-        const parentElement: HTMLElement = elementRef.current.parentElement || document.body;
+        const parentElement: HTMLElement = stableElement.parentElement || document.body;
         const parentRect: DOMRect = parentElement.getBoundingClientRect();
 
         limitsRef.current = {
@@ -237,7 +243,7 @@ export function useResize(
             maxWidthPx: parseToPixels(maxWidth, Number.MAX_SAFE_INTEGER, parentRect.width),
             maxHeightPx: parseToPixels(maxHeight, Number.MAX_SAFE_INTEGER, parentRect.height)
         };
-    }, [minWidth, minHeight, maxWidth, maxHeight, parseToPixels]);
+    }, [minWidth, minHeight, maxWidth, maxHeight, parseToPixels, elementRef]);
 
     const isCardinalDirection: (direction: string) => boolean = useCallback((direction: string): boolean => {
         return ['North', 'South', 'East', 'West'].includes(direction);
@@ -281,13 +287,14 @@ export function useResize(
     }, [enabled, handles, dir]);
 
     useEffect(() => {
-        if (elementRef.current && enabled) {
-            const rect: DOMRect = elementRef.current.getBoundingClientRect();
-            setWidth(rect.width);
-            setHeight(rect.height);
+        const stableElement: HTMLElement | null = getStableElement();
+        if (stableElement && stableElement.offsetHeight && enabled) {
+            const rect: DOMRect = stableElement.getBoundingClientRect();
+            width.current = rect.width;
+            height.current = rect.height;
             updateResizeLimits();
         }
-    }, [elementRef.current, enabled, updateResizeLimits]);
+    }, [elementRef, enabled]);
 
     useEffect(() => {
         if (enabled) {
@@ -297,12 +304,13 @@ export function useResize(
 
     const handleResizeStart: (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent, direction: ResizeDirections) => void =
     useCallback((e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent, direction: ResizeDirections) => {
-        if (!enabled || !elementRef.current) { return; }
+        const stableElement: HTMLElement | null = getStableElement();
+        if (!enabled || !stableElement) { return; }
         if (!('touches' in e)) {
             e.preventDefault();
         }
         updateResizeLimits();
-        const rect: DOMRect = elementRef.current.getBoundingClientRect();
+        const rect: DOMRect = stableElement.getBoundingClientRect();
         originalStateRef.current.width = rect.width;
         originalStateRef.current.height = rect.height;
         originalStateRef.current.left  = rect.left;
@@ -318,8 +326,8 @@ export function useResize(
         originalStateRef.current.mouseX  = clientX;
         originalStateRef.current.mouseY   = clientY;
         currentDirectionRef.current = direction;
-        if (onResizeStart && elementRef.current) {
-            const rect: DOMRect = elementRef.current.getBoundingClientRect();
+        if (onResizeStart && stableElement) {
+            const rect: DOMRect = stableElement.getBoundingClientRect();
             const resizeEvent: ResizeEvent = {
                 event: e as Event,
                 width: rect.width,
@@ -339,7 +347,8 @@ export function useResize(
     }, [enabled, onResizeStart, elementRef, boundary, updateResizeLimits]);
 
     const handleResize: (e: MouseEvent | TouchEvent) => void = useCallback((e: MouseEvent | TouchEvent) => {
-        if (!elementRef.current) {
+        const stableElement: HTMLElement | null = getStableElement();
+        if (!stableElement) {
             return;
         }
         if (!('touches' in e)) {
@@ -398,18 +407,18 @@ export function useResize(
                 newHeight = boundaryRect.bottom - newTop;
             }
         }
-        setWidth(newWidth);
-        setHeight(newHeight);
-        if (elementRef.current) {
-            elementRef.current.style.width = `${newWidth}px`;
-            elementRef.current.style.height = `${newHeight}px`;
-            elementRef.current.style.left = `${newLeft}px`;
-            elementRef.current.style.top = `${newTop}px`;
+        width.current = newWidth;
+        height.current = newHeight;
+        if (stableElement) {
+            stableElement.style.width = `${newWidth}px`;
+            stableElement.style.height = `${newHeight}px`;
+            stableElement.style.left = `${newLeft}px`;
+            stableElement.style.top = `${newTop}px`;
             if (boundary && boundary !== document.body) {
-                elementRef.current.style.position = 'fixed';
+                stableElement.style.position = 'fixed';
             }
             else {
-                elementRef.current.style.position = 'absolute';
+                stableElement.style.position = 'absolute';
             }
         }
         if (onResize) {
@@ -420,11 +429,12 @@ export function useResize(
                 direction: direction
             });
         }
-    }, [onResize, boundary]);
+    }, [onResize, boundary, elementRef]);
 
     const handleResizeEnd: (e: MouseEvent | TouchEvent) => void = useCallback((e: MouseEvent | TouchEvent) => {
-        if (onResizeStop && elementRef.current) {
-            const rect: DOMRect = elementRef.current.getBoundingClientRect();
+        const stableElement: HTMLElement | null = getStableElement();
+        if (onResizeStop && stableElement) {
+            const rect: DOMRect = stableElement.getBoundingClientRect();
             onResizeStop({
                 event: e,
                 width: rect.width,
@@ -437,7 +447,7 @@ export function useResize(
         document.removeEventListener('touchmove', handleResize);
         document.removeEventListener('mouseup', handleResizeEnd);
         document.removeEventListener('touchend', handleResizeEnd);
-    }, [onResizeStop, handleResize]);
+    }, [onResizeStop, handleResize, elementRef]);
 
     useEffect(() => {
         return () => {
@@ -510,7 +520,7 @@ export function useResize(
             role: 'button',
             'aria-label': `Resize ${direction}`
         };
-    }, [handleResizeStart, isCardinalDirection]);
+    }, [handleResizeStart, isCardinalDirection, elementRef]);
 
     const renderResizeHandles: (iconComponent?: React.ReactNode) => React.ReactNode[] =
     useCallback((iconComponent?: React.ReactNode): React.ReactNode[] => {
@@ -529,11 +539,11 @@ export function useResize(
                 </ElementType>
             );
         });
-    }, [getActiveHandles, getHandleProps, isCardinalDirection]);
+    }, [getActiveHandles, getHandleProps, isCardinalDirection, elementRef]);
 
     return {
-        width,
-        height,
+        width: width.current,
+        height: height.current,
         direction: currentDirectionRef.current as ResizeDirections,
         renderResizeHandles
     };

@@ -1,0 +1,36 @@
+/**
+ * CSS class constants for the recurrence editor components
+ */
+export const CSS_CLASSES: Record<string, string> = {
+    CONTROL: 'sf-control',
+    RTL: 'sf-rtl',
+    RECURRENCE_EDITOR: 'sf-recurrence-editor',
+    DAY_RADIO_BUTTON: 'sf-re-day-radio-button',
+    DISPLAY_FLEX: 'sf-display-flex',
+    BY_MONTH_DAY: 'sf-re-by-month-day',
+    FORM_LABEL: 'sf-form-label',
+    RECURRENCE_EDITOR_CONTENT: 'sf-re-content',
+    RECURRENCE_EDITOR_WIDTH_50: 'sf-re-container-width-50',
+    RECURRENCE_EDITOR_FIELD_SECTION: 'sf-re-section',
+    RECURRENCE_EDITOR_ROW: 'sf-re-row',
+    RECURRENCE_EDITOR_MONTH_YEAR_ROW: 'sf-re-month-year-row',
+    RECURRENCE_EDITOR_ALIGN_END: 'sf-re-align-end',
+    REPEAT_MONTH: 'sf-re-repeat-month',
+    REPEAT_ON_WEEK_CONTAINER: 'sf-re-repeat-on-week-container',
+    REPEAT_BY_DAY_DROPDOWN: 'sf-re-by-day-dropdown',
+    BY_SET_POSITION: 'sf-re-by-set-position',
+    REPEAT_END_DAY_WEEK: 'sf-re-repeat-day-week-end',
+    REPEAT_EVERY: 'sf-re-repeat-every',
+    REPEAT_MODE: 'sf-re-repeat-mode',
+    REPEAT_WEEK_BUTTON_CONTAINER: 'sf-re-repeat-week-button-container',
+    REPEAT_YEAR_DAY_NUMBER_CONTAINER: 'sf-re-repeat-year-day-number-container',
+    REPEAT_DAY_WEEK_UNTIL: 'sf-re-repeat-until',
+    REPEAT_COUNT: 'sf-re-repeat-count',
+    REPEAT_UNTIL: 'sf-re-repeat-until',
+    RECURRENCE_EDITOR_WIDTH_100: 'sf-re-container-width-100',
+    REPEAT_MONTH_DAY_ROW: 'sf-re-month-day-row',
+    WEEK_BUTTON: 'sf-re-week-button',
+    WEEK_NUMBER_CONTAINER: 'sf-re-week-number-container',
+    WEEK_NUMBER_DAY_MODE_ROW: 'sf-re-week-number-day-mode-row',
+    WEEK_RADIO_BUTTON: 'sf-re-week-radio-button'
+};

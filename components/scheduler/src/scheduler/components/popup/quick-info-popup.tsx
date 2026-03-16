@@ -1,22 +1,27 @@
 import {
     forwardRef, useImperativeHandle, useRef, useState, useCallback, ReactElement,
     ForwardRefExoticComponent, RefAttributes, SetStateAction, RefObject, Dispatch, ReactNode, FC, ForwardedRef,
-    useEffect
+    useEffect, JSX,
+    useMemo
 } from 'react';
-import { TimelineDayIcon, CloseIcon, LocationIcon, PageColumnsIcon } from '@syncfusion/react-icons';
+import { TimelineDayIcon, CloseIcon, LocationIcon, PageColumnsIcon, RepeatIcon } from '@syncfusion/react-icons';
 import { Button, Color, IButton, Variant } from '@syncfusion/react-buttons';
 import { TextBoxChangeEvent, TextBox, ITextBox } from '@syncfusion/react-inputs';
 import { Popup, CollisionType, ActionOnScrollType } from '@syncfusion/react-popups';
 import { CSS_CLASSES } from '../../common/constants';
 import { DateService } from '../../services/DateService';
-import { SchedulerCellClickEvent, EventModel } from '../../types/scheduler-types';
-import { Browser, Size, useProviderContext } from '@syncfusion/react-base';
+import { SchedulerCellClickEvent, EventModel, SchedulerCellDetails } from '../../types/scheduler-types';
+import { Browser, IL10n, Size, useProviderContext } from '@syncfusion/react-base';
 import { usePopup } from '../../hooks/useQuickInfoPopup';
 import { useSchedulerLocalization } from '../../common/locale';
 import { useOutsideClick } from '../../hooks/useScheduler';
 import { EventService } from '../../services/EventService';
 import { useSchedulerPropsContext } from '../../context/scheduler-context';
 import { createPortal } from 'react-dom';
+import { clearAndSelectAppointment } from '../../utils/actions';
+import { CrudAction, AlertAction } from '../../types/enums';
+import { getRecurrenceSummary } from '../../../recurrence-editor';
+import { useRecurrenceEditorLocalization } from '../../../recurrence-editor/locale';
 
 /**
  * Shared utility function to render close button for popups
@@ -55,6 +60,7 @@ export interface PopupWrapperProps {
     onClose: () => void;
     onOpen?: () => void;
     children: ReactNode;
+    adaptive: boolean
 }
 
 /**
@@ -64,14 +70,14 @@ export interface PopupWrapperProps {
  * @returns {ReactElement | null} The popup wrapper
  */
 export const PopupWrapper: FC<PopupWrapperProps> = (
-    { visible, target, schedulerElement, popupPosition, onClose, onOpen, children }: PopupWrapperProps
+    { visible, target, schedulerElement, popupPosition, onClose, onOpen, children, adaptive }: PopupWrapperProps
 ) => {
     if (!visible || !target) {
         return null;
     }
     const { dir } = useProviderContext();
 
-    if (Browser.isDevice) {
+    if (Browser.isDevice && adaptive) {
         return createPortal(
             <div className={`${CSS_CLASSES.CONTROL} ${CSS_CLASSES.POPUP_WRAPPER} ${CSS_CLASSES.MOBILE_POPUP}
                 ${dir === 'rtl' ? CSS_CLASSES.RTL : ''}`}>
@@ -88,7 +94,7 @@ export const PopupWrapper: FC<PopupWrapperProps> = (
             position={popupPosition}
             collision={{
                 X: CollisionType.Flip,
-                Y: CollisionType.Fit
+                Y: CollisionType.Flip
             }}
             actionOnScroll={ActionOnScrollType.None}
             autoReposition={true}
@@ -201,8 +207,8 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
 
     const { onClose, onEditEvent, onMoreDetails } = props;
 
-    const { schedulerRef, eventSettings, showQuickInfoPopup, showDeleteAlert, view, readOnly, timeFormat } = useSchedulerPropsContext();
-
+    const { schedulerRef, eventSettings, showQuickInfoPopup, showDeleteAlert, showRecurrenceAlert, view, readOnly,
+        timeFormat, quickInfo } = useSchedulerPropsContext();
     const [cellData, setCellData] = useState<SchedulerCellClickEvent>({} as SchedulerCellClickEvent);
     const [eventData, setEventData] = useState<EventModel>({} as EventModel);
     const [formData, setFormData] = useState<EventModel>({} as EventModel);
@@ -227,7 +233,9 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
 
     const { locale } = useProviderContext();
     useOutsideClick(popupElement, visible, handleClose);
-    const { getString } = useSchedulerLocalization(locale || 'en-US');
+    const { getString: getSchedulerString } = useSchedulerLocalization(locale || 'en-US');
+    const { getString: getRecurrenceString } = useRecurrenceEditorLocalization(locale || 'en-US');
+    const localeObj: IL10n = useMemo(() => ({ getConstant: (key: string) => getRecurrenceString(key) } as IL10n), [getRecurrenceString]);
 
     useEffect(() => {
         if (shouldFocus) {
@@ -249,7 +257,7 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             setPopupType('cell');
             setFormData({
                 [eventSettings.fields.startTime]: cellData.startTime,
-                [eventSettings.fields.endTime]: (cellData.isAllDay) ? DateService.addDays(cellData.endTime, -1) : cellData.endTime,
+                [eventSettings.fields.endTime]: cellData.endTime,
                 [eventSettings.fields.isAllDay]: cellData.isAllDay
             });
             cellPopupClick();
@@ -264,6 +272,7 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             setPopupType('event');
             cellPopupClick();
             setVisible(true);
+            clearAndSelectAppointment(element);
         },
         handleDelete: openDeleteConfirmation
     }));
@@ -330,7 +339,7 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
         const updatedData: EventModel = {
             ...formData,
             [eventSettings.fields.id]: EventService.generateEventGuid(),
-            [eventSettings.fields.subject]: formData[eventSettings.fields.subject] || getString('newEvent')
+            [eventSettings.fields.subject]: formData[eventSettings.fields.subject] || getSchedulerString('newEvent')
         };
         schedulerRef?.current?.addEvent?.(updatedData);
         handleClose();
@@ -362,6 +371,15 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
      * @returns {void}
      */
     const openDeleteConfirmation: () => void = useCallback((): void => {
+        const handleRecurrenceDelete: (selectOption: string) => void = (selectOption: string): void => {
+            if (popupType === 'event' && eventData) {
+                const action: CrudAction = selectOption === 'EditOccurrence' ?
+                    'DeleteOccurrence' : 'DeleteSeries';
+                schedulerRef?.current?.deleteEvent?.(eventData, action);
+            }
+            handleClose();
+            closeAllPopups();
+        };
         const performDelete: () => void = (): void => {
             if (popupType === 'event' && eventData) {
                 schedulerRef?.current?.deleteEvent?.(eventData);
@@ -369,9 +387,13 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             handleClose();
             closeAllPopups();
         };
-        showDeleteAlert?.(performDelete);
+        if (popupType === 'event' && eventData && eventData.recurrenceID) {
+            showRecurrenceAlert?.(AlertAction.RecurrenceDelete, handleRecurrenceDelete);
+        } else {
+            showDeleteAlert?.(performDelete);
+        }
         setVisible(false);
-    }, [popupType, eventData, handleClose, closeAllPopups, schedulerRef, showDeleteAlert]);
+    }, [popupType, eventData, handleClose, closeAllPopups, schedulerRef, showDeleteAlert, showRecurrenceAlert, eventSettings]);
 
     /**
      * Handles key down events for button actions (Enter or Space)
@@ -387,6 +409,179 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             }
         };
 
+    const cellDataProps: SchedulerCellDetails = {
+        startTime: cellData.startTime,
+        endTime: cellData.endTime,
+        isAllDay: cellData.isAllDay,
+        element: cellData.element
+    };
+
+    const addHeaderElement: JSX.Element = (
+        <>
+            {quickInfo?.addHeader ? (
+                quickInfo?.addHeader({ cellData: cellDataProps })
+            ) : (
+                <div className={CSS_CLASSES.POPUP_HEADER}>
+                    <div className={`${CSS_CLASSES.POPUP_HEADER_WRAP} ${CSS_CLASSES.CONTENT_RIGHT}`}>
+                        {renderPopupCloseButton(handleClose, getSchedulerString('close'))}
+                    </div>
+                </div>
+            )}
+        </>
+    );
+
+    const addContentElement: JSX.Element = (
+        <>
+            {quickInfo?.addContent ? (
+                quickInfo?.addContent({ cellData: cellDataProps })
+            ) : (
+                <div className={`${CSS_CLASSES.POPUP_CONTENT}`}>
+                    <div className={CSS_CLASSES.POPUP_INPUT_WRAP}>
+                        <TextBox
+                            ref={textBoxRef}
+                            className={CSS_CLASSES.POPUP_CELL_SUBJECT}
+                            placeholder={getSchedulerString('addTitle')}
+                            onKeyDown={createKeyDownHandler(handleSave)}
+                            onChange={handleSubjectChange}
+                            value={(formData[eventSettings?.fields?.subject] as string) || ''}
+                            size={Size.Large}
+                        />
+                    </div>
+                    {cellData.startTime && cellData.endTime && (
+                        <div className={`${CSS_CLASSES.CELL_TIME} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                            <TimelineDayIcon />
+                            <span className={CSS_CLASSES.POPUP_TIME_TEXT}>
+                                {DateService.formatCellDateRange(
+                                    new Date(cellData.startTime),
+                                    new Date(cellData.endTime),
+                                    locale,
+                                    timeFormat)}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
+        </>
+    );
+
+    const addFooterElement: JSX.Element = (
+        <>
+            {quickInfo?.addFooter ? (
+                quickInfo?.addFooter({ cellData: cellDataProps })
+            ) : (
+                <div className={`${CSS_CLASSES.POPUP_FOOTER} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                    <Button
+                        className={CSS_CLASSES.POPUP_MORE_DETAILS}
+                        onClick={handleMoreDetails}
+                        color={Color.Primary}
+                        variant={Variant.Standard}
+                    >
+                        {getSchedulerString('moreDetails')}
+                    </Button>
+                    <Button
+                        className={CSS_CLASSES.SAVE_EVENT}
+                        onClick={handleSave}
+                        onKeyDown={createKeyDownHandler(handleSave)}
+                        color={Color.Primary}
+                        variant={Variant.Standard}
+                    >
+                        {getSchedulerString('save')}
+                    </Button>
+                </div>
+            )}
+        </>
+    );
+
+    const editHeaderElement: JSX.Element = (
+        <>
+            {quickInfo?.editHeader ? (
+                quickInfo?.editHeader({ eventData })
+            ) : (
+                <div className={`${CSS_CLASSES.POPUP_HEADER} ${CSS_CLASSES.POPUP_CELL_HEADER} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                    <div className={`${CSS_CLASSES.POPUP_EVENT_SUBJECT} ${CSS_CLASSES.ELLIPSIS}`} title={eventData?.subject || getSchedulerString('addTitle')}>
+                        {eventData.subject || getSchedulerString('addTitle')}
+                    </div>
+                    <div className={`${CSS_CLASSES.POPUP_HEADER_WRAP}`}>
+                        {renderPopupCloseButton(handleClose, getSchedulerString('close'))}
+                    </div>
+                </div>
+            )}
+        </>
+    );
+
+    const editContentElement: JSX.Element = (
+        <>
+            {quickInfo?.editContent ? (
+                quickInfo?.editContent({ eventData })
+            ) : (
+                <div className={`${CSS_CLASSES.POPUP_CONTENT}`}>
+                    {eventData.startTime && eventData.endTime && (
+                        <div className={`${CSS_CLASSES.CELL_TIME} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                            <TimelineDayIcon />
+                            <span className={CSS_CLASSES.POPUP_TIME_TEXT}>
+                                {DateService.formatPopupDateRange(eventData, locale, timeFormat)}
+                            </span>
+                        </div>
+                    )}
+
+                    {eventData.recurrenceRule && (
+                        <div className={`${CSS_CLASSES.RULE_SUMMARY} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                            <RepeatIcon />
+                            <span className={CSS_CLASSES.RULE_SUMMARY_TEXT}>{
+                                getRecurrenceSummary(eventData.recurrenceRule, locale, localeObj)}</span>
+                        </div>
+                    )}
+
+                    {eventData.location && (
+                        <div className={`${CSS_CLASSES.LOCATION} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                            <LocationIcon />
+                            <span className={CSS_CLASSES.POPUP_LOCATION_TEXT}>{eventData.location}</span>
+                        </div>
+                    )}
+
+                    {eventData.description && (
+                        <div className={`${CSS_CLASSES.DESCRIPTION} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                            <PageColumnsIcon />
+                            <span className={CSS_CLASSES.POPUP_DESCRIPTION_TEXT}>{eventData.description}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+        </>
+    );
+
+    const editFooterElement: JSX.Element = (
+        <>
+            {quickInfo?.editFooter ? (
+                quickInfo?.editFooter({ eventData })
+            ) : (
+                <div className={`${CSS_CLASSES.POPUP_FOOTER} ${CSS_CLASSES.DISPLAY_FLEX}`}>
+                    <Button
+                        ref={editRef}
+                        className={CSS_CLASSES.EDIT_EVENT}
+                        disabled={!!eventData?.isReadonly || readOnly}
+                        onClick={handleEdit}
+                        onKeyDown={createKeyDownHandler(handleEdit)}
+                        color={Color.Primary}
+                        variant={Variant.Standard}
+                    >
+                        {getSchedulerString('edit')}
+                    </Button>
+                    <Button
+                        className={CSS_CLASSES.DELETE_EVENT}
+                        disabled={!!eventData?.isReadonly || readOnly}
+                        onClick={openDeleteConfirmation}
+                        onKeyDown={createKeyDownHandler(openDeleteConfirmation)}
+                        color={Color.Primary}
+                        variant={Variant.Standard}
+                    >
+                        {getSchedulerString('delete')}
+                    </Button>
+                </div>
+            )}
+        </>
+    );
+
     /**
      * Render the cell popup content
      *
@@ -397,53 +592,9 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             ref={handleRef}
             className={`${CSS_CLASSES.QUICK_INFO_WRAPPER} ${CSS_CLASSES.CELL_POPUP}`}
         >
-            <div className={CSS_CLASSES.POPUP_HEADER}>
-                <div className={`${CSS_CLASSES.POPUP_HEADER_WRAP} ${CSS_CLASSES.CONTENT_RIGHT}`}>
-                    {renderPopupCloseButton(handleClose, getString('close'))}
-                </div>
-            </div>
-
-            <div className={`${CSS_CLASSES.POPUP_CONTENT}`}>
-                <div className={CSS_CLASSES.POPUP_INPUT_WRAP}>
-                    <TextBox
-                        ref={textBoxRef}
-                        className={CSS_CLASSES.POPUP_CELL_SUBJECT}
-                        placeholder={getString('addTitle')}
-                        onKeyDown={createKeyDownHandler(handleSave)}
-                        onChange={handleSubjectChange}
-                        value={formData[eventSettings?.fields?.subject] as string || ''}
-                        size={Size.Large}
-                    />
-                </div>
-                {cellData.startTime && cellData.endTime && (
-                    <div className={`${CSS_CLASSES.CELL_TIME} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                        <TimelineDayIcon />
-                        <span className={CSS_CLASSES.POPUP_TIME_TEXT}>
-                            {DateService.formatCellDateRange(new Date(cellData.startTime), new Date(cellData.endTime), locale, timeFormat)}
-                        </span>
-                    </div>
-                )}
-            </div>
-
-            <div className={`${CSS_CLASSES.POPUP_FOOTER} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                <Button
-                    className={CSS_CLASSES.POPUP_MORE_DETAILS}
-                    onClick={handleMoreDetails}
-                    color={Color.Primary}
-                    variant={Variant.Standard}
-                >
-                    {getString('moreDetails')}
-                </Button>
-                <Button
-                    className={CSS_CLASSES.SAVE_EVENT}
-                    onClick={handleSave}
-                    onKeyDown={createKeyDownHandler(handleSave)}
-                    color={Color.Primary}
-                    variant={Variant.Standard}
-                >
-                    {getString('save')}
-                </Button>
-            </div>
+            {addHeaderElement}
+            {addContentElement}
+            {addFooterElement}
         </div>
     );
 
@@ -457,67 +608,9 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             ref={handleRef}
             className={`${CSS_CLASSES.QUICK_INFO_WRAPPER} ${CSS_CLASSES.EVENT_POPUP}`}
         >
-            <div className={`${CSS_CLASSES.POPUP_HEADER} ${CSS_CLASSES.POPUP_CELL_HEADER} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                <div className={CSS_CLASSES.POPUP_EVENT_SUBJECT}>
-                    {eventData.subject || getString('addTitle')}
-                </div>
-                <div className={`${CSS_CLASSES.POPUP_HEADER_WRAP}`}>
-                    {renderPopupCloseButton(handleClose, getString('close'))}
-                </div>
-            </div>
-
-            <div className={`${CSS_CLASSES.POPUP_CONTENT}`}>
-                {eventData.startTime && eventData.endTime && (
-                    <div className={`${CSS_CLASSES.CELL_TIME} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                        <TimelineDayIcon />
-                        <span className={CSS_CLASSES.POPUP_TIME_TEXT}>
-                            {DateService.formatPopupDateRange(eventData, locale, timeFormat)}
-                        </span>
-                    </div>
-                )}
-
-                {eventData.location && (
-                    <div className={`${CSS_CLASSES.LOCATION} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                        <LocationIcon />
-                        <span className={CSS_CLASSES.POPUP_LOCATION_TEXT}>
-                            {eventData.location}
-                        </span>
-                    </div>
-                )}
-
-                {eventData.description && (
-                    <div className={`${CSS_CLASSES.DESCRIPTION} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                        <PageColumnsIcon />
-                        <span className={CSS_CLASSES.POPUP_DESCRIPTION_TEXT}>
-                            {eventData.description}
-                        </span>
-                    </div>
-                )}
-            </div>
-
-            <div className={`${CSS_CLASSES.POPUP_FOOTER} ${CSS_CLASSES.DISPLAY_FLEX}`}>
-                <Button
-                    ref={editRef}
-                    className={CSS_CLASSES.EDIT_EVENT}
-                    disabled={!!eventData?.isReadonly || readOnly}
-                    onClick={handleEdit}
-                    onKeyDown={createKeyDownHandler(handleEdit)}
-                    color={Color.Primary}
-                    variant={Variant.Standard}
-                >
-                    {getString('edit')}
-                </Button>
-                <Button
-                    className={CSS_CLASSES.DELETE_EVENT}
-                    disabled={!!eventData?.isReadonly || readOnly}
-                    onClick={openDeleteConfirmation}
-                    onKeyDown={createKeyDownHandler(openDeleteConfirmation)}
-                    color={Color.Primary}
-                    variant={Variant.Standard}
-                >
-                    {getString('delete')}
-                </Button>
-            </div>
+            {editHeaderElement}
+            {editContentElement}
+            {editFooterElement}
         </div>
     );
 
@@ -529,6 +622,7 @@ forwardRef<IQuickInfoPopup, QuickInfoPopupProps>((props: QuickInfoPopupProps,  r
             schedulerElement={schedulerElement}
             onClose={handleClose}
             onOpen={onOpen}
+            adaptive={quickInfo?.adaptive ?? true}
         >
             {popupType === 'cell' ? renderCellPopupContent() : renderEventPopupContent()}
         </PopupWrapper>

@@ -1,10 +1,13 @@
 
-import { DateFormatOptions, isNullOrUndefined, isUndefined, NumberFormatOptions, extend as baseExtend, getDatePattern, removeClass, addClass } from '@syncfusion/react-base';
-import { DataUtil, Predicate } from '@syncfusion/react-data';
-import { EditSettings, IValueFormatter, ValueType } from '../types';
+import { DateFormatOptions, isNullOrUndefined, isUndefined, NumberFormatOptions, extend as baseExtend, getDatePattern, removeClass, addClass, extend } from '@syncfusion/react-base';
+import { DataManager, DataUtil, Predicate, Query } from '@syncfusion/react-data';
+import { EditSettings, IValueFormatter, ValueType, ColumnType, AutoSelectMode } from '../types';
 import { FilterPredicates } from '../types/filter.interfaces';
 import { ServiceLocator } from '../types/interfaces';
-import { ColumnProps, HeaderValueAccessorProps, ValueAccessorProps } from '../types/column.interfaces';
+import { payload } from '../types/edit.interfaces';
+import { GridRef } from '../types/grid.interfaces';
+import { ColumnProps, HeaderValueAccessorProps, ValueAccessorProps, IColumnBase } from '../types/column.interfaces';
+import { RefObject } from 'react';
 
 /**
  * Function to get value from provided data
@@ -432,4 +435,246 @@ export function addLastRowBorder(contentTableRef?: HTMLTableElement, editSetting
         }
     }
     addClass(table?.querySelectorAll?.('tr:last-child td'), 'sf-last-cell');
+}
+
+/**
+ * Gets selected records or count from the current page view based on selectedRowState
+ *
+ * This utility function iterates through current page data and identifies records that
+ * are present in the selectedRowState Set, returning the matching records, count, and primary keys.
+ *
+ * @template T - The type of records in the grid
+ * @param {T[]} currentViewData - Array of records currently visible on the page
+ * @param {Set<string>} selectedRowState - Set of selected row primary keys
+ * @param {GridRef<T>} gridRef - Reference to the grid instance
+ * @param {boolean} returnRecords - If true, returns records array; if false, returns count only
+ * @returns {{ records: T[], count: number, primaryKeys: string[] }} Object containing records, count, and primaryKeys
+ * @private
+ */
+export function getCurrentPageSelectedItems<T>(
+    currentViewData: T[],
+    selectedRowState: Set<string>,
+    gridRef: GridRef<T>,
+    returnRecords: boolean = false
+): { records: T[], count: number, primaryKeys: string[] } {
+    const records: T[] = returnRecords ? [] : null;
+    let count: number = 0;
+    const collectedPrimaryKeys: string[] = [];
+    const primaryKeys: string[] = gridRef?.getPrimaryKeyFieldNames?.() ?? [];
+
+    if (!currentViewData || !selectedRowState || !primaryKeys || primaryKeys.length === 0) {
+        return { records: records || [], count: 0, primaryKeys: [] };
+    }
+
+    const primaryKey: string = primaryKeys[0];
+
+    for (const row of currentViewData) {
+        const key: string = row?.[primaryKey as keyof T] as unknown as string;
+        if (key != null && selectedRowState.has(key)) {
+            count++;
+            if (returnRecords) {
+                collectedPrimaryKeys.push(key);
+                records.push(row);
+            }
+        }
+    }
+
+    return { records: records || [], count, primaryKeys: collectedPrimaryKeys };
+}
+
+/**
+ * Builds remote delete payload for server-side processing when using persistent selection
+ *
+ * This utility handles the logic for determining which records should be deleted based on
+ * remote header selection state and toggle keys.
+ *
+ * @template T
+ * @param {GridRef<T>} gridRef - Reference to the grid instance
+ * @param {string} deleteOption - 'page' for current page selected rows, 'all' for all selected rows with header selection support
+ * @returns {payload | null} Remote delete payload structure or null if conditions not met
+ * @private
+ */
+export function buildDeletepayload<T>(gridRef: GridRef<T>, deleteOption?: 'page' | 'all'): payload | null {
+    let isHeaderSelectAllMode: boolean;
+    const toggleKeys: string[] = [];
+    const defaultSelectMode: boolean = gridRef?.selectionSettings?.autoSelectMode === AutoSelectMode.Default;
+
+    if (defaultSelectMode) {
+        isHeaderSelectAllMode = gridRef?.selectionModule?.isHeaderSelectAllMode ?? false;
+        if (deleteOption === 'all') {
+            if (isHeaderSelectAllMode) {
+                const unselectedKeys: Set<string> = gridRef?.selectionModule?.unselectedRowState ?? new Set();
+                toggleKeys.push(...Array.from(unselectedKeys));
+            } else {
+                const selectedKeys: Set<string> = gridRef?.selectionModule?.selectedRowState ?? new Set();
+                toggleKeys.push(...Array.from(selectedKeys));
+            }
+        } else {
+            const { primaryKeys: selectedViewKeys } = getCurrentPageSelectedItems<T>(
+                gridRef?.currentViewData,
+                gridRef?.selectionModule?.selectedRowState,
+                gridRef,
+                true
+            );
+            isHeaderSelectAllMode = false;
+            toggleKeys.push(...Array.from(selectedViewKeys));
+        }
+    } else {
+        if (deleteOption === 'all') {
+            isHeaderSelectAllMode = false;
+            const selectedKeys: Set<string> = gridRef?.selectionModule?.selectedRowState ?? new Set();
+            toggleKeys.push(...Array.from(selectedKeys));
+        } else {
+            const { primaryKeys: selectedViewKeys } = getCurrentPageSelectedItems<T>(
+                gridRef?.currentViewData,
+                gridRef?.selectionModule?.selectedRowState,
+                gridRef,
+                true
+            );
+            isHeaderSelectAllMode = false;
+            toggleKeys.push(...Array.from(selectedViewKeys));
+        }
+    }
+
+    // Delete payload structure
+    return {
+        isHeaderSelectAllMode: isHeaderSelectAllMode,
+        toggleKeys: toggleKeys
+    };
+}
+
+export const updateUIColumnType: (data: Object, newColumn: Partial<IColumnBase>, serviceLocator: ServiceLocator,
+    isColTypeDef?: RefObject<boolean>) => ColumnProps =
+(data: Object, newColumn: Partial<IColumnBase>, serviceLocator: ServiceLocator, isColTypeDef?: RefObject<boolean>): ColumnProps => {
+    if (!isNullOrUndefined(newColumn.getCommandItems)) {
+        newColumn.type = ColumnType.Command;
+    }
+    if (isNullOrUndefined(newColumn.field)) {
+        return newColumn;
+    }
+    // update column type, format, parser, and other first dataSource based properties here
+    const value: string | number | boolean | Object = getObject(newColumn.field, data);
+    if (!isNullOrUndefined(value)) {
+        if (isColTypeDef) {
+            isColTypeDef.current = true;
+        }
+        if (!newColumn.type) {
+            newColumn.type = value instanceof Date && value.getDay ? (value.getHours() > 0 || value.getMinutes() > 0 ||
+                value.getSeconds() > 0 || value.getMilliseconds() > 0 ? 'datetime' : 'date') : typeof (value);
+        }
+    } else {
+        newColumn.type = newColumn.type || null;
+    }
+    const valueFormatter: IValueFormatter = serviceLocator?.getService<IValueFormatter>('valueFormatter');
+    if (newColumn.format && ((newColumn.format as DateFormatOptions).skeleton
+        || ((newColumn.format as DateFormatOptions).format &&
+            typeof (newColumn.format as DateFormatOptions).format === 'string'))) {
+        // Store the formatter and parser functions directly on the new object
+        newColumn.formatFn = valueFormatter.getFormatFunction(extend({}, newColumn.format as DateFormatOptions));
+        newColumn.parseFn = valueFormatter.getParserFunction(newColumn.format as DateFormatOptions);
+    }
+    if (newColumn.sortComparer && !isNullOrUndefined(isColTypeDef)) {
+        let a: Function = newColumn.sortComparer;
+        newColumn.sortComparer = (x: number | string, y: number | string, xObj?: Object, yObj?: Object) => {
+            if (typeof a === 'string') {
+                a = getObject(a, window) as Function;
+            }
+            if (newColumn.sortDirection === 'Descending') {
+                const z: number | string = x as number | string;
+                x = y;
+                y = z;
+                const obj: Object = xObj;
+                xObj = yObj;
+                yObj = obj;
+            }
+            return a(x, y, xObj, yObj, newColumn.sortDirection);
+        };
+    }
+    if (typeof (newColumn.format) === 'string') {
+        setFormatter(serviceLocator, newColumn);
+    } else if (!newColumn.format && newColumn.type === 'number') {
+        newColumn.parseFn = valueFormatter.getParserFunction({ format: 'n2' } as NumberFormatOptions);
+    }
+    if (newColumn.type === 'dateonly' && !newColumn.format) {
+        newColumn.format = 'yMd';
+        setFormatter(serviceLocator, newColumn);
+    }
+    return newColumn;
+};
+
+/**
+ *
+ * @param {FilterPredicates[]} columns - Defines the column
+ * @param {boolean} isExecuteLocal - Defines the editSettings
+ * @returns {Predicate} - return the filter predicates
+ * @private
+ */
+export function getPredicate(columns: FilterPredicates[], isExecuteLocal?: boolean): Predicate {
+    const cols: FilterPredicates[] = DataUtil.distinct(columns, 'field', true);
+    let collection: Object[] = [];
+    const pred: Predicate = {} as Predicate;
+    for (let i: number = 0; i < cols.length; i++) {
+        collection = new DataManager(columns as JSON[]).executeLocal(
+            new Query().where('field', 'equal', cols[parseInt(i.toString(), 10)].field));
+        pred[cols[parseInt(i.toString(), 10)].field] = generatePredicate(collection, isExecuteLocal);
+    }
+    return pred;
+}
+
+/**
+ *
+ * @param {FilterPredicates[]} cols - Defines the column
+ * @param {boolean} isExecuteLocal  - Defines the editSettings
+ * @returns {Predicate} - return the filter predicates
+ * @private
+ */
+export function generatePredicate(cols: FilterPredicates[], isExecuteLocal?: boolean): Predicate {
+    const len: number = cols.length;
+    let predicate: Predicate;
+    const operate: string = 'or';
+    const first: FilterPredicates = cols[0];
+    first.ignoreAccent = !isNullOrUndefined(first.ignoreAccent) ? first.ignoreAccent : false;
+    if (first.type === 'date' || first.type === 'datetime' || first.type === 'dateonly') {
+        predicate = getDatePredicate(first, first.type, isExecuteLocal);
+    } else {
+        predicate = first.ejpredicate ? first.ejpredicate as Predicate :
+            new Predicate(
+                first.field, first.operator, first.value, !getCaseValue(first),
+                first.ignoreAccent) as Predicate;
+    }
+    for (let p: number = 1; p < len; p++) {
+        if (len > 2 && p > 1 && ((cols[p as number].predicate === 'or' && cols[p as number - 1].predicate === 'or')
+            || (cols[p as number].predicate === 'and' && cols[p as number - 1].predicate === 'and'))) {
+            if (cols[p as number].type === 'date' || cols[p as number].type === 'datetime' || cols[p as number].type === 'dateonly') {
+                predicate.predicates.push(
+                    getDatePredicate(cols[parseInt(p.toString(), 10)], cols[p as number].type, isExecuteLocal));
+            } else {
+                predicate.predicates.push(new Predicate(
+                    cols[p as number].field, cols[parseInt(p.toString(), 10)].operator,
+                    cols[parseInt(p.toString(), 10)].value, !getCaseValue(cols[parseInt(p.toString(), 10)]),
+                    cols[parseInt(p.toString(), 10)].ignoreAccent));
+            }
+        } else {
+            if (cols[p as number].type === 'date' || cols[p as number].type === 'datetime' || cols[p as number].type === 'dateonly') {
+                if (cols[parseInt(p.toString(), 10)].predicate === 'and' && cols[parseInt(p.toString(), 10)].operator === 'equal') {
+                    predicate = (predicate[`${operate}`] as Function)(
+                        getDatePredicate(cols[parseInt(p.toString(), 10)], cols[parseInt(p.toString(), 10)].type, isExecuteLocal),
+                        cols[parseInt(p.toString(), 10)].type, cols[parseInt(p.toString(), 10)].ignoreAccent);
+                } else {
+                    predicate = (predicate[((cols[parseInt(p.toString(), 10)] as Predicate).predicate) as string] as Function)(
+                        getDatePredicate(cols[parseInt(p.toString(), 10)], cols[parseInt(p.toString(), 10)].type, isExecuteLocal),
+                        cols[parseInt(p.toString(), 10)].type, cols[parseInt(p.toString(), 10)].ignoreAccent);
+                }
+            } else {
+                predicate = cols[parseInt(p.toString(), 10)].ejpredicate ?
+                    (predicate[(cols[parseInt(p.toString(), 10)] as Predicate)
+                        .predicate as string] as Function)(cols[parseInt(p.toString(), 10)].ejpredicate) :
+                    (predicate[(cols[parseInt(p.toString(), 10)].predicate) as string] as Function)(
+                        cols[parseInt(p.toString(), 10)].field, cols[parseInt(p.toString(), 10)].operator,
+                        cols[parseInt(p.toString(), 10)].value, !getCaseValue(cols[parseInt(p.toString(), 10)]),
+                        cols[parseInt(p.toString(), 10)].ignoreAccent);
+            }
+        }
+    }
+    return predicate;
 }

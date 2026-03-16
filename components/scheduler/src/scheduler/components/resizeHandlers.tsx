@@ -119,11 +119,11 @@ export const ResizeHandlers: NamedExoticComponent<ResizeHandlersProps> =
         return (
             <div className={`${CSS_CLASSES.RESIZE_CONTAINER}`} ref={(ele: HTMLDivElement) => { wrapRef.current = ele; eventRef.current = ele ?
                 (ele.closest(`.${CSS_CLASSES.APPOINTMENT}`) as HTMLElement) : null; }}>
-                {!hasPrevious && (
+                {!hasPrevious && eventResize.startResizable && (
                     <Handler dir={startDirection} resizeStart={hideMobileHandler} showResizeHandle={showResizeHandle} />
                 )}
                 {children}
-                {!hasNext && (
+                {!hasNext && eventResize.endResizable && (
                     <Handler dir={endDirection} resizeStart={hideMobileHandler} showResizeHandle={showResizeHandle} />
                 )}
             </div>

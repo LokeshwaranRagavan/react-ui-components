@@ -39,11 +39,18 @@ import {
     FilterPredicates,
     ValueType,
     SelectionMode,
-    UseCommandColumnResult
+    UseCommandColumnResult,
+    Theme,
+    ThemeDefaults,
+    VirtualizationSettings,
+    VirtualDomType,
+    VirtualBufferSettings,
+    AutoSelectMode,
+    LoadingIndicatorType
 } from '../types';
 import { selectionModule, SelectionSettings } from '../types/selection.interfaces';
 import { SortDescriptor, SortSettings, SortModule } from '../types/sort.interfaces';
-import { GridRef, TextWrapSettings, RowInfo, IGrid, IGridBase, RecordDoubleClickEvent } from '../types/grid.interfaces';
+import { GridRef, TextWrapSettings, RowInfo, IGrid, IGridBase, RecordDoubleClickEvent, LoadingIndicatorSettings } from '../types/grid.interfaces';
 import { filterModule, FilterSettings } from '../types/filter.interfaces';
 import { editModule, EditSettings } from '../types/edit.interfaces';
 import { ColumnProps } from '../types/column.interfaces';
@@ -61,6 +68,7 @@ import { useData } from '../models';
 import { iterateArrayOrObject } from '../utils';
 import { ITooltip } from '@syncfusion/react-popups';
 import { useCommandColumn } from './useCommandColumn';
+import { ScrollMode, VirtualSettings } from '../types';
 
 /**
  * Default localization strings for the grid
@@ -87,6 +95,15 @@ const defaultLocale: Record<string, string> = {
     noRecordsDeleteMessage: 'No records selected for delete operation',
     okButtonLabel: 'OK',
     confirmDeleteMessage: 'Are you sure you want to delete the record?',
+    chooseRecordsToDelete: 'Choose records to delete',
+    deleteSelectedRecordsOnPage: 'Delete {0} selected record{1} on this page',
+    deleteSelectedRecordsOnPageDescription: 'Only removes items currently visible in the grid view',
+    deleteAllSelectedRecordsAcrossPages: 'Delete all {0} selected records across pages',
+    deleteAllSelectedRecordsAcrossPagesDescription: 'Removes records from the current page along with {0} additional selections from other pages',
+    deleteAllSelectedRecordsAcrossPagesDescriptionNoCurrentPage : 'Removes {0} record{1} selected on other pages',
+    deleteAllSelectedRecordsFromLoadedPages: 'Delete all {0} selected records from loaded pages',
+    deleteAllSelectedRecordsFromLoadedPagesDescription: 'Removes records from the current page along with {0} additional selections from loaded pages',
+    deleteAllSelectedRecordsFromLoadedPagesDescriptionNoCurrentPage: 'Removes {0} record{1} from loaded pages',
     SelectAllRows: 'Select all rows',
     SelectRow: 'Select row',
     startsWith: 'Starts With',
@@ -112,7 +129,29 @@ const defaultLocale: Record<string, string> = {
     addNewRecordLabel: 'Add New Record',
     detailsOfLabel: 'Details of',
     recordFormLabel: 'Record Form',
-    columnHeaderLabel: 'Column header'
+    columnHeaderLabel: 'Column header',
+    NoResult: 'No matches found',
+    ClearFilter: 'Clear Filter',
+    Clear: 'Clear',
+    SortAtoZ: 'Sort A to Z',
+    SortZtoA: 'Sort Z to A',
+    SortByOldest: 'Sort by Oldest',
+    SortByNewest: 'Sort by Newest',
+    SortSmallestToLargest: 'Sort Smallest to Largest',
+    SortLargestToSmallest: 'Sort Largest to Smallest',
+    AddCurrentSelection: 'Add current selection to filter',
+    SelectAll: 'Select All',
+    Matchs: 'No matches found',
+    Blanks: 'Blanks',
+    OKButton: 'OK',
+    CancelButton: 'Cancel',
+    Primary: 'Default',
+    advanced: 'Advanced',
+    enterValue: 'Enter value',
+    and: 'AND',
+    or: 'OR',
+    FilterTrue: 'True',
+    FilterFalse: 'False'
 };
 
 /**
@@ -172,17 +211,27 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
     const dataState: RefObject<PendingState> = useRef({isPending: false, resolver: undefined, isEdit: false});
     const dataSource: DataManager | DataResult = useMemo(() => {
         if (props.dataSource instanceof DataManager) {
+            if (props.virtualizationSettings?.scrollMode === ScrollMode.Virtual) {
+                return new DataManager({
+                    ...props.dataSource.dataSource,
+                    enableCache: props.virtualizationSettings?.enableCache ?? true
+                }, props.dataSource.defaultQuery, props.dataSource.adaptor);
+            }
             return props.dataSource;
         }
         else if (Array.isArray(props.dataSource)) {
-            return new DataManager(props.dataSource);
+            return new DataManager({
+                json: props.dataSource,
+                ...(props.virtualizationSettings?.scrollMode === ScrollMode.Virtual ?
+                    {enableCache: props.virtualizationSettings?.enableCache} : {})
+            });
         }
         else if (props.dataSource && props.dataSource.result) {
             dataState.current.isPending = true;
             return props.dataSource;
         }
         return new DataManager([]);
-    }, [props.dataSource]);
+    }, [props.dataSource, props.virtualizationSettings?.enableCache, props.virtualizationSettings?.scrollMode]);
 
     const query: Query = useMemo(() => props.query instanceof Query ? props.query : new Query(), [props.query]);
     // Trigger load event on initial render
@@ -191,14 +240,21 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             props.onGridRenderStart();
         }
     }, []);
+    // const [isContentBusy, setIsContentBusy] = useState<boolean>(true);
     const [isInitialLoad, setInitialLoad] = useState(true);
     const isInitialBeforePaint: RefObject<boolean> = useRef(true);
     const tooltipContent: RefObject<string> = useRef('');
     const aggregates: AggregateRowProps[] = useAggregates<T>(props, gridRef);
 
-    const { columns: preparedColumns, children, headerRowDepth, colElements, uiColumns, isCheckBoxColumn } =
-        useColumns<T>({ ...props }, gridRef, dataState, isInitialBeforePaint);
-
+    const [currentViewData, setCurrentViewData] = useState<T[]>([]);
+    const [virtualCachedViewData, setVirtualCachedViewData] = useState<Map<number, T>>(new Map());
+    const uiColumns: RefObject<ColumnProps<T>[]> = useRef([]);
+    const { columns: preparedColumns, children, headerRowDepth, colElements, uiColumns: noTypeUiColumns, isCheckBoxColumn,
+        totalVirtualColumnWidth, columnOffsets, visibleColumns, isCommandEditEnabled, isAutoHeightEnabled } = useColumns<T>({
+        ...props }, serviceLocator, gridRef, dataState, isInitialBeforePaint, currentViewData, uiColumns.current);
+    useMemo(() => {
+        uiColumns.current = noTypeUiColumns;
+    }, [noTypeUiColumns]);
     // Initialize search settings based on props or use default values
     const defaultSearchSettings: SearchSettings = {
         enabled: props.searchSettings?.enabled || false,
@@ -219,6 +275,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         columns: props.filterSettings?.columns || [],
         type: props.filterSettings?.type || 'FilterBar',
         mode: props.filterSettings?.mode || 'Immediate',
+        loadingIndicator: props.filterSettings?.loadingIndicator || 'Shimmer',
         immediateModeDelay: props.filterSettings?.immediateModeDelay || 1500,
         ignoreAccent: props.filterSettings?.ignoreAccent || false,
         operators: props.filterSettings?.operators || null,
@@ -268,10 +325,73 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         }
     }, [props.pageSettings?.enabled]);
 
+    const theme: Theme = useMemo(() => {
+        return props.theme || Theme.Material;
+    }, [props.theme]);
+    const height: string | number = useMemo(() =>
+        props.height || 'auto', [props.height]);
+    const width: string | number = useMemo(() =>
+        props.width || 'auto', [props.width]);
+    const virtualizationSettings: VirtualizationSettings = useMemo(() => {
+        const defaultViewPortBuffer: VirtualBufferSettings = {
+            rows: (((isNullOrUndefined(props.virtualizationSettings?.enabled) || props.virtualizationSettings?.enabled) &&
+                props.virtualizationSettings?.type === VirtualDomType.Column) || props.virtualizationSettings?.enabled === false) &&
+                !props.virtualizationSettings?.preventMaxRenderedRows ? 500 : 5,
+            columns: 5
+        };
+        const finalViewPortBuffer: VirtualBufferSettings = { // user provided partial object values maintained with default values.
+            rows: props.virtualizationSettings?.viewPortBuffer?.rows ?? defaultViewPortBuffer.rows,
+            columns: props.virtualizationSettings?.viewPortBuffer?.columns ?? defaultViewPortBuffer.columns
+        };
+        return {
+            enabled: true,
+            type: VirtualDomType.Both,
+            scrollMode: ScrollMode.Auto,
+            enableCache: true,
+            preventMaxRenderedRows: false,
+            ...props.virtualizationSettings,
+            viewPortBuffer: finalViewPortBuffer,
+            ...(props.virtualizationSettings?.scrollMode === ScrollMode.Virtual && props.virtualizationSettings?.type ===
+                VirtualDomType.Column ? { type: VirtualDomType.Both } : {}), // Virtual Scroll not possible/compatible without row dom virtualization.
+            ...(height === 'auto' ? { type: VirtualDomType.Column, ...(!props.virtualizationSettings?.preventMaxRenderedRows ?
+                { viewPortBuffer: { ...finalViewPortBuffer, rows: props.virtualizationSettings?.viewPortBuffer?.rows ?? 500 } } : {}) } :
+                {}) // Auto height row dom virtualization layout not possible/compatible.
+        };
+    }, [props.virtualizationSettings, height]);
+    const scrollMode: ScrollMode = useMemo(() => {
+        return virtualizationSettings.scrollMode;
+    }, [virtualizationSettings]);
+    const virtualSettings: VirtualSettings = useMemo(() => {
+        return {
+            enableRow: virtualizationSettings.enabled && virtualizationSettings.type !== VirtualDomType.Column,
+            enableColumn: isAutoHeightEnabled ? false : (virtualizationSettings.enabled &&
+                virtualizationSettings.type !== VirtualDomType.Row),
+            rowBuffer: virtualizationSettings.viewPortBuffer.rows,
+            columnBuffer: virtualizationSettings.viewPortBuffer.columns,
+            preventMaxRenderedRows: virtualizationSettings.preventMaxRenderedRows,
+            enableCache: virtualizationSettings.enableCache
+        };
+    }, [virtualizationSettings]);
+    const rowHeight: number | null = useMemo(() =>
+        props.rowHeight || (virtualSettings.enableRow ? ThemeDefaults[theme as Theme].rowHeight : null), [props.rowHeight, theme,
+        virtualSettings]);
+    const getRowHeight: ((props: Partial<RowInfo<T>>) => number) = useMemo(() => props.getRowHeight ?? null, [props.getRowHeight]);
+    const [offsetX, setOffsetX] = useState<number>(0);
+    const [offsetY, setOffsetY] = useState<number>(0);
+    const loadingIndicatorSettings: LoadingIndicatorSettings = useMemo(() => {
+        return { indicatorType: props.loadingIndicatorSettings?.indicatorType ? props.loadingIndicatorSettings?.indicatorType :
+            (scrollMode === ScrollMode.Auto ? LoadingIndicatorType.Spinner : LoadingIndicatorType.Shimmer),
+        ...props.loadingIndicatorSettings };
+    }, [props.loadingIndicatorSettings?.indicatorType, scrollMode]);
+
+    const virtualChangeDetectedPageSize: number = useMemo(() => {
+        return props.pageSettings?.pageSize || (props.virtualizationSettings?.scrollMode === ScrollMode.Virtual ? 50 :
+            (!props.pageSettings?.enabled && virtualSettings.enableRow ? currentViewData?.length : 12));
+    }, [props.pageSettings, props.virtualizationSettings?.scrollMode, virtualSettings.enableRow, currentViewData?.length]);
     // Initialize page settings based on props or use default values
     const defaultPageSettings: PageSettings = {
         enabled: props.pageSettings?.enabled || false,
-        pageSize: props.pageSettings?.pageSize || 12,
+        pageSize: virtualChangeDetectedPageSize,
         pageCount: props.pageSettings?.pageCount || 0,
         currentPage: currentPage,
         template: props.pageSettings?.template || null,
@@ -288,10 +408,6 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         return props.clipMode;
     }, [props.clipMode]);
 
-    const height: string | number = useMemo(() =>
-        props.height || 'auto', [props.height]);
-    const width: string | number = useMemo(() =>
-        props.width || 'auto', [props.width]);
     const gridLines: GridLine | string = useMemo(() =>
         props.gridLines || 'Default', [props.gridLines]);
     const enableRtl: boolean = useMemo(() =>
@@ -308,9 +424,10 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             enableToggle: isCheckBoxColumn,
             headerCheckbox: true,
             persistSelection: isCheckBoxColumn,
+            autoSelectMode: isCheckBoxColumn ? AutoSelectMode.Default : AutoSelectMode.Intermediate,
             ...(props.selectionSettings || {})
         };
-    }, [columns, props.selectionSettings]);
+    }, [columns, props.selectionSettings, isCheckBoxColumn]);
     const pageSettings: PageSettings = useMemo(() =>
         defaultPageSettings, [props.pageSettings]);
     const textWrapSettings: TextWrapSettings = useMemo(() => {
@@ -323,16 +440,13 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         props.enableHtmlSanitizer || false, [props.enableHtmlSanitizer]);
     const enableStickyHeader: boolean = useMemo(() =>
         props.enableStickyHeader || false, [props.enableStickyHeader]);
-    const rowHeight: number | null = useMemo(() =>
-        props.rowHeight || null, [props.rowHeight]);
+
     const enableAltRow: boolean = useMemo(() =>
         props.enableAltRow ?? true, [props.enableAltRow]);
     const emptyRecordTemplate: string | Function | ReactElement = useMemo(() =>
         props.emptyRecordTemplate || null, [props.emptyRecordTemplate]);
     const rowTemplate: string | Function | ReactElement = useMemo(() =>
         props.rowTemplate || null, [props.rowTemplate]);
-
-    const [currentViewData, setCurrentViewData] = useState<T[]>([]);
 
     const [responseData, setResponseData] = useState<Object>({});
 
@@ -390,8 +504,10 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
      * Compute CSS styles for the grid container
      */
     const styles: CSSProperties = useMemo<CSSProperties>(() => ({
-        width: formatUnit(width)
-    }), [width]);
+        width: formatUnit(width),
+        height: formatUnit(height),
+        minHeight: formatUnit(height)
+    }), [width, height]);
 
     /**
      * Gets a Column by column name.
@@ -493,15 +609,18 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                 const row: Element = closest(ele, '.sf-grid-content-row');
                 if (!isNullOrUndefined(row) && !row.classList.contains('sf-grid-add-row')) {
                     const rowObj: IRow<ColumnProps<T>> = gridRef.current.getRowObjectFromUID(row.getAttribute('data-uid'));
-                    const rowIndex: number = parseInt(row.getAttribute('aria-rowindex'), 10) - 1;
-                    args = { row: row, data: rowObj.data, rowIndex: rowIndex };
+                    const rowIndex: number = parseInt(row.getAttribute('data-rowindex'), 10) - 1;
+                    const ariaRowIndex: number = parseInt(row.getAttribute('aria-rowindex'), 10) - 1;
+                    args = { row: row, data: rowObj.data, rowIndex: rowIndex, ariaRowIndex: ariaRowIndex };
                 }
                 return args;
             }
-            const cellIndex: number = parseInt(cell.getAttribute('aria-colindex'), 10) - 1;
+            const cellIndex: number = parseInt(cell.getAttribute('data-colindex'), 10) - 1;
+            const ariaCellIndex: number = parseInt(cell.getAttribute('aria-colindex'), 10) - 1;
             const row: Element = closest(cell, '.sf-grid-content-row');
             if (!isNullOrUndefined(cell) && !isNaN(cellIndex) && !isNullOrUndefined(row)) {
-                const rowIndex: number = parseInt(row.getAttribute('aria-rowindex'), 10) - 1;
+                const rowIndex: number = parseInt(row.getAttribute('data-rowindex'), 10) - 1;
+                const ariaRowIndex: number = parseInt(row.getAttribute('aria-rowindex'), 10) - 1;
                 const rows: Element[] = Array.from(gridRef?.current.getRows() || []);
                 const index: number = cellIndex;
                 const rowsObject: Element[] = rows.filter((r: Element) => r.getAttribute('data-uid') === row.getAttribute('data-uid'));
@@ -514,7 +633,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                 }
                 args = {
                     cell: cell, cellIndex: cellIndex, columnIndex: cellIndex, row: row, rowIndex: rowIndex,
-                    data: data, column: column, target: target
+                    data: data, column: column, target: target, ariaRowIndex: ariaRowIndex, ariaColIndex: ariaCellIndex
                 };
             }
         }
@@ -541,15 +660,8 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
      * @returns {ColumnProps[]} returns array of column models
      */
     const getVisibleColumns: () => ColumnProps<T>[] = useCallback((): ColumnProps<T>[] => {
-        const cols: ColumnProps<T>[] = [];
-        const gridCols: ColumnProps<T>[] = uiColumns ?? columns;
-        for (const col of gridCols) {
-            if (col.visible) {
-                cols.push(col);
-            }
-        }
-        return cols;
-    }, [columns, uiColumns]);
+        return visibleColumns;
+    }, [columns, uiColumns.current, visibleColumns]);
 
     /**
      * Gets a column by UID.
@@ -559,14 +671,14 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
      * @returns {ColumnProps} Returns the column
      */
     const getColumnByUid: (uid: string) => ColumnProps<T> = useCallback((uid: string): ColumnProps<T> => {
-        const gridCols: ColumnProps<T>[] = uiColumns ?? columns;
+        const gridCols: ColumnProps<T>[] = uiColumns.current ?? columns;
         for (const col of gridCols) {
             if (col.uid === uid) {
                 return col;
             }
         }
         return undefined;
-    }, [columns, uiColumns]);
+    }, [columns, uiColumns.current]);
 
     /**
      * Get the parent element
@@ -673,9 +785,10 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
     const contentRowCount: number = useMemo(() => currentViewData?.length || 0, [currentViewData]);
     const aggregateRowCount: number = useMemo(() => aggregates?.length || 0, [aggregates]);
 
-    const filterModule: filterModule = useFilter(gridRef, filterSettings, setGridAction, serviceLocator);
+    const filterModule: filterModule =
+        useFilter(gridRef, filterSettings, setGridAction, serviceLocator, setCurrentPage, virtualSettings, scrollMode);
 
-    const searchModule: searchModule = useSearch(gridRef, searchSettings, setGridAction);
+    const searchModule: searchModule = useSearch(gridRef, searchSettings, setGridAction, setCurrentPage, virtualSettings, scrollMode);
 
     const sortModule: SortModule = useSort(gridRef, sortSettings, setGridAction);
 
@@ -703,15 +816,28 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         }
     }, [columns]);
 
-    const commandColumnModule: UseCommandColumnResult = useCommandColumn();
+    useMemo(() => {
+        if (!isInitialLoad) {
+            gridRef.current?.scrollModule?.setVirtualColumnEndIndex(getVisibleColumns?.());
+        }
+    }, [getVisibleColumns]);
+
+    const commandColumnModule: UseCommandColumnResult<T> = useCommandColumn(isCommandEditEnabled && virtualSettings.enableColumn);
 
     // Initialize focus strategy - single source of truth for focus state
     const focusModule: ReturnType<typeof useFocusStrategy> = useFocusStrategy(
         headerRowCount,
         contentRowCount,
         aggregateRowCount,
-        uiColumns ?? columns,
+        virtualSettings.enableColumn ? ((!gridRef.current?.scrollModule?.virtualColumnInfo.columns?.length ||
+            (gridRef.current?.scrollModule?.virtualColumnInfo.columns.length === 1 &&
+                gridRef.current?.scrollModule?.virtualColumnInfo.columns[0].uid === 'empty-cell-uid')) &&
+            visibleColumns.length ? visibleColumns.slice(gridRef.current?.scrollModule?.virtualColumnInfo?.startIndex,
+                                                         gridRef.current?.scrollModule?.virtualColumnInfo?.endIndex) :
+            gridRef.current?.scrollModule?.virtualColumnInfo.columns) : visibleColumns,
         gridRef,
+        virtualSettings,
+        virtualChangeDetectedPageSize,
         {
             onCellFocus: (args: CellFocusEvent<T>) => {
                 if (props.onCellFocus) {
@@ -720,11 +846,13 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                         columnIndex: args.columnIndex,
                         event: args.event,
                         data: args.data,
-                        rowIndex: args.rowIndex
+                        rowIndex: args.rowIndex,
+                        virtualAriaRowIndex: args.virtualAriaRowIndex,
+                        virtualAriaColIndex: args.virtualAriaColIndex
                     };
                     props.onCellFocus(eventArgs);
                 }
-                protectedAPI.selectionModule.onCellFocus(args);
+                gridScoped.selectionModule.onCellFocus({...args, rowIndex: args.virtualAriaRowIndex - 1});
             },
             onCellClick: (args: CellFocusEvent<T>) => {
                 if (props.onCellClick) {
@@ -772,7 +900,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                 e.preventDefault();
             }
         }
-    }, [focusModule, gridRef.current?.currentViewData]);
+    }, [focusModule, gridRef.current?.currentViewData, gridRef.current?.scrollModule?.virtualColumnInfo.columns, visibleColumns]);
 
 
     // Initialize data operations following original Data class pattern
@@ -787,30 +915,33 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         filterSettings: FilterSettings;
         searchSettings: SearchSettings;
         pageSettings: PageSettings;
+        scrollMode: ScrollMode;
         getPrimaryKeyFieldNames: () => string[];
         onDataRequest: (args: DataRequestEvent) => void;
         onDataChangeRequest: (args: DataChangeRequestEvent<T>) => void;
     } = useMemo(() => ({
         dataSource,
         query,
-        columns: uiColumns ?? columns,
+        columns: uiColumns.current ?? columns,
         aggregates,
         sortSettings: sortModule?.sortSettings,
         filterSettings: filterModule?.filterSettings,
         searchSettings: searchModule?.searchSettings,
         pageSettings,
+        scrollMode,
         currentPage,
         getPrimaryKeyFieldNames,
         onDataRequest: props.onDataRequest,
         onDataChangeRequest: props.onDataChangeRequest
     }), [props.dataSource, query, sortSettings?.enabled, filterModule?.filterSettings?.enabled,
-        pageSettings?.enabled, sortModule?.sortSettings, searchModule?.searchSettings?.enabled, uiColumns,
-        columns, filterModule?.filterSettings, searchModule?.searchSettings, pageSettings, currentPage]);
+        pageSettings?.enabled, sortModule?.sortSettings, searchModule?.searchSettings?.enabled, uiColumns.current,
+        columns, filterModule?.filterSettings, searchModule?.searchSettings, pageSettings, currentPage, scrollMode]);
 
     const dataOperations: UseDataResult<T> = useData<T>(gridInstance, gridAction, dataState);
     const dataModule: UseDataResult<T> = dataOperations;
 
-    const selectionModule: selectionModule<T> = useSelection<T>(gridRef, currentViewData, totalRecordsCount, isCheckBoxColumn, dataModule);
+    const selectionModule: selectionModule<T> =
+        useSelection<T>(gridRef, currentViewData, totalRecordsCount, isCheckBoxColumn, dataModule, virtualSettings, scrollMode);
 
     useMemo(() => {
         if (!selectionSettings.enabled) {
@@ -821,7 +952,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
     const editModule: editModule<T> = useEdit<T>(
         gridRef,
         serviceLocator,
-        uiColumns ?? columns,
+        uiColumns.current ?? columns,
         currentViewData,
         dataModule,
         focusModule,
@@ -830,7 +961,8 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         setGridAction,
         setCurrentPage,
         setResponseData,
-        commandColumnModule
+        commandColumnModule,
+        virtualSettings
     );
 
     // Initialize toolbar module if toolbar is configured
@@ -846,7 +978,10 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         selectionModule,
         currentViewData,
         searchSettings?.enabled,
-        commandColumnModule
+        commandColumnModule,
+        selectionSettings,
+        virtualSettings,
+        totalRecordsCount
     );
 
     const isStopPropagationPreventDefault:
@@ -865,7 +1000,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         // Ensure grid is fully initialized before handling clicks
         // This fixes the initial rendering click issue
         if (isInitialLoad || !gridRef.current?.element || !currentViewData?.length || toolbarAction || datePicker ||
-            editModule?.isDialogOpen || checkbox || selectionSettings?.checkboxOnly) {
+            editModule?.isDialogOpen || editModule?.isDeleteDialogOpen || checkbox || selectionSettings?.checkboxOnly) {
             if (toolbarAction) {
                 focusModule.setGridFocus(false);
             }
@@ -900,7 +1035,9 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         }
 
         // Finally handle sorting (if applicable)
-        sortModule?.handleGridClick?.(e);
+        if (!(e.target as Element).closest('.sf-grid-filter-container')) {
+            sortModule?.handleGridClick?.(e);
+        }
     }, [focusModule, selectionModule, sortModule, editModule, isInitialLoad, gridRef, currentViewData, props.editSettings]);
 
     /**
@@ -933,7 +1070,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
     }, [editModule, isInitialLoad, gridRef, currentViewData, props.editSettings]);
 
     const isEllipsisTooltip: boolean = useMemo((): boolean => {
-        const col: ColumnProps<T>[] = uiColumns ?? columns;
+        const col: ColumnProps<T>[] = uiColumns.current ?? columns;
         if (clipMode === 'EllipsisWithTooltip') {
             return true;
         }
@@ -943,7 +1080,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             }
         }
         return false;
-    }, [clipMode, uiColumns, columns]);
+    }, [clipMode, uiColumns.current, columns]);
 
     /**
      * To create table for ellipsiswithtooltip
@@ -1010,7 +1147,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             }
         };
         return { htable, ctable, create, destroy };
-    }, [currentViewData, editModule?.isEdit, clipMode, uiColumns]);
+    }, [currentViewData, editModule?.isEdit, clipMode, uiColumns.current]);
 
     /**
      * To evaluate sf-ellipsistooltip class required or not
@@ -1027,7 +1164,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             const header: boolean = element?.parentElement?.classList?.contains?.('sf-grid-header-row');
             const table: HTMLDivElement = header ? ellipsisTooltipEvaluateInfo.htable :
                 ellipsisTooltipEvaluateInfo.ctable;
-            if (!table) {
+            if (!table || !element) {
                 return false;
             }
             const ele: string = header ? 'th' : 'td';
@@ -1046,7 +1183,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
 
     const getEllipsisTooltipContent: () => string = useCallback(() => {
         return tooltipContent.current;
-    }, [tooltipContent.current, uiColumns]);
+    }, [tooltipContent.current, uiColumns.current]);
 
     const handleGridMouseMove: (e: MouseEvent) => void = useCallback((e: MouseEvent) => {
         if (isEllipsisTooltip) {
@@ -1104,10 +1241,14 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
     }, [focusModule, filterModule]);
 
     const handleGridFocus: (e: FocusEvent) => void = useCallback((e: FocusEvent<HTMLDivElement>) => {
+        if (e.target.closest('.sf-excel-filter') || e.target.closest('.sf-excel-filter-dropdown')) {
+            return;
+        }
         props?.onFocus?.(e);
         if ((pageSettings?.enabled && e.target?.closest('.sf-pager') && e.target.closest('.sf-pager').parentElement === gridRef.current.element)
         || (props?.toolbar?.length && e.target?.closest('.sf-toolbar')?.parentElement === gridRef.current.element) || isStopPropagationPreventDefault(e)
-        || e.target.closest('#' + id + 'EditAlert') || e.target.closest('.sf-filterbar-dropdown')) {
+        || e.target.closest('#' + id + 'EditAlert') || e.target.closest('#' + id + 'SelectionDelete') || e.target.closest('.sf-filterbar-dropdown')
+        || e.target.classList.contains('sf-virtualrowscrollbar') || e.target.classList.contains('sf-virtualcolumnscrollbar')) {
             return;
         }
         // Check if grid is in edit mode to prevent focus interference
@@ -1149,6 +1290,11 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                     isForwardTabbing = relatedIndex < gridIndex;
                     if (gridElement.contains(relatedTarget) && targetIndex > -1) {
                         isForwardTabbing = relatedIndex < targetIndex;
+                    } else if (gridElement.contains(relatedTarget) && gridElement.contains(e.target) &&
+                        isNullOrUndefined(e.target.getAttribute('tabindex')) && targetIndex === -1) {
+                        const bitmask: number = e.target.compareDocumentPosition(relatedTarget);
+                        e.target = allFocusableElements[(relatedIndex + (bitmask >= 0 ? 1 : -1)) as number] as HTMLDivElement;
+                        isForwardTabbing = bitmask >= 0;
                     }
                 }
             }
@@ -1166,21 +1312,24 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                     focusModule.setActiveMatrix(aggregates?.length ? 'Aggregate' : 'Content');
                     const matrix: IFocusMatrix = focusModule.getActiveMatrix();
                     let lastCell: number[] = [matrix.rows, matrix.columns];
-                    if (matrix.matrix[lastCell[0]][lastCell[1]] === 0) {
+                    if (matrix.matrix?.[lastCell[0]]?.[lastCell[1]] === 0) {
                         lastCell = matrix.findCellIndex(lastCell, false);
                     }
                     matrix.current = lastCell;
-                    focusModule.focus(undefined, commandColumnModule.commandEdit.current ? e : undefined);
+                    requestAnimationFrame(() => { // default shift tab to enter grid content or aggregate browser auto scroll behavior execution taking time allowed here, after that apply our logic to focus proper element.
+                        requestAnimationFrame(() => {
+                            focusModule?.debounceLastVirtualRowCellFocusHelper(contentRowCount > 0);
+                            focusModule.focus(undefined, commandColumnModule.commandEdit.current ? e : undefined);
+                        });
+                    });
                     return;
                 } else {
                     // When tabbing forward into grid, focus first header cell
                     // But only if we have header content, otherwise focus first content cell
                     if (headerRowCount > 0) {
                         // Use requestAnimationFrame to ensure the DOM is ready
-                        requestAnimationFrame(() => {
-                            // Focus the first cell when tabbing forward into the grid
-                            focusModule.navigateToFirstCell();
-                        });
+                        // Focus the first cell when tabbing forward into the grid
+                        focusModule.navigateToFirstCell();
                     } else {
                         // No header, focus first content cell
                         focusModule.setActiveMatrix('Content');
@@ -1193,7 +1342,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         } else if (focusModule && focusModule.focusByClick) {
             focusModule.focusByClick = false;
         }
-    }, [focusModule, editModule, headerRowCount]);
+    }, [focusModule, editModule, headerRowCount, aggregateRowCount, contentRowCount]);
 
     const handleGridBlur: (e: FocusEvent) => void = useCallback((e: FocusEvent<HTMLDivElement>) => {
         props?.onBlur?.(e);
@@ -1203,10 +1352,12 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         }
         // Check if grid is in edit mode to prevent focus interference
         const isGridInEditMode: boolean = (editModule?.isEdit && !commandColumnModule.commandEdit.current) || false;
+        const commandEditForm: boolean = commandColumnModule.commandEdit.current && e?.target?.closest('.sf-grid-edit-form')
+            ? true : false;
 
         // If grid is in edit mode, don't interfere with edit focus management
         // This prevents the focus from jumping to header cell when edit form regains focus
-        if (isGridInEditMode) {
+        if (isGridInEditMode || commandEditForm) {
             // Just set grid focus state but don't move focus around
             if (focusModule && !focusModule.isGridFocused) {
                 focusModule.setGridFocus(true);
@@ -1227,23 +1378,33 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             let isStayingInGrid: boolean | Element = (e.target && (e.target as HTMLElement).closest('#' + id + '_toolbar')) ||
                 e.target?.closest('.sf-datepicker') ||
                 // Focus moving to another element within the grid
-                (e.currentTarget.contains(relatedTarget) ||
+                (e.currentTarget?.contains(relatedTarget) ||
                     // Focus moving to a grid popup
                     (relatedTarget && relatedTarget.closest('.sf-grid-popup')) ||
                     // Focus still within the grid (using document.activeElement)
                     document.activeElement && document.activeElement.closest('.sf-grid')) as boolean;
             isStayingInGrid = relatedTarget && relatedTarget.closest('.sf-pager') ? false : isStayingInGrid;
+            const isVirtualFocusStayingInGrid: boolean = isStayingInGrid && relatedTarget &&
+                !relatedTarget.classList.contains('sf-virtualrowscrollbar') &&
+                !relatedTarget.classList.contains('sf-virtualcolumnscrollbar');
+            if (!isVirtualFocusStayingInGrid) {
+                isStayingInGrid = isVirtualFocusStayingInGrid;
+            }
             if (!isStayingInGrid) {
                 // Clear focus completely when leaving the grid
                 focusModule.clearIndicator();
                 focusModule.removeFocus();
                 focusModule.setGridFocus(false);
+                if (virtualizationSettings.enabled && document.activeElement.classList.contains('sf-cell')) {
+                    (document.activeElement as HTMLTableCellElement).blur();
+                }
             }
         }
     }, [focusModule]);
 
     const handleGridKeyUp: (e: React.KeyboardEvent) => void = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         props?.onKeyUp?.(e);
+        if ((e.target as Element).closest('.sf-excel-filter') || (e.target as Element).closest('.sf-excel-filter-dropdown')) { return; }
         if (isStopPropagationPreventDefault(e)) {
             return;
         }
@@ -1256,13 +1417,15 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         props?.onKeyDown?.(e);
         // Check for cancellation or specific dropdown open condition
         const target: Element = e.target as Element;
+        if (target.closest('.sf-excel-filter') || target.closest('.sf-excel-filter-dropdown')) { return; }
         const isDropdownOpenCondition: boolean = editModule?.isEdit &&
                                       target?.closest('.sf-grid-edit-form') &&
                                       (target?.closest('.sf-ddl') || target?.closest('.sf-datepicker')) &&
                                       e.altKey &&
                                       e.code === 'ArrowDown';
         const popupKeyDown: boolean = target?.closest('.sf-datepicker') && target?.closest('.sf-datepicker').classList.contains('sf-popup');
-        if (isStopPropagationPreventDefault(e) || isDropdownOpenCondition || editModule?.isDialogOpen || popupKeyDown) {
+        if (isStopPropagationPreventDefault(e) || isDropdownOpenCondition || editModule?.isDialogOpen ||
+            editModule?.isDeleteDialogOpen || popupKeyDown) {
             e.preventDefault();
             e.stopPropagation();
             return; // Early return to prevent further processing
@@ -1394,6 +1557,12 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
             return;
         }
 
+        const isInMaskVirtualLoadingCell: boolean | Element = target?.querySelector('.sf-cell .sf-skeleton');
+        if (isInMaskVirtualLoadingCell && ['ArrowUp', 'ArrowDown'].includes(e.key)) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         // Otherwise, handle navigation normally
         focusModule.handleKeyDown(e);
     }, [focusModule, filterModule, props.editSettings, editModule]);
@@ -1407,7 +1576,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
                 document.body.removeEventListener('keydown', keyDownHandler);
             }
         };
-    }, [allowKeyboard]);
+    }, [allowKeyboard, visibleColumns, gridRef.current?.scrollModule?.virtualColumnInfo.columns]);
 
     // Initialize grid and handle cleanup
     useEffect(() => {
@@ -1421,9 +1590,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         isInitialBeforePaint.current = false;
         return () => {
             props.onGridDestroy?.();
-            setCurrentViewData(null);
             isInitialBeforePaint.current = null;
-            setInitialLoad(null);
         };
     }, []);
 
@@ -1439,7 +1606,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
     /**
      * Private API for internal grid operations
      */
-    const privateAPI: GridResult<T>['privateAPI'] = useMemo(() => ({
+    const gridInternal: GridResult<T>['gridInternal'] = useMemo(() => ({
         styles,
         isEllipsisTooltip,
         setCurrentViewData,
@@ -1467,7 +1634,7 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
      * These are for readonly purpose - if a property needs to be updated,
      * it should not be included here but in the protected API
      */
-    const publicAPI: IGrid<T> = useMemo(() => ({
+    const gridAPI: IGrid<T> = useMemo(() => ({
         ...stableRest.current,
         getVisibleColumns,
         getColumnByUid,
@@ -1506,7 +1673,10 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         rowTemplate,
         aggregates,
         editSettings: props.editSettings,
-        allowKeyboard
+        allowKeyboard,
+        getRowHeight,
+        theme,
+        loadingIndicatorSettings
     } as IGrid<T>), [
         getVisibleColumns,
         getColumnByUid,
@@ -1545,14 +1715,19 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         rowTemplate,
         aggregates,
         allowKeyboard,
+        getRowHeight,
+        theme,
+        loadingIndicatorSettings,
         props
     ]);
 
     /**
      * Protected API for internal grid components
      */
-    const protectedAPI: Partial<MutableGridBase<T>> = useMemo(() => ({
+    const gridScoped: Partial<MutableGridBase<T>> = useMemo(() => ({
         currentViewData,
+        virtualCachedViewData,
+        setVirtualCachedViewData,
         columnsDirective,
         headerRowDepth,
         colElements,
@@ -1575,21 +1750,32 @@ export const useGridComputedProps: <T, >(props: Partial<IGridBase<T>>, gridRef?:
         responseData,
         setResponseData,
         dataModule,
-        commandColumnModule
-    }), [currentViewData, columnsDirective, headerRowDepth, colElements, isInitialLoad, focusModule, selectionModule, getParentElement,
-        sortModule, searchModule, filterModule, editModule, sortSettings, searchSettings, evaluateTooltipStatus, uiColumns,
-        currentPage, totalRecordsCount, gridAction, isInitialBeforePaint, cssClass, responseData, setResponseData, dataModule,
-        commandColumnModule]);
+        commandColumnModule,
+        isCheckBoxColumn,
+        offsetX,
+        offsetY,
+        setOffsetX,
+        setOffsetY,
+        totalVirtualColumnWidth,
+        columnOffsets,
+        virtualSettings,
+        scrollMode
+    }), [currentViewData, virtualCachedViewData, columnsDirective, headerRowDepth, colElements, isInitialLoad, focusModule,
+        selectionModule, getParentElement, sortModule, searchModule, filterModule, editModule, sortSettings, searchSettings,
+        evaluateTooltipStatus, uiColumns.current, setVirtualCachedViewData, currentPage, totalRecordsCount, gridAction,
+        isInitialBeforePaint, cssClass, responseData, setResponseData, dataModule, offsetX, offsetY, setOffsetX, setOffsetY,
+        totalVirtualColumnWidth, commandColumnModule, columnOffsets, virtualSettings, scrollMode, isCheckBoxColumn
+    ]);
 
     useEffect(() => {
         gridRef.current = {
             ...gridRef.current,
-            ...publicAPI,
+            ...gridAPI,
             // Ensure currentViewData is always up-to-date in gridRef
             currentViewData: currentViewData
         };
         ellipsisTooltipEvaluateInfo.destroy();
-    }, [publicAPI, currentViewData, ellipsisTooltipEvaluateInfo]);
+    }, [gridAPI, currentViewData, ellipsisTooltipEvaluateInfo]);
 
-    return { privateAPI, publicAPI, protectedAPI };
+    return { gridInternal, gridAPI, gridScoped };
 };

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useMemo, useState } from 'react';
 import * as React from 'react';
 import { LayoutProvider } from './LayoutContext';
-import { PieChartCenterLabelProps, PieChartTitleProps, PieChartComponentProps, PieChartSeriesProps, PieChartLegendProps, PieChartTooltipProps } from '../base/interfaces';
+import { PieChartCenterLabelProps, PieChartTitleProps, PieChartComponentProps, PieChartSeriesProps, PieChartLegendProps, PieChartTooltipProps, PieChartHighlightProps, PieChartSelectionProps } from '../base/interfaces';
 import { defaultChartConfigs } from '../base/default-properties';
 import { ElementWithSize } from '../base/internal-interfaces';
 
@@ -25,6 +25,8 @@ export const ChartProvider: React.FC<{
     const [chartSeries, setchartSeriesState] =
         useState<PieChartSeriesProps[]>([defaultChartConfigs.ChartSeries as PieChartSeriesProps]);
     const [chartTooltip, setChartTooltipState] = useState<PieChartTooltipProps>(defaultChartConfigs.ChartTooltip);
+    const [chartHighlight, setChartHighlightState] = useState<PieChartHighlightProps>(defaultChartConfigs.ChartHighlight);
+    const [chartSelection, setChartSelectionState] = useState<PieChartSelectionProps>(defaultChartConfigs.ChartSelection);
 
     const setChartTitle: (titleProps: PieChartTitleProps) => void = useCallback((titleProps: PieChartTitleProps) => {
         setChartTitleState(titleProps);
@@ -43,6 +45,14 @@ export const ChartProvider: React.FC<{
 
     const setChartTooltip: (tooltip: PieChartTooltipProps) => void = useCallback((tooltip: PieChartTooltipProps) => {
         setChartTooltipState(tooltip);
+    }, []);
+
+    const setChartHighlight: (highlight: PieChartHighlightProps) => void = useCallback((highlight: PieChartHighlightProps) => {
+        setChartHighlightState(highlight);
+    }, []);
+
+    const setChartSelection: (selection: PieChartSelectionProps) => void = useCallback((selection: PieChartSelectionProps) => {
+        setChartSelectionState(selection);
     }, []);
 
     const setChartSeries: (series: PieChartSeriesProps[]) => void = useCallback((series: PieChartSeriesProps[]) => {
@@ -65,15 +75,21 @@ export const ChartProvider: React.FC<{
         chartSeries,
         centerLabel,
         chartTooltip,
+        chartHighlight,
+        chartSelection,
         setChartTooltip,
+        setChartHighlight,
+        setChartSelection,
         setChartTitle,
         setRender,
         setChartSubTitle,
         setChartLegend,
         setChartSeries,
         setChartCenterLabel
-    }), [parentElement, chartProps, chartTitle, chartSeries, chartSubTitle, render, chartLegend, centerLabel, chartTooltip,
-        setChartTitle, setChartSubTitle, setRender, setChartSeries, setChartLegend, setChartCenterLabel, setChartTooltip]);
+    }), [parentElement, chartProps, chartTitle, chartSeries, chartSubTitle, render,
+        chartLegend, centerLabel, chartTooltip, chartHighlight, chartSelection,
+        setChartTitle, setChartSubTitle, setRender, setChartSeries, setChartLegend,
+        setChartCenterLabel, setChartTooltip, setChartHighlight, setChartSelection]);
 
     return (
         <ChartContext.Provider value={contextValue}>
@@ -165,5 +181,25 @@ export interface ChartProviderChildProps {
      * Updates the chart tooltip configuration.
      */
     setChartTooltip: (tooltip: PieChartTooltipProps) => void
+
+    /**
+     * Updates the selection configuration.
+     */
+    chartSelection: PieChartSelectionProps;
+
+    /**
+     * Updates the highlight configuration.
+     */
+    chartHighlight: PieChartHighlightProps;
+
+    /**
+     * Updates the pie chart highlight configuration.
+     */
+    setChartHighlight: (chartHighlight: PieChartHighlightProps) => void;
+
+    /**
+     * Updates the pie chart selection configuration.
+     */
+    setChartSelection: (chartHighlight: PieChartSelectionProps) => void;
 
 }

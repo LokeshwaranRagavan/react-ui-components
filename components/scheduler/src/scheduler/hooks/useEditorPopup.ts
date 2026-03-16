@@ -1,31 +1,35 @@
-import { useCallback, useState, Dispatch, SetStateAction, useEffect, useReducer } from 'react';
+import { useCallback, useState, useEffect, useReducer, SetStateAction, Dispatch, useRef, RefObject, useMemo } from 'react';
 import { SchedulerCellClickEvent, SchedulerEventClickEvent, EventModel } from '../types/scheduler-types';
 import { DateService } from '../services/DateService';
 import { CalendarChangeEvent } from '@syncfusion/react-calendars';
 import { CheckboxChangeEvent } from '@syncfusion/react-buttons';
-import { TextBoxChangeEvent, TextAreaChangeEvent } from '@syncfusion/react-inputs';
+import { TextBoxChangeEvent, TextAreaChangeEvent, FormState, IFormValidator } from '@syncfusion/react-inputs';
 import { useSchedulerPropsContext } from '../context/scheduler-context';
+import { ChangeEvent } from '@syncfusion/react-dropdowns';
+import { getDefaultRule } from '../../recurrence-editor/util';
+import { CrudAction, AlertAction, EditAction } from '../types/enums';
+import { getRecurrenceParent } from '../utils/event-base';
+import { IL10n, useProviderContext } from '@syncfusion/react-base';
+import { useSchedulerLocalization } from '../common/locale';
+import { useRecurrenceEditorLocalization } from '../../recurrence-editor/locale';
+import { getRecurrenceSummary } from '../../recurrence-editor/date-generator';
 
 /** @private */
 export interface UseEditorPopupResult {
+    data?: EventModel
     open: boolean;
     setOpen: Dispatch<SetStateAction<boolean>>;
     onCellDoubleClickHandler: (args: SchedulerCellClickEvent) => void;
     onEventDoubleClickHandler: (args: SchedulerEventClickEvent) => void;
     onClose: () => void;
-    subject: string;
-    location: string;
-    description: string;
-    startTime?: Date;
-    endTime?: Date;
-    isAllDay: boolean;
-    mode: 'cell' | 'event';
-    originalData?: EventModel;
     startDateOnly?: Date;
     startTimeOnly?: Date;
     endDateOnly?: Date;
     endTimeOnly?: Date;
     slotDuration: number;
+    recurrenceStart?: Date;
+    repeatModeValue: string;
+    recurrenceOpen: boolean;
     setSlotDuration: Dispatch<SetStateAction<number>>;
     handleSubjectChange: (args: TextBoxChangeEvent) => void;
     handleLocationChange: (args: TextBoxChangeEvent) => void;
@@ -35,43 +39,44 @@ export interface UseEditorPopupResult {
     handleEndDateChange: (args: CalendarChangeEvent) => void;
     handleEndTimeChange: (args: CalendarChangeEvent) => void;
     handleIsAllDayChange: (args: CheckboxChangeEvent) => void;
-    onEditEvent: (eventData: EventModel) => void;
+    handleRecurrenceRuleChange: (args: string) => void;
+    handleRepeatModeChange: (args: ChangeEvent) => void;
+    closeRecurrenceEditor: () => void;
+    onEditEvent: (eventData: EventModel, action?: EditAction) => void;
     onMoreDetails: (cellData: SchedulerCellClickEvent) => void;
+    formState?: FormState;
+    setFormState: (state: FormState) => void;
+    formRef: React.RefObject<IFormValidator>;
     validateRequiredFields: (getString: (key: string) => string) => string | null;
+    action: CrudAction;
+    originalData?: EventModel;
+    repeatData?: DropdownData[]
 }
 
-type EditorState = {
-    subject: string;
-    location: string;
-    description: string;
-    startTime?: Date;
-    endTime?: Date;
-    isAllDay: boolean;
-    mode: 'cell' | 'event';
-    originalData?: EventModel;
-};
+type DropdownData = { text: string; value: string };
+
 
 // useReducer for complex EditorState management
-type EditorFieldKey = keyof EditorState;
+type EditorFieldKey = keyof EventModel;
 
 type EditorAction =
-    | { type: 'setField'; key: EditorFieldKey; value: EditorState[EditorFieldKey] }
-    | { type: 'setMany'; payload: Partial<EditorState> };
+    | { type: 'setField'; key: EditorFieldKey; value: EventModel[EditorFieldKey] }
+    | { type: 'setMany'; payload: Partial<EventModel> };
 
 /**
  * Reducer for the editor popup state.
  * Updates either a single field (setField) or merges multiple fields (setMany).
  *
- * @param {EditorState} state - Current editor state
+ * @param {EventModel} state - Current editor state
  * @param {EditorAction} action - Action describing the update to perform
- * @returns {EditorState} Updated editor state
+ * @returns {EventModel} Updated editor state
  */
-function editorReducer(state: EditorState, action: EditorAction): EditorState {
+function editorReducer(state: EventModel, action: EditorAction): EventModel {
     switch (action.type) {
     case 'setField':
-        return { ...state, [action.key]: action.value } as EditorState;
+        return { ...state, [action.key]: action.value } as EventModel;
     case 'setMany':
-        return { ...state, ...action.payload } as EditorState;
+        return { ...state, ...action.payload } as EventModel;
     default:
         return state;
     }
@@ -85,29 +90,55 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
  * @param {Function} onCellDoubleClick - Callback invoked on cell double-click.
  * @param {Function}onEventDoubleClick - Callback invoked on event double-click.
  * @param {Function} closeAllPopups - Callback to close other popups when opening the editor.
+ * @param {Function} showRecurrenceAlert - Callback to show recurrence alert options.
+ * @param {EventModel[]} eventsProcessed - Array of processed events for recurrence rule calculation.
  * @returns {UseEditorPopupResult} API with current state and handlers to control the editor popup.
  * @private
  */
 export const useEditorPopup: (
     onCellDoubleClick?: (args: SchedulerCellClickEvent) => void,
     onEventDoubleClick?: (args: SchedulerEventClickEvent) => void,
-    closeAllPopups?: () => void
+    closeAllPopups?: () => void,
+    showRecurrenceAlert?: (action: AlertAction, onSelect: (selectOption: CrudAction) => void) => void,
+    eventsProcessed?: EventModel[]
 ) => UseEditorPopupResult = (
     onCellDoubleClick?: (args: SchedulerCellClickEvent) => void,
     onEventDoubleClick?: (args: SchedulerEventClickEvent) => void,
-    closeAllPopups?: () => void
+    closeAllPopups?: () => void,
+    showRecurrenceAlert?: (action: AlertAction, onSelect: (selectOption: CrudAction) => void) => void,
+    eventsProcessed?: EventModel[]
 ): UseEditorPopupResult => {
     const [open, setOpen] = useState<boolean>(false);
+    const [formState, setFormState] = useState<FormState>();
+    const formRef: RefObject<IFormValidator> = useRef<IFormValidator>(null);
+    const eventsProcessedRef: RefObject<EventModel[] | undefined> = useRef<EventModel[] | undefined>(eventsProcessed);
+    const { locale } = useProviderContext();
 
-    const initialEditorState: EditorState = {
+    // Update ref whenever eventsProcessed changes, ensuring we always have the latest data
+    useEffect(() => {
+        eventsProcessedRef.current = eventsProcessed;
+    }, [eventsProcessed]);
+
+    const initialRepeatData: DropdownData[] = [
+        { value: 'Never', text: 'Never' },
+        { value: 'FREQ:DAILY', text: 'Daily' },
+        { value: 'FREQ:WEEKLY', text: 'Weekly' },
+        { value: 'FREQ:MONTHLY', text: 'Monthly' },
+        { value: 'FREQ:YEARLY', text: 'Yearly' },
+        { value: 'Custom', text: 'Custom' }
+    ];
+    const [action, setAction] = useState<CrudAction>('Add');
+    const [originalData, setOriginalData] = useState<EventModel>(undefined);
+    const [repeatData, setRepeatData] = useState<DropdownData[]>(initialRepeatData);
+
+    const initialEditorState: EventModel = {
         subject: '',
         location: '',
         description: '',
         startTime: undefined,
         endTime: undefined,
         isAllDay: false,
-        mode: 'cell',
-        originalData: undefined
+        recurrenceRule: undefined
     };
 
     const [state, dispatch] = useReducer(editorReducer, initialEditorState);
@@ -118,10 +149,66 @@ export const useEditorPopup: (
     const setStartTime: (value: Date | undefined) => void = useCallback((value: Date | undefined) => dispatch({ type: 'setField', key: 'startTime', value }), [dispatch]);
     const setEndTime: (value: Date | undefined) => void = useCallback((value: Date | undefined) => dispatch({ type: 'setField', key: 'endTime', value }), [dispatch]);
     const setIsAllDay: (value: boolean) => void = useCallback((value: boolean) => dispatch({ type: 'setField', key: 'isAllDay', value }), [dispatch]);
-    const setMode: (value: 'cell' | 'event') => void = useCallback((value: 'cell' | 'event') => dispatch({ type: 'setField', key: 'mode', value }), [dispatch]);
-    const setOriginalData: (value: EventModel) => void = useCallback((value?: EventModel) => dispatch({ type: 'setField', key: 'originalData', value }), [dispatch]);
-
+    const setRecurrenceRule: (value: string) => void = useCallback((value: string) => dispatch({ type: 'setField', key: 'recurrenceRule', value }), [dispatch]);
     const { eventSettings } = useSchedulerPropsContext();
+    const { getString: getSchedulerString } = useSchedulerLocalization(locale || 'en-US');
+    const { getString: getRecurrenceString } = useRecurrenceEditorLocalization(locale || 'en-US');
+    const localeObj: IL10n = useMemo(() => ({ getConstant: (key: string) => getRecurrenceString(key) } as IL10n), [getRecurrenceString]);
+
+    const updateRepeatDropData: (rule: string) => void = useCallback((rule: string): void => {
+        setRepeatData((prev: DropdownData[]) => {
+            const match: DropdownData | undefined = prev.find((item: DropdownData) => item.value === rule);
+            if (match) {
+                setRepeatModeValue(match.value);
+                return prev;
+            }
+            const newItem: DropdownData = { value: rule, text: getRecurrenceSummary(rule, locale, localeObj) };
+            const insertIndex: number = Math.max(0, prev.length - 1);
+            const updated: DropdownData[] = [
+                ...prev.slice(0, insertIndex),
+                newItem,
+                ...prev.slice(insertIndex)
+            ];
+            setRepeatModeValue(rule);
+            return updated;
+        });
+    }, []);
+
+    const setRepeatDropData: (start: Date, rule?: string) => void = useCallback((start: Date, rule?: string): void => {
+        const repeatDropdownData: DropdownData[] = [
+            { value: 'Never', text: 'Never' },
+            { value: getDefaultRule('DAILY', start), text: 'Daily' },
+            { value: getDefaultRule('WEEKLY', start), text: 'Weekly' },
+            { value: getDefaultRule('MONTHLY', start), text: 'Monthly' },
+            { value: getDefaultRule('YEARLY', start), text: 'Yearly' },
+            { value: 'Custom', text: 'Custom' }
+        ];
+
+        if (!rule) {
+            setRepeatData(repeatDropdownData);
+            setRecurrenceRule('');
+            setRepeatModeValue('Never');
+            return;
+        }
+
+        const match: DropdownData | undefined = repeatDropdownData.find((item: DropdownData) => item.value === rule);
+        if (match) {
+            setRepeatData(repeatDropdownData);
+            setRecurrenceRule(rule);
+            setRepeatModeValue(match.value);
+            return;
+        }
+        const newItem: DropdownData = { value: rule, text: getRecurrenceSummary(rule, locale, localeObj) };
+        const insertIndex: number = Math.max(0, repeatDropdownData.length - 1);
+        const updated: DropdownData[] = [
+            ...repeatDropdownData.slice(0, insertIndex),
+            newItem,
+            ...repeatDropdownData.slice(insertIndex)
+        ];
+        setRepeatData(updated);
+        setRecurrenceRule(rule);
+        setRepeatModeValue(rule);
+    }, []);
 
     const onCellDoubleClickHandler: (args: SchedulerCellClickEvent) => void = useCallback((args: SchedulerCellClickEvent): void => {
         onCellDoubleClick?.(args);
@@ -129,7 +216,7 @@ export const useEditorPopup: (
         closeAllPopups?.();
         const start: Date = args.isAllDay ? DateService.normalizeDate(args.startTime) : args.startTime;
         const duration: {startTime: Date, endTime: Date} = { startTime: start, endTime: args.isAllDay ? start : args.endTime } as const;
-
+        setRepeatDropData(start);
         dispatch({
             type: 'setMany',
             payload: {
@@ -137,11 +224,11 @@ export const useEditorPopup: (
                 location: '',
                 description: '',
                 isAllDay: args.isAllDay,
-                mode: 'cell',
                 startTime: duration.startTime,
                 endTime: duration.endTime
             }
         });
+        setAction('Add');
         setOpen(true);
     }, [onCellDoubleClick, closeAllPopups]);
 
@@ -149,30 +236,55 @@ export const useEditorPopup: (
         onEventDoubleClick?.(args);
         if (args.cancel) { return; }
         closeAllPopups?.();
-        const isAllDay: boolean = Boolean(args?.data?.isAllDay);
-        const start: Date = isAllDay ? DateService.normalizeDate(args.data.startTime) : args?.data?.startTime;
-        const end: Date = isAllDay ? DateService.normalizeDate(args.data.endTime) : args?.data?.endTime;
-        const duration: {startTime: Date, endTime: Date} = { startTime: start, endTime: end } as const;
+        if (!args?.data) { args.data = {}; }
+        const isAllDay: boolean = Boolean(args.data.isAllDay);
+        const start: Date = isAllDay ? DateService.normalizeDate(args.data.startTime) : args.data.startTime;
+        const end: Date = isAllDay ? DateService.normalizeDate(args.data.endTime) : args.data.endTime;
+        setRepeatDropData(start, args.data.recurrenceRule);
+        setOriginalData(args.data);
+        const basePayload: Object = {
+            subject: args.data.subject ?? getSchedulerString('addTitle'),
+            location: args.data.location ?? '',
+            description: args.data.description ?? '',
+            startTime: start,
+            endTime: end
+        };
+        if (args.data.recurrenceID || args.data[eventSettings.fields.recurrenceID]) {
+            showRecurrenceAlert?.(AlertAction.RecurrenceEdit, (selectOption: CrudAction) => {
+                let parentEvent: EventModel = {};
+                if (selectOption === 'EditSeries') {
+                    parentEvent = getRecurrenceParent(args.data, eventsProcessedRef.current, eventSettings.fields);
+                    setRepeatDropData(start, args.data.recurrenceRule ?? parentEvent?.recurrenceRule);
+                }
+                dispatch({
+                    type: 'setMany',
+                    payload: {
+                        ...basePayload,
+                        startTime: selectOption === 'EditSeries' ? parentEvent.startTime : start,
+                        endTime: selectOption === 'EditSeries' ? parentEvent.endTime : end,
+                        isAllDay: selectOption === 'EditSeries' ? !!parentEvent.isAllDay : isAllDay
+                    }
+                });
+                setAction(selectOption === 'EditSeries' ? 'EditSeries' : 'EditOccurrence');
+                setOpen(true);
+            });
+            return;
+        }
 
         dispatch({
             type: 'setMany',
             payload: {
-                mode: 'event',
-                originalData: args?.data as EventModel,
-                subject: args?.data?.subject ?? '',
-                location: args?.data?.location ?? '',
-                description: args?.data?.description ?? '',
-                isAllDay,
-                startTime: duration.startTime,
-                endTime: duration.endTime
+                ...basePayload,
+                isAllDay: isAllDay
             }
         });
+        setAction('Edit');
         setOpen(true);
-    }, [onEventDoubleClick, closeAllPopups]);
+    }, [onEventDoubleClick, closeAllPopups, eventSettings, showRecurrenceAlert]);
 
     const onClose: () => void = useCallback(() => setOpen(false), []);
 
-    const { subject, location, description, startTime, endTime, isAllDay, mode, originalData } = state;
+    const { subject, location, description, startTime, endTime, isAllDay, recurrenceRule } = state;
 
     const [slotDuration, setSlotDuration] = useState<number>(30);
     // local split date/time state
@@ -181,6 +293,8 @@ export const useEditorPopup: (
     const [endDateOnly, setEndDateOnly] = useState<Date | undefined>(undefined);
     const [endTimeOnly, setEndTimeOnly] = useState<Date | undefined>(undefined);
     const [endTimeChanged, setEndTimeChanged] = useState<boolean>(false);
+    const [ repeatModeValue, setRepeatModeValue] = useState<string>('Never');
+    const [ recurrenceOpen, setRecurrenceOpen] = useState<boolean>(false);
 
     // initialize local date/time parts when popup opens
     useEffect(() => {
@@ -231,7 +345,7 @@ export const useEditorPopup: (
 
     const handleIsAllDayChange: (args: CheckboxChangeEvent) => void = useCallback((args: CheckboxChangeEvent): void => {
         setIsAllDay(args?.value);
-        if (mode === 'cell' && args?.value === false) {
+        if (action === 'Add' && args?.value === false) {
             if (!endTimeChanged && DateService.isMidnight(endTimeOnly)) {
                 const baseStart: Date = startTimeOnly ? new Date(startTimeOnly) : new Date(0);
                 if (!startTimeOnly) {
@@ -249,7 +363,7 @@ export const useEditorPopup: (
                 }
             }
         }
-    }, [mode, endTimeChanged, endTimeOnly, startTimeOnly, slotDuration, combineDateAndTime, startDateOnly, endDateOnly]);
+    }, [action, endTimeChanged, endTimeOnly, startTimeOnly, slotDuration, combineDateAndTime, startDateOnly, endDateOnly]);
 
     const handleSubjectChange: (args: TextBoxChangeEvent) => void = useCallback((args: TextBoxChangeEvent): void => {
         setSubject(args.value);
@@ -259,39 +373,108 @@ export const useEditorPopup: (
         setLocation(args.value);
     }, []);
 
+    const openRecurrenceEditor: () => void = useCallback((): void => {
+        setRecurrenceOpen(true);
+    }, []);
+
+    const closeRecurrenceEditor: () => void = useCallback((): void => {
+        setRecurrenceOpen(false);
+    }, []);
+
+    const handleRepeatModeChange: (args: ChangeEvent) => void = useCallback((args: ChangeEvent) => {
+        const value: string = args?.value as string;
+        setRepeatModeValue(value);
+        if (value !== 'Never' && value !== 'Custom') {
+            setRecurrenceRule(value);
+        }
+        if (value === 'Never') {
+            setRecurrenceRule('');
+        }
+        if (value === 'Custom') {
+            openRecurrenceEditor();
+        }
+
+    }, [setRepeatModeValue, openRecurrenceEditor]);
+
+    const handleRecurrenceRuleChange: (value: string) => void = useCallback((value: string): void => {
+        setRecurrenceRule(value);
+        updateRepeatDropData(value);
+    }, []);
+
     const handleDescriptionChange: (args: TextAreaChangeEvent) => void = useCallback((args: TextAreaChangeEvent): void => {
         setDescription(args?.value);
     }, []);
 
-    const onEditEvent: (eventData: EventModel) => void = useCallback((eventData: EventModel): void => {
-        setMode('event');
-        setSubject(eventData?.subject);
-        setLocation(eventData?.location);
-        setDescription(eventData?.description);
-        setStartTime(eventData?.startTime);
-        setEndTime(eventData?.endTime);
-        setIsAllDay(!!eventData?.isAllDay);
-        setOriginalData(eventData);
-        setOpen(true);
-    }, []);
+    const onEditEvent: (eventData: EventModel, action?: EditAction) => void =
+    useCallback((eventData: EventModel, action?: EditAction): void => {
+        if (!eventData) { return; }
+        const applyEventData: (recurrenceRule?: string, parentEvent?: EventModel, action?: EditAction) => void =
+            (recurrenceRule?: string, parentEvent?: EventModel, action?: EditAction) => {
+                setSubject(eventData.subject ?? getSchedulerString('addTitle'));
+                setLocation(eventData.location);
+                setDescription(eventData.description);
+                setStartTime(action === 'EditSeries' ? parentEvent.startTime : eventData.startTime);
+                setEndTime(action === 'EditSeries' ? parentEvent.endTime : eventData.endTime);
+                setIsAllDay(action === 'EditSeries' ? parentEvent.isAllDay : eventData.isAllDay);
+                setOriginalData(eventData);
+                setRepeatDropData(eventData.startTime, eventData.recurrenceRule ?? parentEvent?.recurrenceRule);
+                if (recurrenceRule) { setRecurrenceRule(recurrenceRule); }
+                setOpen(true);
+            };
 
-    const onMoreDetails: (cellData: SchedulerCellClickEvent) => void = useCallback((cellData: SchedulerCellClickEvent): void => {
-        setMode('cell');
-        setSubject(cellData[eventSettings.fields.subject] ?? '');
-        setLocation('');
-        setDescription('');
-        setOriginalData(undefined);
-        if (cellData?.isAllDay) {
-            const cellStartEnd: Date = DateService.normalizeDate(cellData.startTime);
-            setStartTime(cellStartEnd);
-            setEndTime(cellStartEnd);
+        const handleSelectedOption: (action: EditAction) => void = (action: EditAction) => {
+            let parentEvent: EventModel = {};
+            if (action === 'EditSeries') {
+                parentEvent = getRecurrenceParent(eventData, eventsProcessedRef.current, eventSettings.fields);
+            }
+            setAction(action);
+            const recurrenceRule: string = action === 'EditSeries' ? (eventData.recurrenceRule ??
+                parentEvent?.recurrenceRule) : undefined;
+            applyEventData(recurrenceRule, parentEvent, action);
+        };
+
+        if (eventData.recurrenceID || eventData[eventSettings.fields.recurrenceID]) {
+            if (action) {
+                handleSelectedOption(action);
+            } else {
+                showRecurrenceAlert?.(AlertAction.RecurrenceEdit, (action: EditAction) => {
+                    handleSelectedOption(action);
+                });
+            }
         } else {
-            setStartTime(cellData?.startTime);
-            setEndTime(cellData?.endTime);
+            setAction('Edit');
+            applyEventData();
         }
-        setIsAllDay(!!cellData?.isAllDay);
-        setOpen(true);
-    }, []);
+    }, [eventSettings, eventSettings.fields, showRecurrenceAlert]);
+
+    const onMoreDetails: (cellData: SchedulerCellClickEvent | EventModel) => void =
+        useCallback((cellData: SchedulerCellClickEvent | EventModel): void => {
+            setAction('Add');
+            const cellInfo: EventModel = {
+                subject: cellData[eventSettings.fields.subject] ?? '',
+                location: cellData[eventSettings.fields.location] ?? '',
+                description: cellData[eventSettings.fields.description] ?? '',
+                startTime: cellData[eventSettings.fields.startTime] ?? cellData.startTime,
+                endTime: cellData[eventSettings.fields.endTime] ?? cellData.endTime,
+                isAllDay: cellData[eventSettings.fields.isAllDay] ?? cellData?.isAllDay ?? false,
+                recurrenceRule: cellData[eventSettings.fields.recurrenceRule] ?? (cellData as EventModel)?.recurrenceRule
+            };
+            setSubject(cellInfo.subject);
+            setLocation(cellInfo.location);
+            setDescription(cellInfo.description);
+            setOriginalData(undefined);
+            setRepeatDropData(cellInfo.startTime, cellInfo.recurrenceRule);
+            if (cellInfo.isAllDay) {
+                const cellStartEnd: Date = DateService.normalizeDate(cellInfo.startTime);
+                setStartTime(cellStartEnd);
+                setEndTime(cellStartEnd);
+            } else {
+                setStartTime(cellInfo.startTime);
+                setEndTime(cellInfo.endTime);
+            }
+            setIsAllDay(cellInfo.isAllDay);
+            setOpen(true);
+        }, []);
 
     const validateRequiredFields: (getString: (key: string) => string) => string | null = useCallback(
         (getString: (key: string) => string): string | null => {
@@ -318,15 +501,30 @@ export const useEditorPopup: (
             return null;
         }, [startDateOnly, startTimeOnly, endDateOnly, endTimeOnly, isAllDay]);
 
+    const recurrenceStart: Date | undefined = useMemo((): Date | undefined => {
+        if (isAllDay) {
+            return startDateOnly ? DateService.normalizeDate(startDateOnly) : startTime;
+        }
+        return DateService.combineDateAndTime(startDateOnly, startTimeOnly) ?? startTime;
+    }, [isAllDay, startDateOnly, startTimeOnly, startTime]);
+
+    const computedStartTime: Date | undefined = isAllDay
+        ? (startDateOnly ? DateService.normalizeDate(startDateOnly) : startTime)
+        : (DateService.combineDateAndTime(startDateOnly, startTimeOnly) ?? startTime);
+
+    const computedEndTime: Date | undefined = isAllDay
+        ? (endDateOnly ? DateService.normalizeDate(endDateOnly) : endTime)
+        : (DateService.combineDateAndTime(endDateOnly, endTimeOnly) ?? endTime);
+
+    const data: EventModel = {
+        subject, location, startTime: computedStartTime, endTime: computedEndTime, isAllDay,
+        description, recurrenceRule
+    };
+
     return {
         open,
-        subject,
-        location,
-        description,
-        startTime,
-        endTime,
-        isAllDay,
-        mode,
+        data,
+        action,
         originalData,
         setOpen,
         onCellDoubleClickHandler,
@@ -337,6 +535,10 @@ export const useEditorPopup: (
         endDateOnly,
         endTimeOnly,
         slotDuration,
+        recurrenceStart,
+        repeatModeValue,
+        repeatData,
+        recurrenceOpen,
         setSlotDuration,
         handleSubjectChange,
         handleLocationChange,
@@ -346,8 +548,14 @@ export const useEditorPopup: (
         handleEndDateChange,
         handleEndTimeChange,
         handleIsAllDayChange,
+        handleRecurrenceRuleChange,
+        handleRepeatModeChange,
+        closeRecurrenceEditor,
         onEditEvent,
         onMoreDetails,
+        formState,
+        setFormState,
+        formRef,
         validateRequiredFields
     };
 };

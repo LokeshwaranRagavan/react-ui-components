@@ -1,5 +1,6 @@
 import { useRef } from 'react';
-import { ChartBorderProps, ChartSeriesProps } from '../base/interfaces';
+import { ChartBorderProps, ChartDataLabelProps, ChartSeriesProps } from '../base/interfaces';
+import { ChartTrendlineModel } from '../chart-area/chart-interfaces';
 
 /**
  * Type definition for comparable values that can be deeply compared
@@ -102,7 +103,10 @@ export function useStableDataSources(seriesList: ChartSeriesProps[]): Comparable
  */
 export function useStableMarkerProps(series: ChartSeriesProps[]): ComparableValue[] {
     return useDeepCompare(
-        series.map((s: ChartSeriesProps) => s.marker as ComparableValue)
+        series.map((s: ChartSeriesProps) => ({
+            seriesMarker: s.marker,
+            trendlineMarkers: s.trendlines?.map((trendline: ChartTrendlineModel) => trendline.marker) || []
+        }))
     );
 }
 
@@ -118,8 +122,14 @@ export function useStableMarkerProps(series: ChartSeriesProps[]): ComparableValu
 export function useStableDataLabelProps(series: ChartSeriesProps[]): ComparableValue[] {
     return useDeepCompare(
         series.map((s: ChartSeriesProps) => {
-            const { ...safeDataLabel } = s.marker?.dataLabel || {};
-            return safeDataLabel as ComparableValue;
+            const seriesDataLabel: ChartDataLabelProps | undefined = s.marker?.dataLabel || {};
+            const trendlineDataLabels: ChartDataLabelProps[] | undefined = s.trendlines?.map(
+                (trendline: ChartTrendlineModel) => trendline.marker?.dataLabel || {}) || [];
+
+            return {
+                seriesDataLabel,
+                trendlineDataLabels
+            } as ComparableValue;
         })
     );
 }

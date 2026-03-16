@@ -59,7 +59,9 @@ export class Adaptor {
         count: 'requiresCounts',
         where: 'where',
         aggregates: 'aggregates',
-        expand: 'expand'
+        expand: 'expand',
+        distinctCount: 'distinctCounts',
+        distinct: 'distinct'
     };
 
     /**
@@ -662,6 +664,7 @@ export class UrlAdaptor extends Adaptor {
         req[options.select] = 'onSelect' in singles && !query.distincts.length ?
             DataUtil.callAdaptorFunction(this, 'onSelect', DataUtil.getValue(singles.onSelect.fieldNames, query), query) : '';
         req[options.count] = query.isCountRequired ? DataUtil.callAdaptorFunction(this, 'onCount', query.isCountRequired, query) : '';
+        req[options.distinctCount] = query.isCountDistinct ? DataUtil.callAdaptorFunction(this, 'onDistinctCount', query.isCountDistinct, query) : '';
         req[options.search] = request.searches.length ? DataUtil.callAdaptorFunction(this, 'onSearch', request.searches, query) : '';
         req[options.skip] = 'onSkip' in singles ?
             DataUtil.callAdaptorFunction(this, 'onSkip', DataUtil.getValue(singles.onSkip.nos, query), query) : '';
@@ -673,6 +676,7 @@ export class UrlAdaptor extends Adaptor {
         req[options.group] = request.groups.length ? DataUtil.callAdaptorFunction(this, 'onGroup', request.groups, query) : '';
         req[options.aggregates] = request.aggregates.length ?
             DataUtil.callAdaptorFunction(this, 'onAggregates', request.aggregates, query) : '';
+        req[options.distinct] = query.isCountDistinct ? [query.queries[query.queries.length - 1].e] : '';
         req[param] = [];
     }
 
@@ -820,10 +824,12 @@ export class UrlAdaptor extends Adaptor {
      * @param {Object} e
      * @param query
      * @param original
+     * @param payload
      */
-    public batchRequest(dm: DataManager, changes: CrudOptions, e: Object, query: Query, original?: Object): Object {
+    public batchRequest(dm: DataManager, changes: CrudOptions, e: Object, query: Query, original?: Object, payload?: payloadArgs): Object {
         let url: string;
         let key: string;
+        const filters = Query.filterQueries(query.queries, 'onWhere');
         return {
             type: 'POST',
             url: dm.dataSource.batchUrl || dm.dataSource.crudUrl || dm.dataSource.removeUrl || dm.dataSource.url,
@@ -832,10 +838,18 @@ export class UrlAdaptor extends Adaptor {
             data: JSON.stringify(extend({}, {
                 changed: changes.changedRecords,
                 added: changes.addedRecords,
-                deleted: changes.deletedRecords,
+                ...(!payload ? { deleted: changes.deletedRecords } : {}),
                 action: 'batch',
                 table: e[url],
-                key: e[key]
+                key: e[key],
+                ...(payload ? {
+                    payload: {
+                        action: 'Delete',
+                        isSelectAll: !!payload.isHeaderSelectAllMode,
+                        primaryKeys: Array.isArray(payload.toggleKeys) ? payload.toggleKeys.map(String) : [],
+                        ...(filters.length > 0 ? { where: [filters[0].e] } : {})
+                    }
+                } : {})
             },                          DataUtil.getAddParams(this, dm, query)))
         };
     }
@@ -1464,6 +1478,7 @@ export class ODataAdaptor extends UrlAdaptor {
 
         const versionCheck: string = xhr && request.fetchRequest.headers.get('DataServiceVersion');
         let count: number = null;
+        let distinctCount: number = null;
         const version: number = (versionCheck && parseInt(versionCheck, 10)) || 2;
 
         if (query && query.isCountRequired) {
@@ -1477,16 +1492,24 @@ export class ODataAdaptor extends UrlAdaptor {
             }
         }
 
+        if (query && query.isCountDistinct) {
+            const oDataDistinctCount: string = 'distinctcount';
+            if (data[oDataDistinctCount]) {
+                distinctCount = data[oDataDistinctCount];
+            }
+        }
+
         if (version === 3 && data.value) { data = data.value; }
         if (data.d) { data = <DataResult>data.d; }
         if (version < 3 && data.results) { data = data.results as DataResult; }
 
         const args: DataResult = {};
         args.count = count;
+        args.distinctCount = distinctCount;
         args.result = data;
         this.getAggregateResult(pvt, data, args, null, query);
 
-        return DataUtil.isNull(count) ? args.result : { result: args.result, count: args.count, aggregates: args.aggregates };
+        return DataUtil.isNull(count) ? args.result : { result: args.result, isNucount: args.count, aggregates: args.aggregates, ...(distinctCount !== null ? { distinctCount: distinctCount } : {}) };
     }
 
     /**
@@ -1606,9 +1629,10 @@ export class ODataAdaptor extends UrlAdaptor {
      * @param {RemoteArgs} e
      * @param query
      * @param original
+     * @param payload
      * @returns {Object}
      */
-    public batchRequest(dm: DataManager, changes: CrudOptions, e: RemoteArgs, query: Query, original?: CrudOptions): Object {
+    public batchRequest(dm: DataManager, changes: CrudOptions, e: RemoteArgs, query: Query, original?: CrudOptions, payload?: payloadArgs): Object {
         const initialGuid: string = e.guid = DataUtil.getGuid(this.options.batchPre);
         const url: string = (dm.dataSource.batchUrl || this.rootUrl) ?
             (dm.dataSource.batchUrl || this.rootUrl) + '/' + this.options.batch :
@@ -1628,7 +1652,7 @@ export class ODataAdaptor extends UrlAdaptor {
 
         req += this.generateInsertRequest(changes.addedRecords, args, dm);
         req += this.generateUpdateRequest(changes.changedRecords, args, dm, original ? original.changedRecords : []);
-        req += this.generateDeleteRequest(changes.deletedRecords, args, dm);
+        req += this.generateDeleteRequest(changes.deletedRecords, args, dm, payload, query);
 
         req += args.cSet + '--\n';
         req += '--' + initialGuid + '--';
@@ -1651,26 +1675,41 @@ export class ODataAdaptor extends UrlAdaptor {
      * @param dm
      * @returns this
      */
-    public generateDeleteRequest(arr: Object[], e: RemoteArgs, dm: DataManager): string {
+    public generateDeleteRequest(arr: Object[], e: RemoteArgs, dm: DataManager, payload?: payloadArgs, query?: Query): string {
         if (!arr) { return ''; }
         let req: string = '';
+        const filters = Query.filterQueries(query.queries, 'onWhere');
+        
+        if (payload) {
+            req += '\n' + e.cSet + '\n';
+            req += this.options.changeSetContent + '\n\n';
 
-        const stat: { method: string, url: Function, data: Function } = {
-            'method': 'DELETE ',
-            'url': (data: Object[], i: number, key: string): string => {
-                const url: object = DataUtil.getObject(key, data[i]);
-                if (typeof url === 'number' || DataUtil.parse.isGuid(url)) {
-                    return '(' + url as string + ')';
-                } else if (url instanceof Date) {
-                    const dateTime: Date = data[i][key];
-                    return '(' + dateTime.toJSON() + ')';
-                } else {
-                    return `('${url}')`;
-                }
-            },
-            'data': (data: Object[], i: number): string => ''
-        };
-        req = this.generateBodyContent(arr, e, stat, dm);
+            const deletePayload = {
+                action: 'Delete',
+                isSelectAll: payload.isHeaderSelectAllMode,
+                primaryKeys: payload.toggleKeys || [],
+                ...(filters.length > 0 ? { where: [filters[0].e] } : {})
+            };
+
+            req += JSON.stringify(deletePayload) + '\n';
+        } else {
+            const stat: { method: string, url: Function, data: Function } = {
+                'method': 'DELETE ',
+                'url': (data: Object[], i: number, key: string): string => {
+                    const url: object = DataUtil.getObject(key, data[i]);
+                    if (typeof url === 'number' || DataUtil.parse.isGuid(url)) {
+                        return '(' + url as string + ')';
+                    } else if (url instanceof Date) {
+                        const dateTime: Date = data[i][key];
+                        return '(' + dateTime.toJSON() + ')';
+                    } else {
+                        return `('${url}')`;
+                    }
+                },
+                'data': (data: Object[], i: number): string => ''
+            };
+            req = this.generateBodyContent(arr, e, stat, dm);
+        }
 
         return req + '\n';
     }
@@ -2906,6 +2945,14 @@ export interface PvtOptions {
 }
 
 /**
+ * @hidden
+ */
+export interface payloadArgs {
+    isHeaderSelectAllMode: boolean;
+    toggleKeys: string[];
+}
+
+/**
  * Represents the processed result returned from a data operation.
  *
  * This structure is commonly used when working with `DataManager` or remote data sources
@@ -2923,6 +2970,9 @@ export interface DataResult {
 
     /** @private */
     Count?: number;
+
+
+    distinctCount?: number;
 
     /**
      * Specifies the total number of records returned or available in the data source.
@@ -2995,7 +3045,9 @@ export interface RemoteOptions {
     take?: string;
     search?: string;
     count?: string;
+    distinctCount?: string;
     where?: string;
+    distinct?: string;
     aggregates?: string;
     expand?: string;
     accept?: string;
@@ -3073,5 +3125,6 @@ export interface LazyLoadGroupArgs {
 export type ReturnType = {
     result: Object[],
     count?: number,
-    aggregates?: string
+    aggregates?: string,
+    distinctCount?: number
 };

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { forwardRef, ReactNode, Ref, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useId } from 'react';
+import { forwardRef, ReactNode, Ref, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useId, useLayoutEffect } from 'react';
 import { CLASS_NAMES, inputBaseProps, LabelMode, renderClearButton, renderFloatLabelElement } from '../common/inputbase';
 import { preRender, useProviderContext, Variant, Size } from '@syncfusion/react-base';
 export { LabelMode, Variant, Size };
@@ -132,6 +132,14 @@ export interface TextAreaProps extends inputBaseProps {
     rows?: number;
 
     /**
+     * Specifies whether to automatically increase the textarea vertically as content increases.
+     * When enabled, height expands vertically (downwards).
+     *
+     * @default false
+     */
+    autoResize?: boolean;
+
+    /**
      * Specifies the Callback that fired when the input value is changed.
      *
      * @event onChange
@@ -177,6 +185,7 @@ forwardRef<ITextArea, ITextAreaProps>((props: ITextAreaProps, ref: Ref<ITextArea
         cols = null,
         rows = null,
         clearButton = false,
+        autoResize = false,
         className = '',
         size = Size.Medium,
         variant,
@@ -199,6 +208,11 @@ forwardRef<ITextArea, ITextAreaProps>((props: ITextAreaProps, ref: Ref<ITextArea
     const [isFocused, setIsFocused] = useState(false);
     const id: string = useMemo(() => rest.id || textareaId, [rest.id]);
     const elementRef: React.RefObject<HTMLTextAreaElement | null> = useRef<HTMLTextAreaElement>(null);
+    const autoResizeFrameIdRef: React.RefObject<number | null> = useRef<number | null>(null);
+    const resizeObserverInstanceRef: React.RefObject<ResizeObserver | null> =
+    useRef<ResizeObserver | null>(null);
+    const lastObservedInlineSizeRef: React.RefObject<number | null> =
+    useRef<number | null>(null);
     const { locale, dir } = useProviderContext();
 
     const publicAPI: Partial<ITextAreaProps> = {
@@ -248,6 +262,98 @@ forwardRef<ITextArea, ITextAreaProps>((props: ITextAreaProps, ref: Ref<ITextArea
         element: elementRef.current
     }));
 
+    const adjustHeight: (textAreaElement: HTMLTextAreaElement | null) => void
+    = useCallback((textAreaElement: HTMLTextAreaElement | null) => {
+        if (!textAreaElement) { return; }
+        textAreaElement.style.height = 'auto';
+        textAreaElement.style.height = `${textAreaElement.scrollHeight}px`;
+    }, []);
+
+    const requestAdjustHeight: () => void = useCallback(() => {
+        if (!autoResize || !elementRef.current) { return; }
+        if (autoResizeFrameIdRef.current !== null) {
+            cancelAnimationFrame(autoResizeFrameIdRef.current);
+            autoResizeFrameIdRef.current = null;
+        }
+        autoResizeFrameIdRef.current = requestAnimationFrame(() => {
+            adjustHeight(elementRef.current);
+        });
+    }, [autoResize, adjustHeight]);
+
+    const getObservedInlineSize: (entry: ResizeObserverEntry) => number | null = (
+        entry: ResizeObserverEntry): number | null => {
+        const firstBox: ResizeObserverSize | undefined = Array.isArray(entry.contentBoxSize)
+            ? entry.contentBoxSize[0]
+            : entry.contentBoxSize;
+
+        if (firstBox && typeof firstBox.inlineSize === 'number') {
+            return firstBox.inlineSize;
+        }
+
+        const width: number = entry.contentRect.width;
+        return typeof width === 'number' ? width : null;
+    };
+
+    useEffect(() => {
+        return () => {
+            if (autoResizeFrameIdRef.current !== null) {
+                cancelAnimationFrame(autoResizeFrameIdRef.current);
+                autoResizeFrameIdRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!autoResize || !elementRef.current) {return; }
+        let frameScheduled: boolean = false;
+        const scheduleAdjustHeight: () => void = (): void => {
+            if (frameScheduled) {return; }
+            frameScheduled = true;
+            requestAnimationFrame((): void => {
+                frameScheduled = false;
+                if (!elementRef.current) {return; }
+                requestAdjustHeight();
+            });
+        };
+
+        if ('ResizeObserver' in window) {
+            const handleObservedSizeChange: ResizeObserverCallback = (
+                entries: ResizeObserverEntry[]
+            ): void => {
+                const entry: ResizeObserverEntry | undefined = entries[0];
+                if (!entry) {return; }
+                const inlineSize: number | null = getObservedInlineSize(entry);
+                if (inlineSize !== null && lastObservedInlineSizeRef.current === inlineSize) {
+                    return;
+                }
+                lastObservedInlineSizeRef.current = inlineSize;
+                scheduleAdjustHeight();
+            };
+            const observer: ResizeObserver = new ResizeObserver(handleObservedSizeChange);
+            observer.observe(elementRef.current);
+            resizeObserverInstanceRef.current = observer;
+            return (): void => {
+                observer.disconnect();
+                resizeObserverInstanceRef.current = null;
+                lastObservedInlineSizeRef.current = null;
+            };
+        }
+        const view: Window | null = elementRef.current.ownerDocument ? elementRef.current.ownerDocument.defaultView : null;
+        if (!view) { return; }
+        const handleWindowResize: (event: UIEvent) => void = (): void => {
+            scheduleAdjustHeight();
+        };
+        view.addEventListener('resize', handleWindowResize);
+        return (): void => {
+            view.removeEventListener('resize', handleWindowResize);
+        };
+    }, [autoResize, requestAdjustHeight]);
+
+    useLayoutEffect(() => {
+        if (!autoResize || !elementRef.current) { return; }
+        requestAdjustHeight();
+    }, [autoResize, displayValue, width, rows, cols]);
+
     const handleChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void =
     useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue: string = event.target.value;
@@ -257,7 +363,10 @@ forwardRef<ITextArea, ITextAreaProps>((props: ITextAreaProps, ref: Ref<ITextArea
         if (onChange) {
             onChange({ event, value: newValue });
         }
-    }, [isControlled, onChange, uncontrolledValue, value]);
+        if (autoResize) {
+            requestAdjustHeight();
+        }
+    }, [isControlled, onChange, uncontrolledValue, value, autoResize, requestAdjustHeight]);
 
     const handleFocus: (event: React.FocusEvent<HTMLTextAreaElement, Element>) => void =
     useCallback((event: React.FocusEvent<HTMLTextAreaElement, Element>) => {
@@ -287,7 +396,10 @@ forwardRef<ITextArea, ITextAreaProps>((props: ITextAreaProps, ref: Ref<ITextArea
         if (onChange) {
             onChange({ value: newValue, event: undefined });
         }
-    }, [onChange, isControlled]);
+        if (autoResize) {
+            requestAdjustHeight();
+        }
+    }, [onChange, isControlled, requestAdjustHeight]);
 
     const getCurrentResizeClass: (resizeMode: ResizeMode) => string = (resizeMode: ResizeMode) => {
         return RESIZE_MAP[`${resizeMode}`];
@@ -312,10 +424,10 @@ forwardRef<ITextArea, ITextAreaProps>((props: ITextAreaProps, ref: Ref<ITextArea
                 {...rest}
                 style={{
                     width: width ? (typeof width === 'number' ? `${width}px` : width) : undefined,
-                    resize: resizeMode === 'None' ? 'none' : undefined
+                    resize: resizeMode === 'None' || autoResize ? 'none' : undefined,
+                    overflowY: autoResize ? 'hidden' : undefined
                 }}
                 className={`sf-textarea sf-lib sf-input ${getCurrentResizeClass(resizeMode)}`}
-                aria-multiline="true"
                 aria-labelledby={`label_${id}`}
             />
             {renderFloatLabelElement(

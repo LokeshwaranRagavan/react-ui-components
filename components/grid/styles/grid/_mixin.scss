@@ -35,3 +35,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+%flex-template-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: normal;
+}

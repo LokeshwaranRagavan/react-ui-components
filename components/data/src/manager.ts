@@ -445,7 +445,7 @@ export class DataManager {
         };
         const process: Function = (
             data: Object, count: number, xhr: Request, request: IFetch, actual: Object,
-            aggregates: Aggregates, virtualSelectRecords?: Object) => {
+            aggregates: Aggregates, virtualSelectRecords?: Object, distinctCount?: number) => {
             args.xhr = xhr;
             args.count = count ? parseInt(count.toString(), 10) : 0;
             args.result = data;
@@ -453,6 +453,7 @@ export class DataManager {
             args.aggregates = aggregates;
             args.actual = actual;
             args.virtualSelectRecords = virtualSelectRecords;
+            args.distinctCount = distinctCount ? parseInt(distinctCount.toString(), 10) : 0;
             deffered.resolve(args);
         };
         const fnQueryChild: Function = (data: Object[], selector: Object) => {
@@ -510,17 +511,21 @@ export class DataManager {
                     result = DataUtil.parse.parseJson(result);
                 }
                 let count: number = 0;
+                let distinctCount: number = 0;
                 let aggregates: Aggregates = null;
                 const virtualSelectRecords: string = 'virtualSelectRecords';
                 const virtualRecords: { virtualSelectRecords: Object } =
                     (<{ [key: string]: { virtualSelectRecords: Object } }>data)[virtualSelectRecords];
+                if (query.isCountDistinct) {
+                    distinctCount = data['distinctCount'];
+                }
                 if (query.isCountRequired) {
                     count = result.count;
                     aggregates = result.aggregates;
                     result = result.result;
                 }
                 if (!query.subQuery) {
-                    process(result, count, request.fetchRequest, request.type, data, aggregates, virtualRecords);
+                    process(result, count, request.fetchRequest, request.type, data, aggregates, virtualRecords, distinctCount);
                     return;
                 }
                 if (!isSelector) {
@@ -675,7 +680,7 @@ export class DataManager {
      * @returns {Object | Promise<Object>} A `Promise` resolving to the result of the batch operation, or the result object directly in offline mode.
      */
     public saveChanges(
-        changes: Object, key?: string, tableName?: string | Query, query?: Query, original?: Object): Promise<Object> | Object {
+        changes: Object, key?: string, tableName?: string | Query, query?: Query, original?: Object, payload?: Object): Promise<Object> | Object {
 
         if (tableName instanceof Query) {
             query = <Query>tableName;
@@ -687,7 +692,7 @@ export class DataManager {
             key: key || this.dataSource.key
         };
 
-        const req: Object = this.adaptor.batchRequest(this, changes, args, query || new Query(), original);
+        const req: Object = this.adaptor.batchRequest(this, changes, args, query || new Query(), original, payload);
 
         const dofetchRequest: string = 'dofetchRequest';
 
@@ -1008,6 +1013,7 @@ export interface ReturnOption {
     count?: number;
     url?: string;
     aggregates?: Aggregates;
+    distinctCount?: number;
 }
 
 /**
@@ -1031,6 +1037,7 @@ export interface RequestOptions {
     actual?: Object;
     virtualSelectRecords?: Object;
     error?: string | Error;
+    distinctCount?: number;
 }
 
 /**

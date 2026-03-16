@@ -293,8 +293,12 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
             readOnly: props.readOnly,
             cell: props.cell,
             dateHeader: props.dateHeader,
+            headerIndent: props.headerIndent,
+            quickInfo: props.quickInfo,
+            editor: props.editor,
+            onEditorSubmit: props.onEditorSubmit,
             showQuickInfoPopup: props.showQuickInfoPopup,
-            showHeaderBar: props.showHeaderBar,
+            header: props.header,
             keyboardNavigation: props.keyboardNavigation,
             onDataRequest: props.onDataRequest,
             onSelectedDateChange: (event: SchedulerDateChangeEvent) => handleSelectedDateChange(event.value),
@@ -313,7 +317,9 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
             onDragStart: props.onDragStart,
             onDrag: props.onDrag,
             onDragStop: props.onDragStop,
-            onMoreEventsClick: props.onMoreEventsClick
+            onMoreEventsClick: props.onMoreEventsClick,
+            enableRecurrenceValidation: props.enableRecurrenceValidation,
+            weekRule: props.weekRule
         };
     };
 
@@ -329,6 +335,18 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
 
         const viewProps: ViewSpecificProps = viewComponent.component.props || {};
         const rootProps: SchedulerProps = mergeSchedulerProps(defaultSchedulerProps, getSchedulerProps()) as SchedulerProps;
+        if (typeof rootProps.eventDrag === 'boolean') {
+            rootProps.eventDrag = { enable: rootProps.eventDrag, externalDragAndDrop: false };
+        } else {
+            rootProps.eventDrag = { ...rootProps.eventDrag, enable: rootProps.eventDrag.enable,
+                externalDragAndDrop: rootProps.eventDrag.externalDragAndDrop ?? false };
+        }
+        if (typeof rootProps.eventResize === 'boolean') {
+            rootProps.eventResize = { enable: rootProps.eventResize, startResizable: true, endResizable: true };
+        } else {
+            rootProps.eventResize = { ...rootProps.eventResize, enable: rootProps.eventResize.enable,
+                startResizable: rootProps.eventResize.startResizable ?? true, endResizable: rootProps.eventResize.endResizable ?? true };
+        }
 
         const mergedProps: ActiveViewProps = {
             height: rootProps.height,
@@ -341,7 +359,7 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
             rowAutoHeight: rootProps.rowAutoHeight,
             eventTemplate: viewProps.eventTemplate,
             readOnly: viewProps.readOnly ?? rootProps.readOnly,
-            showHeaderBar: rootProps.showHeaderBar,
+            header: rootProps.header,
             showQuickInfoPopup: rootProps.showQuickInfoPopup,
             displayDate: DateService.setValidDate(viewProps.displayDate),
             numberOfWeeks: viewProps.numberOfWeeks,
@@ -352,6 +370,7 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
             displayName: viewProps.displayName ?? viewComponent.displayName,
             maxEventsPerRow: viewProps.maxEventsPerRow,
             dateHeader: viewProps.dateHeader ?? rootProps.dateHeader,
+            headerIndent: viewProps.headerIndent ?? rootProps.headerIndent,
             cell: viewProps.cell ?? rootProps.cell,
             timeScale: viewProps.timeScale ?? rootProps.timeScale,
             startHour: viewProps.startHour ?? rootProps.startHour,
@@ -363,6 +382,9 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
             timeFormat: viewProps.timeFormat ?? rootProps.timeFormat,
             showWeekNumber: viewProps.showWeekNumber ?? rootProps.showWeekNumber,
             eventOverlap: viewProps.eventOverlap ?? rootProps.eventOverlap,
+            quickInfo: viewProps.quickInfo ?? rootProps.quickInfo,
+            editor: viewProps.editor ?? rootProps.editor,
+            onEditorSubmit: rootProps.onEditorSubmit,
             onDataRequest: rootProps.onDataRequest,
             onSelectedDateChange: rootProps.onSelectedDateChange,
             onViewChange: rootProps.onViewChange,
@@ -382,8 +404,10 @@ export const useScheduler: (props: UseSchedulerProps) => UseSchedulerResult = (p
             onDrag: rootProps.onDrag,
             onDragStop: rootProps.onDragStop,
             onMoreEventsClick: rootProps.onMoreEventsClick,
+            enableRecurrenceValidation: rootProps.enableRecurrenceValidation,
             handleCurrentViewChange,
-            getAvailableViews
+            getAvailableViews,
+            weekRule: rootProps.weekRule
         };
         if (mergedProps.startHour !== '00:00' || mergedProps.endHour !== '24:00') {
             mergedProps.startHourTuple = [Number(mergedProps.startHour?.split(':')[0]), Number(mergedProps.startHour?.split(':')[1])];
@@ -553,7 +577,8 @@ export const useOutsideClick: (
     useEffect(() => {
         const handleOutsideClick: (e: MouseEvent) => void = (e: MouseEvent): void => {
             if (isOpen && elementRef.current && !elementRef.current.contains(e.target as Node) &&
-                !(e.target as HTMLElement)?.closest(`.${CSS_CLASSES.POPUP_WRAPPER}`)) {
+                !(e.target as HTMLElement)?.closest(`.${CSS_CLASSES.POPUP}`) &&
+                !(e.target as HTMLElement)?.closest(`.${CSS_CLASSES.DATEPICKER_BUTTON}`)) {
                 onOutsideClick();
             }
         };

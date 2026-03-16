@@ -5,22 +5,31 @@
   @return rgba($color, $opacity);
 }
 // Checkbox sizes
-$cbox-font-size: $font-size-base !default;
-$cbox-small-font-size: $font-size-sm !default;
-$cbox-large-font-size: $font-size-lg !default;
+$cbox-frame-sm-font-size: $spacing-16 !default;
+$cbox-frame-me-font-size: $spacing-18 !default;
+$cbox-frame-la-font-size: $spacing-20 !default;
 $cbox-frame-dimension: 1em !default;
 
 $cbox-icon-size: $font-size-xs !default;
 $cbox-icon-small-size: $font-size-xs !default;
-$cbox-icon-large-size: $font-size-base !default;
-$cbox-sm-line-height: $line-height-sm !default;
-$cbox-la-line-height: $line-height-base !default;
+$cbox-icon-large-size: $font-size-sm !default;
+$cbox-sm-line-height: $line-height-xs !default;
+$cbox-me-line-height: $line-height-sm !default;
+$cbox-la-line-height: $line-height-sm !default;
 $cbox-vertical-line-height: 0 !default;
+
+$cbox-label-sm-font-size:$font-size-xs !default;
+$cbox-label-me-font-size:$font-size-sm !default;
+$cbox-label-la-font-size:$font-size-sm !default;
+
+$cbox-sm-gap: $spacing-12;
+$cbox-me-gap: $spacing-12;
+$cbox-la-gap: $spacing-16;
 
 // Ripple sizes
 $cbox-ripple-padding: $spacing-16 !default;
 $cbox-ripple-small-padding: $spacing-14 !default;
-$cbox-ripple-large-padding: $spacing-18 !default;
+$cbox-ripple-large-padding: $spacing-20 !default;
 
 // Borders
 $cbox-border-radius: $radius-2 !default;
@@ -34,8 +43,9 @@ $cbox-color: rgb($content-text-color) !default;
 $cbox-checkmark-color: rgb($primary-text-color) !default;
 $cbox-checkmark-bgcolor: rgb($primary) !default;
 
-// checkbox Ripple hover color
-$cbox-checked-ripple-bgcolor: rgba($primary, .08) !default;;
+$cbox-checked-ripple-bgcolor: rgba($primary, .08) !default;
+
+$cbox-keyboard-focus-box-shadow: $shadow-focus-ring2 !default;
 
 // Color variants map with text colors
 $cbox-variants: (

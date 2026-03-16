@@ -1,7 +1,7 @@
 import { CheckboxChangeEvent } from '@syncfusion/react-buttons';
 import { useSelection } from '../hooks';
 import { ColumnProps } from './column.interfaces';
-import { SelectionMode } from './enum';
+import { AutoSelectMode, SelectionMode } from './enum';
 import { CellFocusEvent } from './focus.interfaces';
 import { IRow } from './interfaces';
 
@@ -62,6 +62,18 @@ export interface SelectionSettings {
      * @default false
      */
     persistSelection?: boolean;
+
+    /**
+     * Controls the header checkbox click behavior for remote data sources.
+     * Defines how the header checkbox behaves when selecting data in the grid, either across all data or only the currently loaded data.
+     *
+     * Options:
+     * - `Default`: Header checkbox toggles between checked and unchecked (two‑state). In this mode, all data in the grid is selected or deselected. This is the default mode.
+     * - `Intermediate`: Header checkbox cycles through checked, unchecked, and intermediate (tri‑state). In this mode, selection applies only to currently loaded or visited pages. Full grid selection becomes available only after all pages have been loaded.
+     *
+     * @default AutoSelectMode.Default
+     */
+    autoSelectMode?: AutoSelectMode | string;
 }
 
 /**
@@ -112,13 +124,27 @@ export interface SelectionModel<T = unknown> {
     getSelectedRowIndexes: () => number[];
 
     /**
-     * Retrieves the data objects for the currently selected rows.
-     * Returns the record(s) associated with the selected rows or null if no rows are selected.
-     * Enables access to selected data for further processing or display.
+     * Retrieves the selected row data or selection metadata from the grid.
      *
-     * @returns {Object[] | null} The selected row data.
+     * Returns different types based on configuration:
+     * - Local data: Array of selected row data objects (`T[]`)
+     * - Remote data with persistent selection: Object with `isSelectAll` (boolean) and `primaryKeys` (string[])
+     * - No selection: Empty array or null
+     *
+     * @returns {T[] | { isSelectAll: boolean; primaryKeys: string[] } | null} Selected records or selection metadata
      */
-    getSelectedRecords: () => T[] | null;
+    getSelectedRecords(): T[] | { isSelectAll: boolean; primaryKeys: string[] } | null;
+
+    /**
+     * Retrieves the persistent selected data as an array of record objects.
+     *
+     * Provides access to the internal persistent selection storage maintained across paging,
+     * sorting, filtering, and other grid operations. Only returns data when `persistSelection`
+     * is enabled in `selectionSettings`.
+     *
+     * @returns {T[]} Array of selected record objects
+     */
+    getPersistSelectedData(): T[];
 
     /**
      * Processes grid click events to handle row selection.
@@ -201,8 +227,9 @@ export interface SelectionModel<T = unknown> {
     /**
      * Updates the persisted selection collection using a resolved row key.
      *
-     * @param rowData - The row data object to update in the persisted collection.
-     * @param isSelected - When `true`, adds the row; when `false`, removes it.
+     * @template T
+     * @param {T} rowData - The row data object to update in the persisted collection.
+     * @param {boolean} isSelected - When `true`, adds the row; when `false`, removes it.
      */
     updatePersistCollection: (rowData: T, isSelected: boolean) => void;
 
@@ -217,9 +244,9 @@ export interface SelectionModel<T = unknown> {
     persistSelectedData: Map<string, T>;
 
     /**
-     * Indicates whether a remote header select-all action was triggered
+     * Indicates whether a header select-all action was triggered
      */
-    isRemoteHeaderSelection: boolean;
+    isHeaderSelectAllMode: boolean;
 
     /**
      * Tracks rows that were manually unselected after a remote header select-all operation.
@@ -232,6 +259,18 @@ export interface SelectionModel<T = unknown> {
     clearAllPersistedSelection: () => void;
 
     /**
+     * Clears only the selections for deleted records from the persisted selection state.
+     * During delete operations, this removes the deleted records from selection without
+     * affecting other selected items that remain in the data set.
+     *
+     * @template T
+     * @public
+     * @param {T[]} deletedRecords - An array of deleted record objects whose selection entries must be removed from persistence.
+     * @returns {void}
+     */
+    clearDeletedSelections: (deletedRecords: T[]) => void;
+
+    /**
      * Handles persisted selection updates when the header "Select All" checkbox is toggled.
      *
      * @param row - The header row object.
@@ -241,15 +280,18 @@ export interface SelectionModel<T = unknown> {
 
     /**
      * Retrieves the full row object from a row element or row index.
-     * @param row - The row DOM element or the numeric index of the row in the table.
-     * @returns The complete row data object conforming to IRow<ColumnProps<T>>.
+     *
+     * @template T
+     * @param {Element | number} row - The row DOM element or the numeric index of the row in the table.
+     * @returns {IRow<ColumnProps<T>>} The complete row data object conforming to IRow<ColumnProps<T>>.
      */
     getRowObj: (row: Element | number) => IRow<ColumnProps<T>>;
 
     /**
      * Updates the header selection state based on current selection.
      * Typically used to refresh the header checkbox state after row-level changes.
-     * @returns void - This method does not return any value directly.
+     *
+     * @returns {void} This method does not return any value directly.
      */
     updateHeaderSelectionState: () => void;
 

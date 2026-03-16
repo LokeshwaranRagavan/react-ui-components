@@ -1,4 +1,4 @@
-import { View } from '../types/enums';
+import { View, WeekRule  } from '../types/enums';
 import { ActiveViewProps } from '../types/internal-interface';
 import { WorkHoursProps, EventModel } from '../types/scheduler-types';
 import { cldrData, formatDate, getDefaultDateObject, getValue } from '@syncfusion/react-base';
@@ -37,12 +37,15 @@ export class DateService {
      * @param {View} viewType - Type of view (Day, Week, WorkWeek)
      * @param {Date} selectedDate - The currently selected date
      * @param {ActiveViewProps} activeViewProps - The current active view props
+     * @param {Date} startCellDate - The current view start date
+     * @param {Date} endCellDate - The current view end date
      * @returns {Date[]} Array of dates to render
      */
     static getRenderDates(
         viewType: View,
         selectedDate: Date,
-        activeViewProps: ActiveViewProps
+        activeViewProps: ActiveViewProps,
+        startCellDate?: Date, endCellDate?: Date
     ): Date[] {
 
         const {
@@ -90,7 +93,8 @@ export class DateService {
             } while (interval !== dates.length);
         }
         else if (viewType === 'Month') {
-            dates = this.getMonthRenderDates(selectedDate, interval, firstDayOfWeek, workDays, showWeekend, displayDate, numberOfWeeks);
+            dates = this.getMonthRenderDates(selectedDate, interval, firstDayOfWeek, workDays, showWeekend,
+                                             displayDate, numberOfWeeks, startCellDate, endCellDate);
         }
         return dates;
     }
@@ -103,7 +107,32 @@ export class DateService {
         }
         return weeks;
     }
-
+    static getWeekNumber(
+        date: Date,
+        weekRule: WeekRule,
+        firstDayOfWeek: number
+    ): number {
+        switch (weekRule) {
+        case 'FirstDay': {
+            const lastDate: Date = this.getWeekLastDate(date, firstDayOfWeek);
+            return this.getWeekNumberValue(lastDate);
+        }
+        case 'FirstFourDayWeek': {
+            const firstDate: Date = this.getWeekFirstDate(date, firstDayOfWeek);
+            const lastDate: Date = this.getWeekLastDate(date, firstDayOfWeek);
+            const middleDate: Date   = this.getWeekMiddleDate(firstDate, lastDate);
+            return this.getWeekNumberValue(middleDate);
+        }
+        case 'FirstFullWeek': {
+            const firstDate: Date = this.getWeekFirstDate(date, firstDayOfWeek);
+            return this.getWeekNumberValue(firstDate);
+        }
+        default: {
+            const firstDate: Date = this.getWeekFirstDate(date, firstDayOfWeek);
+            return this.getWeekNumberValue(firstDate);
+        }
+        }
+    }
     static getMonthRenderDates(
         selectedDate: Date,
         interval: number,
@@ -111,13 +140,15 @@ export class DateService {
         workDays: number[],
         showWeekend: boolean,
         displayDate?: Date,
-        numberOfWeeks? : number
+        numberOfWeeks? : number,
+        startCellDate?: Date,
+        lastCellDate?: Date
     ): Date[] {
         const renderDates: Date[] = [];
         displayDate = this.setValidDate(displayDate);
         const currentDate: Date = this.normalizeDate(selectedDate);
-        let start: Date = this.getMonthStart(currentDate, displayDate, firstDayOfWeek);
-        const monthEnd: Date = this.getMonthEnd(currentDate, displayDate, firstDayOfWeek, numberOfWeeks, interval);
+        let start: Date = startCellDate ?? this.getMonthStart(currentDate, displayDate, firstDayOfWeek);
+        const monthEnd: Date = lastCellDate ?? this.getMonthEnd(currentDate, displayDate, firstDayOfWeek, numberOfWeeks, interval);
         do {
             if (showWeekend) {
                 renderDates.push(start);
@@ -185,7 +216,9 @@ export class DateService {
         result.setDate(1);
         return result;
     }
-
+    static getWeekMiddleDate(weekFirst: Date, weekLast: Date): Date {
+        return new Date(weekLast.valueOf() - ((weekLast.valueOf() - weekFirst.valueOf()) / 2));
+    }
     /**
      * Gets the last date of the month for the specified date
      *
@@ -242,10 +275,10 @@ export class DateService {
      * @param {Date} date - The date for which to get the week number
      * @returns {number} The week number
      */
-    static getWeekNumber(date: Date): number {
+    static getWeekNumberValue(date: Date): number {
         const firstDayOfYear: Date = new Date(date.getFullYear(), 0, 1);
-        const pastDaysOfYear: number = (date.getTime() - firstDayOfYear.getTime()) / MS_PER_DAY;
-        return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+        const dayOfYear: number = ((date.getTime() - firstDayOfYear.getTime()) / MS_PER_DAY) + 1;
+        return Math.ceil(dayOfYear / 7);
     }
 
     /**
@@ -901,4 +934,51 @@ export class DateService {
         }
         return { visibleDayCount, startDayIndex };
     }
+
+    static formatStartAndEndDateRange(start: Date, end: Date, locale?: string): string {
+        const mode: string = 'gregorian';
+
+        if (this.isSameDay(start, end)) {
+            return formatDate(start, { type: 'date', skeleton: 'long', locale });
+        }
+        const sameYear: boolean = start.getFullYear() === end.getFullYear();
+
+        let startFmt: string;
+        let endFmt: string;
+
+        if (this.isSameMonth(start, end)) {
+            startFmt = 'MMM d';
+            endFmt = 'd, y';
+        } else if (sameYear) {
+            startFmt = 'MMM d';
+            endFmt = 'MMM d, y';
+        } else {
+            startFmt = 'MMM d, y';
+            endFmt = 'MMM d, y';
+        }
+
+        const startStr: string = formatDate(start, { format: startFmt, calendar: mode, locale });
+        const endStr: string = formatDate(end, { format: endFmt, calendar: mode, locale });
+        return `${startStr} - ${endStr}`;
+    }
+
+    static resetTime(date: Date): Date {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
+    /**
+     * Converts the given date string into a `Date` object and returns in `HH:mm` format.
+     *
+     * @param {string} hour - The date string from which the time should be normalized.
+     * @returns {string} A formatted time string in `HH:mm` format
+     */
+    static normalizeTime: (hour: string) => string = (hour: string): string => {
+        const parsedDate: Date = DateService.getDateFromString(hour);
+        if (parsedDate instanceof Date && !isNaN(parsedDate.getTime())) {
+            const dateHour: string = String(parsedDate.getHours()).padStart(2, '0');
+            const dateMinute: string = String(parsedDate.getMinutes()).padStart(2, '0');
+            return `${dateHour}:${dateMinute}`;
+        }
+        return hour;
+    };
 }

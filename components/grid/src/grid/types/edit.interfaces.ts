@@ -245,8 +245,9 @@ export interface UseEditResult<T = unknown> {
     updateRecord: (index: number, data: T) => void;
     validateEditForm: () => boolean;
     validateField: (field: string) => boolean;
-    updateEditData: (field: string, value: ValueType | Object | null) => void;
+    updateEditData: (field: string, value: ValueType | Object | null, rowObject?: IRow<ColumnProps<T>>) => void;
     getCurrentEditData: () => T;
+    getCurrentFormState: () => FormState;
     handleGridClick: (event: React.MouseEvent) => void;
     handleGridDoubleClick: (event: React.MouseEvent, rowElement?: HTMLTableRowElement) => void;
     checkUnsavedChanges: () => Promise<boolean>;
@@ -255,6 +256,11 @@ export interface UseEditResult<T = unknown> {
     dialogConfig: ConfirmDialogConfig;
     onDialogConfirm: (() => void) | null;
     onDialogCancel: (() => void) | null;
+
+    // Selection delete dialog state and handlers
+    isDeleteDialogOpen: boolean;
+    onSelectionDeleteConfirm: (deleteOption: 'page' | 'all') => Promise<void>;
+    onSelectionDeleteCancel: () => void;
     nextPrevEditRowInfo: RefObject<KeyboardEvent>;
     focusLastField: RefObject<boolean>;
     escEnterIndex: RefObject<number>;
@@ -1210,4 +1216,182 @@ export interface UseConfirmDialogResult {
      * @returns {void}
      */
     onDialogCancel: () => void;
+}
+
+/**
+ * Represents a single delete option in the DeleteDialog.
+ *
+ * @private
+ */
+export interface DeleteOption {
+    /**
+     * Unique identifier for the delete option (e.g., 'page', 'all', 'filtered').
+     */
+    value: string;
+
+    /**
+     * Display label for the option shown to the user.
+     */
+    label: string;
+
+    /**
+     * Optional description providing additional context about what this option does.
+     */
+    description?: string;
+
+    /**
+     * If true, this option is disabled and cannot be selected.
+     */
+    disabled?: boolean;
+
+    /**
+     * If true, this option is selected by default.
+     */
+    isDefault?: boolean;
+}
+
+/**
+ * Event arguments for the DeleteDialog open event, providing information about the
+ * current dialog state and allowing consumers to customize dialog options.
+ *
+ * @private
+ */
+export interface DeleteDialogEventArgs {
+    /**
+     * The number of selected records on the current page.
+     *
+     * @default -
+     */
+    selectedPageCount: number;
+
+    /**
+     * The total number of selected records across all pages.
+     *
+     * @default -
+     */
+    totalSelectedCount: number;
+
+    /**
+     * Indicates whether the autoSelectMode is set to Intermediate, affecting how selections
+     * are counted and displayed across pages.
+     *
+     * @default false
+     */
+    isIntermediateMode: boolean;
+
+    /**
+     * The default delete option determined by the dialog logic ('page' or 'all').
+     *
+     * @default 'page'
+     */
+    defaultDeleteOption: string;
+
+    /**
+     * Optional customizations that allow consumers to override default dialog behavior.
+     *
+     * @default undefined
+     */
+    customizations?: {
+        /**
+         * If true, disables the "page" delete option.
+         */
+        pageOptionDisabled?: boolean;
+
+        /**
+         * If true, disables the "all" delete option.
+         */
+        allOptionDisabled?: boolean;
+
+        /**
+         * Override the default delete option.
+         */
+        defaultOption?: string;
+
+        /**
+         * Custom options to display. If provided, these will be used instead of the default options.
+         * You can provide 1, 2, 3 or more options as needed.
+         */
+        options?: DeleteOption[];
+
+        /**
+         * If true, hides the 'page' option from the dialog.
+         */
+        hidePageOption?: boolean;
+
+        /**
+         * If true, hides the 'all' option from the dialog.
+         */
+        hideAllOption?: boolean;
+    };
+}
+
+/**
+ * Props interface for the DeleteDialog component, defining its visibility and user action
+ * callbacks. The `isOpen` property controls the dialog state, while `onConfirm` and `onCancel`
+ * capture user decisions during the delete flow.
+ *
+ * @private
+ */
+export interface DeleteDialogProps {
+    /**
+     * Controls whether the DeleteDialog is visible. When set to true, the dialog is rendered
+     * and interactive; when false, it is hidden from view.
+     *
+     * @default -
+     */
+    isOpen: boolean;
+
+    /**
+     * Fires when the user confirms the delete action in the DeleteDialog. The `deleteOption`
+     * parameter specifies the scope of deletion (e.g., 'page', 'all', 'filtered', or custom value).
+     *
+     * @param {string} deleteOption - Specifies the delete scope. Built-in values: 'page', 'all'. Custom values can be provided via customizations.
+     * @event confirm
+     * @returns {Promise<void>}
+     */
+    onConfirm: (deleteOption: string) => Promise<void>;
+
+    /**
+     * Fires when the user cancels the delete action in the DeleteDialog, allowing consumers
+     * to revert pending UI states or dismiss the dialog without side effects.
+     *
+     * @event cancel
+     * @returns {void}
+     */
+    onCancel: () => void;
+
+    /**
+     * Fires when the DeleteDialog opens, allowing consumers to customize dialog options
+     * such as disabling specific delete options or changing the default selection.
+     *
+     * @param {DeleteDialogEventArgs} eventArgs - Event arguments containing dialog state and customization options.
+     * @event dialogOpen
+     * @returns {void}
+     */
+    onDialogOpen?: (eventArgs: DeleteDialogEventArgs) => void;
+}
+
+/**
+ * Represents the payload arguments for a delete operation, providing flags and item keys used to
+ * determine the scope and behavior of the delete process.
+ *
+ * @private
+ */
+export interface payload {
+    /**
+     * Indicates whether the header selection is controlled remotely. When true, the selection state is
+     * synchronized with a remote source (e.g., server-side paging), and local header selection should
+     * respect remote constraints.
+     *
+     * @default -
+     */
+    isHeaderSelectAllMode: boolean;
+
+    /**
+     * A list of item keys that must be toggled during the delete operation. Each key corresponds to a
+     * unique item identifier and is used to compute the final set of items affected by deletion.
+     *
+     * @default -
+     */
+    toggleKeys: string[];
 }

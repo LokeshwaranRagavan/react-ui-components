@@ -307,6 +307,13 @@ export function ColumnBase(): ColumnBaseReturnType {
             } else {
                 updateYRegionHelper(point, rect, series);
             }
+            //  Histogram-specific region calculation
+            if ( series.type === 'Histogram' && series.histogramValues) {
+                const center: number = point.xValue as number;
+                const halfWidth: number = series.histogramValues.binWidth / 2;
+                point.minimum = center - halfWidth;
+                point.maximum = center + halfWidth;
+            }
         };
 
     /**
@@ -342,9 +349,10 @@ export function ColumnBase(): ColumnBaseReturnType {
             if (series.columnWidthInPixel) {
                 return createDoubleRange(0, 0);
             }
+            const isHistogram: boolean = series.type === 'Histogram';
 
-            const position: number | undefined = !series.chart.enableSideBySidePlacement ? 0 : series.position;
-            const rectCount: number | undefined = !series.chart.enableSideBySidePlacement ? 1 : series.rectCount;
+            const position: number | undefined = isHistogram || !series.chart.enableSideBySidePlacement ? 0 : series.position;
+            const rectCount: number | undefined = isHistogram || !series.chart.enableSideBySidePlacement ? 1 : series.rectCount;
             const visibleSeries: SeriesProperties[] = series.chart.visibleSeries;
             const seriesSpacing: number = series.chart.enableSideBySidePlacement
                 ? (series.columnSpacing || 0) : 0;

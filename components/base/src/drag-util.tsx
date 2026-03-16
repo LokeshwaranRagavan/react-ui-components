@@ -1,5 +1,5 @@
 import { select } from './dom';
-import { IPosition } from './draggable';
+import { CursorPosition } from './draggable';
 import { isNullOrUndefined } from './util';
 
 /**
@@ -156,9 +156,9 @@ export function getCoordinates(evt: MouseEvent & TouchEvent): Coordinates {
  *
  * @private
  * @param {Element} ele - The element for which the parent position is calculated.
- * @returns {IPosition} - The calculated left and top position.
+ * @returns {CursorPosition} - The calculated left and top position.
  */
-export function calculateParentPosition(ele: Element): IPosition {
+export function calculateParentPosition(ele: Element): CursorPosition {
     if (isNullOrUndefined(ele)) {
         return { left: 0, top: 0 };
     }

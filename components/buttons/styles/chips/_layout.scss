@@ -25,6 +25,7 @@
   }
 
   .sf-chip {
+    max-width: 100%;
     border: $chip-border-size solid;
     border-radius: $chip-border-radius;
     font-size: $chip-font-size;
@@ -41,6 +42,7 @@
     padding: $chip-padding;
     position: relative;
     user-select: none;
+    letter-spacing: $chip-letter-spacing;
 
     &.sf-chip-has-icon {
       padding-block: $chip-has-icon-padding-block;
@@ -107,6 +109,10 @@
         display: flex;
         width: $chip-leading-icon-size;
       }
+    }
+
+    &:focus-visible {
+      box-shadow: $chip-keyboard-focus-box-shadow;
     }
   }
 }

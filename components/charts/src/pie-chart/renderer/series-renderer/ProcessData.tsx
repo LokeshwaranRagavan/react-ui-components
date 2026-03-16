@@ -5,6 +5,7 @@ import { getSeriesColor } from '../../utils/theme';
 import { extend, getValue, isNullOrUndefined } from '@syncfusion/react-base';
 import { useRegisterChartRender } from '../../hooks/events';
 import { applyPointRenderCallback } from './series-helper';
+import { PieSelectionPattern } from '../../base/enum';
 
 /**
  * Processes and manages chart series data.
@@ -342,14 +343,16 @@ export function pushPoints(point: Points, colors: string[], series: SeriesProper
     point.index = series.points.length;
     point.isExplode = series.explodeAll || (point.index === series.explodeIndex);
     point.color = point.color || colors[point.index % colors.length];
-    const customText: string =
+    const { color: renderedColor, pattern: renderedPattern }: {color: string, pattern: PieSelectionPattern} =
         applyPointRenderCallback(
             {
                 xValue: point.x as number | Date | string | null, yValue: point.y,
-                pointIndex: point.index, color: point.color
+                pointIndex: point.index, color: point.color,
+                pattern: point.pattern as PieSelectionPattern
             }
             , series.chart);
-    point.color = customText;
+    point.color = renderedColor;
+    point.pattern = renderedPattern;
     series.points.push(point);
 }
 

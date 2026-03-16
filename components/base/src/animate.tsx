@@ -1,4 +1,4 @@
-import { forwardRef, cloneElement, useRef, useState, useMemo, useCallback, useEffect, useImperativeHandle, Ref, ReactElement, RefObject, JSX } from 'react';
+import { forwardRef, cloneElement, useRef, useState, useMemo, useCallback, useEffect, useImperativeHandle, Ref, ReactElement, RefObject, JSX, useLayoutEffect } from 'react';
 import { useProviderContext } from './provider';
 import { getActualElement, getElementRef } from './util';
 import { Effect } from './animation';
@@ -98,7 +98,6 @@ export interface AnimateProps {
 /**
  * Internal interface to trigger animate events with type validation
  *
- * @private
  */
 export interface AnimateEvent {
     /**
@@ -228,6 +227,7 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
             }
         };
         const reflow: Function = (node: Element) => node.scrollTop;
+        const isInAnimation: boolean = effect && effect.toString().includes('In') && !effect.toString().includes('Out');
 
         const getTimingFunction: () => string = useCallback((): string => {
             return (timingFunction in easing)
@@ -246,6 +246,7 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
             if (elementRef.current) {
                 elementRef.current = getActualElement(elementRef) as HTMLElement;
                 elementRef.current.style.animation = '';
+                elementRef.current.style.opacity = '';
                 isAnimatingRef.current = false;
                 if (animationIdRef.current) {
                     cancelAnimationFrame(animationIdRef.current);
@@ -284,6 +285,7 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
                     onBegin(eventData);
                 }
                 if (timeStampRef.current < duration && isAnimatingRef.current) {
+                    elementRef.current.style.opacity = '1';
                     elementRef.current.style.animation = `${effect} ${duration}ms ${getTimingFunction()}`;
                     if (onProgress) {
                         const eventData: AnimateEvent = {
@@ -300,6 +302,7 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
                 } else {
                     if (elementRef.current) {
                         elementRef.current.style.animation = '';
+                        elementRef.current.style.opacity = '';
                         isAnimatingRef.current = false;
                     }
                     if (animationIdRef.current) {
@@ -354,6 +357,13 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
             animationIdRef.current = requestAnimationFrame(animationStep);
         }, [animationStep]);
 
+        useLayoutEffect(() => {
+            if (elementRef.current && isInAnimation) {
+                elementRef.current = getActualElement(elementRef) as HTMLElement;
+                elementRef.current.style.opacity = '0';
+            }
+        }, [children, animate, delay, effect, duration, timingFunction, onBegin, onEnd, startAnimation, stopAnimation]);
+
         useEffect(() => {
             if (!children) {
                 return undefined;
@@ -380,6 +390,8 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
                     };
                     onEnd(eventData);
                 }
+                elementRef.current = getActualElement(elementRef) as HTMLElement;
+                elementRef.current.style.opacity = '';
                 return undefined;
             }
             let timeoutId: number;
@@ -397,6 +409,7 @@ export const Animate: React.ForwardRefExoticComponent<GlobalAnimateProps & React
                 if (elementRef.current) {
                     elementRef.current = getActualElement(elementRef) as HTMLElement;
                     elementRef.current.style.animation = '';
+                    elementRef.current.style.opacity = '';
                     isAnimatingRef.current = false;
                     if (animationIdRef.current) {
                         cancelAnimationFrame(animationIdRef.current);
@@ -599,6 +612,13 @@ export interface SlideProps extends AnimateProps {
      * @default 'Right'
      */
     direction?: 'Top' | 'Bottom' | 'Left' | 'Right';
+    /**
+     * Reference to a container element to slide relative to its dimensions.
+     * If not provided, slides relative to the viewport (window).
+     *
+     * @default null
+     */
+    container?: HTMLElement | null;
 }
 
 /**
@@ -624,6 +644,7 @@ export const Slide: React.ForwardRefExoticComponent<SlideProps & React.RefAttrib
             timingFunction = 'ease',
             delay = 0,
             onEnd,
+            container,
             ...rest
         } = props;
         const [hidden, setHidden] = useState<boolean>(() => {
@@ -631,6 +652,46 @@ export const Slide: React.ForwardRefExoticComponent<SlideProps & React.RefAttrib
         });
         const isExiting: boolean = useMemo(() => !inProp && !hidden, [inProp, hidden]);
         const prevInProp: React.RefObject<boolean> = useRef(inProp);
+        const internalRef: React.RefObject<IAnimate> = useRef<IAnimate>(null);
+
+        useEffect(() => {
+            const element: HTMLElement | null = internalRef.current?.element;
+            if (!element || hidden)
+            {
+                return;
+            }
+            const rect: DOMRect = element.getBoundingClientRect();
+            const containerElement: HTMLElement | null = container;
+            const containerRect: DOMRect | undefined = containerElement?.getBoundingClientRect();
+            const width: number = containerElement ? containerElement.clientWidth : window.innerWidth;
+            const height: number = containerElement ? containerElement.clientHeight : window.innerHeight;
+            const leftEdge: number = containerRect ? containerRect.left : 0;
+            const topEdge: number = containerRect ? containerRect.top : 0;
+
+            switch (direction) {
+            case 'Left':
+                element.style.setProperty('--slide-width', `${rect.left - leftEdge + rect.width}px`);
+                break;
+            case 'Right':
+                element.style.setProperty('--slide-width', `${width - (rect.left - leftEdge)}px`);
+                break;
+            case 'Top':
+                element.style.setProperty('--slide-height', `${rect.top - topEdge + rect.height}px`);
+                break;
+            case 'Bottom':
+                element.style.setProperty('--slide-height', `${height - (rect.top - topEdge)}px`);
+                break;
+            }
+        }, [hidden, direction, container]);
+
+        const handleRef: (instance: IAnimate | null) => void = useCallback((instance: IAnimate | null) => {
+            internalRef.current = instance;
+            if (typeof ref === 'function') {
+                ref(instance);
+            } else if (ref) {
+                (ref as React.RefObject<IAnimate | null>).current = instance;
+            }
+        }, [ref]);
 
         useEffect(() => {
             if (prevInProp.current !== inProp) {
@@ -641,7 +702,7 @@ export const Slide: React.ForwardRefExoticComponent<SlideProps & React.RefAttrib
             }
         }, [inProp, hidden]);
 
-        const handleAnimationEnd: (args: AnimateEvent) => void  = useCallback((args: AnimateEvent) => {
+        const handleAnimationEnd: (args: AnimateEvent) => void = useCallback((args: AnimateEvent) => {
             if (!inProp) {
                 setHidden(true);
             }
@@ -660,7 +721,7 @@ export const Slide: React.ForwardRefExoticComponent<SlideProps & React.RefAttrib
 
         return (
             <Animate
-                ref={ref}
+                ref={handleRef}
                 appear={appear}
                 effect={effect}
                 duration={duration}
@@ -670,7 +731,8 @@ export const Slide: React.ForwardRefExoticComponent<SlideProps & React.RefAttrib
                 componentType="Slide"
                 style={{
                     visibility: isExiting ? 'hidden' : 'visible',
-                    transition: `visibility ${Math.max(1, Math.floor(duration * 0.95))}ms ${timingFunction} ${delay}ms`
+                    transition: `visibility ${Math.max(1, Math.floor(duration * 0.95))}ms ${timingFunction} ${delay}ms`,
+                    willChange: 'transform'
                 } as CSSStyleDeclaration}
                 {...rest}
             />
@@ -730,7 +792,7 @@ export const Flip: React.ForwardRefExoticComponent<FlipProps & React.RefAttribut
             }
         }, [inProp, hidden]);
 
-        const handleAnimationEnd: (args: AnimateEvent) => void  = useCallback((args: AnimateEvent) => {
+        const handleAnimationEnd: (args: AnimateEvent) => void = useCallback((args: AnimateEvent) => {
             if (!inProp) {
                 setHidden(true);
             }

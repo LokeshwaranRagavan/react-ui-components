@@ -1,0 +1,13 @@
+@use '../../../base/styles/themes/variables' as *;
+$datetimepicker-border-color: 1px solid rgba($border-light) !default;
+$datetimepicker-border-radius: $radius-8 !default;
+$datetimepicker-header-padding: $spacing-12 $spacing-12 !default;
+$datetimepicker-btn-spacing: $spacing-2 !default;
+$datetimepicker-toolbar-padding: $spacing-8 $spacing-16 !default;
+$datetimepicker-bg-color: rgba($content-bg-color) !default;
+$datetimepicker-button-group-radius: $radius-6 !default;
+$datetimepicker-ul-width: calc(var(--sf-spacing) * 20) !default;
+$datetimepicker-ul-height: calc(var(--sf-spacing) * 18) !default;
+$datetimepicker-button-group-outline: rgb($outline-variant) !default;
+$datetimepicker-dispaly-color: rgba($content-text-color) !default;
+$datetimepicker-toolbar-font-weight: $font-weight-medium !default;

@@ -66,6 +66,7 @@
   --sf-font-size-lg: calc(var(--sf-font-size) * 1.125);
   --sf-font-size-xl: calc(var(--sf-font-size) * 1.25);
   --sf-font-size-2xl: calc(var(--sf-font-size) * 1.5);
+  --sf-font-size-3xl: calc(var(--sf-font-size) * 2);
   --sf-line-height-xs: calc(var(--sf-font-size) * 1);
   --sf-line-height-sm: calc(var(--sf-font-size) * 1.25);
   --sf-line-height-base: calc(var(--sf-font-size) * 1.5);
@@ -99,6 +100,7 @@
   --sf-spacing-18: calc(var(--sf-spacing) * 1.125);
   --sf-spacing-20: calc(var(--sf-spacing) * 1.25);
   --sf-spacing-22: calc(var(--sf-spacing) * 1.375);
+  --sf-spacing-23: calc(var(--sf-spacing) * 1.4375);
   --sf-spacing-24: calc(var(--sf-spacing) * 1.5);
   --sf-spacing-28: calc(var(--sf-spacing) * 1.75);
   --sf-spacing-30: calc(var(--sf-spacing) * 1.875);
@@ -220,6 +222,7 @@ $shadow-lg: var(--sf-elevation-3) !default;
 $shadow-inner: var(--sf-elevation-inner)!default;
 
 $shadow-focus-ring1: 0 0 0 1px #fff, 0 0 0 3px #000 !default;
+$shadow-focus-ring2: 0 0 0 2px rgba($content-text-color, 1) !default;
 
 $secondary-bg-color: linear-gradient(0deg, rgba($content-bg-color, 1), rgba($content-bg-color, 1)), rgba($content-bg-color) !default;
 $secondary-border-color: linear-gradient(0deg, rgba($content-bg-color, 1), rgba($content-bg-color, 1)) !default;
