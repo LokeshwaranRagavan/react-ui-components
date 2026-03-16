@@ -44,7 +44,7 @@ export default function App() {
 
 **Resources**
 
-- [Scheduler Demo/Docs](https://react.syncfusion.com/scheduler/overview)
+- [Scheduler Demo/Docs](https://react.syncfusion.com/react-ui/scheduler/overview)
 - [Scheduler API](https://react-api.syncfusion.com/scheduler/overview)
 
 <p align="center">
