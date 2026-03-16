@@ -1,11 +1,12 @@
-import { AxisLabelPosition, ChartRangePadding, ChartSeriesType, EmptyPointMode, StepPosition, AxisValueType, LabelPosition, LegendShape, ChartMarkerShape, ZoomMode, ToolbarItems, SplineType, IntervalType, SkeletonType, StripLineSizeUnit, ZIndex, DataLabelIntersectMode, CrosshairLineType, SelectionMode, SelectionPattern, AnnotationCoordinateUnit, ErrorBarType } from './enum';
+import { AxisLabelPosition, ChartRangePadding, ChartSeriesType, EmptyPointMode, StepPosition, AxisValueType, LabelPosition, LegendShape, ChartMarkerShape, ZoomMode, ToolbarItems, SplineType, IntervalType, SkeletonType, StripLineSizeUnit, ZIndex, DataLabelIntersectMode, CrosshairLineType, SelectionMode, SelectionPattern, AnnotationCoordinateUnit, ErrorBarType, TrendlineTypes } from './enum';
 import { DataManager, Query } from '@syncfusion/react-data';
-import { AxisDataProps, Chart, ChartSizeProps, VisibleRangeProps } from '../chart-area/chart-interfaces';
+import { AxisDataProps, Chart, ChartSizeProps, ChartTrendlineModel, VisibleRangeProps } from '../chart-area/chart-interfaces';
 import { Animation } from '../../common';
 import { HorizontalAlignment, VerticalAlignment } from '@syncfusion/react-base';
 import { JSX } from 'react';
 import { FadeOutMode, LegendPosition, TextOverflow, Theme, TitlePosition } from '../../common';
 import { FocusOutlineProps } from '../../common/interfaces';
+
 
 /**
  * Represents the border configuration for the chart title.
@@ -263,6 +264,51 @@ export interface ChartFontProps {
 }
 
 /**
+ * Defines configuration options for the connector line in a Waterfall series.
+ */
+export interface ChartWaterfallConnectorProps {
+
+    /**
+     * Enables or disables the connector line.
+     *
+     * When set to `true`, a line is drawn between consecutive columns  to show the progression
+     * of values.
+     *
+     * @default trued
+     */
+    visible?: boolean;
+
+    /**
+     * Specifies the color of the connector line.
+     *
+     * @default ''
+     */
+    strokeColor?: string;
+
+    /**
+     * Specifies the width of the connector line in pixels.
+     *
+     * @default 1
+     */
+    strokeWidth?: number;
+
+    /**
+     * Specifies the dash pattern of the connector line.
+     *
+     * @default ''
+     */
+    dashArray?: string;
+
+    /**
+     * Specifies the opacity of the connector line.
+     * Value ranges from 0 to 1.
+     *
+     * @default 1
+     */
+    strokeOpacity?: number;
+}
+
+/**
  * Defines the configuration options for customizing the chart area.
  */
 export interface ChartAreaProps {
@@ -493,6 +539,17 @@ export interface ChartIndexesProps {
      * @default 0
      */
     pointIndex?: number;
+
+    /**
+     * Index of the trendline within the specified series.
+     * Used to identify which trendline is being referenced when multiple trendlines exist.
+     * Only applicable when working with trendline elements.
+     *
+     * @private
+     * @default 0
+     */
+    trendlineIndex?: number;
+
 }
 
 /**
@@ -1533,6 +1590,10 @@ export interface ChartSeriesProps {
      * - `RangeArea` - Renders a rangeArea chart.
      * - `RangeColumn` - Renders a rangeColumn chart.
      * - `SplineRangeArea` - Renders a spline range area series.
+     * - `Waterfall` - Renders a waterfall series.
+     * - `MultiColoredArea` - Renders a MultiColoredArea chart.
+     * - `Histogram` - Renders a histogram series
+     * - `Pareto` - Renders a pareto series.
      *
      * @default 'Line'
      */
@@ -1685,6 +1746,17 @@ export interface ChartSeriesProps {
     marker?: ChartMarkerProps;
 
     /**
+     * Specifies the collection of trendlines to be displayed for the series.
+     *
+     * Trendlines identify trends or patterns in data by fitting a line or curve through data points.
+     * Supports multiple types: Linear, Exponential, Logarithmic, Polynomial, Power, and Moving Average.
+     *
+     * @default []
+     * @private
+     */
+    trendlines?: ChartTrendlineModel[];
+
+    /**
      * Sets the minimum radius for data points (bubbles) in the series.
      *
      * @default 1
@@ -1778,7 +1850,132 @@ export interface ChartSeriesProps {
      */
     enableTooltip?: boolean;
 
+    /**
+     * configuration options for customizing the appearance and behavior of a Waterfall chart series.
+     */
+    waterfallSettings?: ChartWaterfallSettings;
+
+    /**
+     * Configuration options for customizing
+     * the appearance and behavior of a
+     * Histogram chart series.
+     */
+    histogramSettings?: ChartHistogramSettings;
+
 }
+
+/**
+ * configuration options for customizing the appearance and behavior of a Waterfall chart series.
+ */
+export interface ChartWaterfallSettings {
+
+    /**
+     * Configures the connector line that visually links the columns in a Waterfall chart.
+     *
+     * @default  { strokeWidth: 1, strokeColor: '#5F6A6A', strokeDasharray: '', strokeOpacity: 1 }
+     */
+    connectorLine?: ChartWaterfallConnectorProps;
+
+    /**
+     * Specifies the fill color for columns representing negative values in the Waterfall chart.
+     *
+     * @default '#C64E4A'
+     */
+    negativeColor?: string;
+
+    /**
+     * Specifies the fill color for columns representing positive values in the Waterfall chart.
+     *
+     * @default ''
+     */
+    positiveColor?: string;
+
+    /**
+     * Defines the fill color for intermediate (sub-total) sum columns in the Waterfall chart.
+     *
+     * @default '#4E81BC'
+     */
+    subtotalColor?: string;
+
+    /**
+     * Defines the fill color for the final total sum column in the Waterfall chart.
+     *
+     * @default '#4E81BC'
+     */
+    totalColor?: string | null;
+
+    /**
+     * Specifies the indexes of data points that should be treated as intermediate sum points.
+     *
+     * @default []
+     */
+    intermediateSumIndexes?: number[];
+
+    /**
+     * Specifies the indexes of data points that should be treated as total sum points.
+     *
+     * @default []
+     */
+    sumIndexes?: number[];
+}
+
+/**
+ * Configuration options for customizing the appearance and behavior of a Histogram
+ * chart series.
+ */
+export interface ChartHistogramSettings {
+    /**
+     * Indicates whether to display the normal distribution curve for the Histogram series.
+     *
+     * When enabled, the chart calculates and renders a smooth normal distribution curve
+     * based on the sample mean and sample standard deviation of the Histogram data.
+     *
+     * @default false
+     */
+    showNormalDistribution?: boolean;
+
+    /**
+     * Specifies the bin interval (bin width) used to group numeric values in the Histogram.
+     *
+     * When set to `null`, This ensures optimal bin sizing based on the
+     * distribution and variance of the dataset.
+     *
+     * @default null
+     */
+    binInterval?: number | null;
+
+    /**
+     * Specifies the opacity of the normal distribution curve.
+     * Accepts values from 0 (fully transparent) to 1 (fully opaque).
+     *
+     * @default 1
+     */
+    normalCurveOpacity?: number;
+
+    /**
+     * Defines the stroke (line) color used when rendering the normal distribution curve.
+     * If not specified, the color is automatically assigned based on the chart's active theme.
+     *
+     * @default ''
+     */
+    normalCurveColor?: string;
+
+    /**
+     * Defines the stroke width of the normal distribution curve, measured in pixels.
+     *
+     * @default 2
+     */
+    normalCurveWidth?: number;
+
+    /**
+     * Specifies the dash pattern for the normal distribution curve stroke.
+     * Provide a string of comma-separated values (e.g., '4,2') to apply dashed line styling.
+     *
+     * @default ''
+     */
+    normalCurveDashArray?: string;
+}
+
 
 /**
  * Configuration options for handling empty data points in a chart series.
@@ -3758,3 +3955,176 @@ export interface PointRenderProps {
     yValue: number | Date | string | null;
 }
 
+/**
+ * Configuration options for rendering a trendline on a chart series.
+ * Trendlines help visualize overall trends or direction in the underlying data, and can be
+ * projected forward or backward to indicate potential movement.
+ * Note: Trendlines are only computed when the parent series has `visible: true`.
+ */
+export interface ChartTrendlineProps {
+    /**
+     * Display name of the trendline shown in the chart legend.
+     *
+     * @default ''
+     */
+    name?: string;
+
+    /**
+     * Dash pattern for the trendline stroke, as comma-separated segment lengths.
+     *
+     * @default ''
+     */
+    dashArray?: string;
+
+    /**
+     * Controls the visibility of the trendline.
+     * When set to `false`, the trendline will be hidden from the chart.
+     *
+     * @default true
+     */
+    visible?: boolean;
+
+    /**
+     * Specifies the type of trendline to be rendered.
+     *
+     * Available options:
+     * - `Linear`: A straight line showing the general direction of data.
+     * - `Exponential`: A curve fitting data with exponential growth or decay.
+     * - `Polynomial`: A curve fitting data with a polynomial function.
+     * - `Power`: A curve representing data with a power function.
+     * - `Logarithmic`: A curve fitting data with a logarithmic scale.
+     * - `MovingAverage`: Smoothens data using a moving average calculation.
+     *
+     * @default 'Linear'
+     */
+    type?: TrendlineTypes;
+
+    /**
+     * Defines the number of periods used to compute a moving average.
+     *
+     * @default 2
+     */
+    period?: number;
+
+    /**
+     * Specifies the polynomial order for the polynomial trendline.
+     * Only applicable when `type` is set to `Polynomial`.
+     *
+     * @default 2
+     */
+    polynomialOrder?: number;
+
+    /**
+     * Defines the number of data periods to extend the trendline backward from the first data
+     * point.
+     *
+     * @default 0
+     */
+    backwardForecast?: number;
+
+    /**
+     * Defines the number of periods by which the trendline should extend forward from the last
+     * data point.
+     *
+     * @default 0
+     */
+    forwardForecast?: number;
+
+    /**
+     * Configures animation settings for the trendline, including duration and delay.
+     *
+     * @default { enable: true, duration: 1000, delay: 0 }
+     */
+    animation?: Animation;
+
+    /**
+     * Enables or disables tooltips for the trendline.
+     * When enabled, hovering over the trendline displays a tooltip with relevant information.
+     *
+     * @default true
+     */
+    enableTooltip?: boolean;
+
+    /**
+     * Specifies the y-intercept value for the trendline.
+     * This forces the trendline to pass through a specific point on the y-axis.
+     *
+     * @default null
+     */
+    intercept?: number;
+
+    /**
+     * Sets the stroke color of the trendline. Accepts any valid CSS color string.
+     *
+     * @default '' (inherits series color)
+     */
+    stroke?: string;
+
+    /**
+     * Specifies the width of the trendline in pixels.
+     *
+     * @default 2
+     */
+    width?: number;
+
+    /**
+     * Opacity of the trendline stroke (0–1).
+     *
+     * @default 1
+     */
+    opacity?: number;
+
+    /**
+     * Defines the shape used to represent the trendline in the chart legend.
+     *
+     * - When set to `'SeriesType'` (default), the trendline uses a straight line marker in the
+     *   legend (regardless of parent series type), styled with the trendline's stroke.
+     * - Other values (Circle, Triangle, etc.) render the corresponding marker shape.
+     *
+     * @default 'SeriesType'
+     */
+    legendShape?: LegendShape;
+
+    /**
+     * Provides accessibility options for trendline elements to ensure compatibility
+     * with assistive technologies.
+     *
+     * @default { ariaLabel: null, focusable: true, role: 'img', tabIndex: 0 }
+     */
+    accessibility?: ChartAccessibilityProps;
+}
+
+/**
+ * Provides options for customizing the Pareto series line configuration in the chart.
+ */
+export interface ChartParetoOptionsProps {
+
+    /**
+     * Fill color of the Pareto line. Accepts CSS color strings (e.g., hex or rgba).
+     * By default, a color based on the theme is used.
+     *
+     * @default null
+     */
+    fill?: string;
+
+    /**
+     * Thickness of the Pareto line (in pixels).
+     *
+     * @default 1
+     */
+    width?: number;
+
+    /**
+     * Dash pattern for the Pareto line stroke.
+     *
+     * @default '0'
+     */
+    dashArray?: string;
+
+    /**
+     * Specifies whether to display the axis associated with the Pareto line.
+     *
+     * @default true
+     */
+    showAxis?: boolean;
+}

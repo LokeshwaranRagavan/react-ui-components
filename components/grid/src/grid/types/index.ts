@@ -12,3 +12,4 @@ export * from './search.interfaces';
 export * from './selection.interfaces';
 export * from './sort.interfaces';
 export * from './toolbar.interfaces';
+export * from './virtualization.interface';

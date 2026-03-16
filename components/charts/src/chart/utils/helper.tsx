@@ -1001,6 +1001,7 @@ export const calculateLegendShapes: (
             const ly: number = location.y;
             switch (shape) {
             case 'Line':
+            case 'MultiColoredLine':
             case 'StackingLine':
             case 'StackingLine100':
                 dir = 'M' + ' ' + (lx + (-width * (3 / 4))) + ' ' + (ly) + ' ' +
@@ -1062,6 +1063,8 @@ export const calculateLegendShapes: (
                 merge(options, { 'd': dir });
                 break;
             case 'Column':
+            case 'Histogram':
+            case 'Pareto':
             case 'StackingColumn':
             case 'StackingColumn100':
                 dir = 'M' + ' ' + (lx - 3 * (width / 5)) + ' ' + (ly - (height / 5)) + ' ' + 'L' + ' ' +
@@ -1107,6 +1110,7 @@ export const calculateLegendShapes: (
                 merge(options, { 'd': dir });
                 break;
             case 'Area':
+            case 'MultiColoredArea':
             case 'SplineRangeArea':
             case 'StackingArea':
             case 'StackingArea100':
@@ -1586,18 +1590,19 @@ export function rotateTextSize(
         : text as string;
 
     textEl.textContent = labelText;
-
     const fontStyle: string = font.fontStyle as string;
     const fontWeight: string = font.fontWeight as string;
     const fontSize: string = font.fontSize as string;
     const fontFamily: string = font.fontFamily as string;
+
     textEl.setAttribute('id', 'rotate_text');
     textEl.style.fontStyle = fontStyle;
     textEl.style.fontWeight = fontWeight;
     textEl.style.fontSize = fontSize;
     textEl.style.fontFamily = fontFamily;
     textEl.setAttribute('text-anchor', 'middle');
-    textEl.setAttribute('transform', `rotate(${angle}, 0, 0)`);
+    const rotateAngle: number = isNaN(angle as number) ? 0 : angle;
+    textEl.setAttribute('transform', `rotate(${rotateAngle}, 0, 0)`);
     textEl.setAttribute('x', `${chart.chartAreaRect.x}`);
     textEl.setAttribute('y', `${chart.chartAreaRect.y}`);
 
@@ -1790,7 +1795,7 @@ export function isRectangularSeriesType(series: SeriesProperties, isStack: boole
     const type: string = (series.type ?? '').toLowerCase();
     return (
         type.includes('column') || type.includes('bar') || type.includes('candle') || type.includes('hilo') ||
-        type.includes('hiloopenclose') || isStack
+        type.includes('hiloopenclose') || type.includes('waterfall') || type.includes('histogram') || type.includes('pareto') || isStack
     );
 }
 
@@ -1832,9 +1837,14 @@ export function checkTabindex(visibleSeries: ChartSeriesProps[], index: number):
  * @private
  */
 export function indexFinder(id: string): ChartIndexesProps {
-    let ids: string[] = ['NaN', 'NaN'];
-
-    if (id.includes('SeriesGroup')) {
+    let ids: string[] = ['NaN', 'NaN', 'NaN'];
+    if (id.includes('_Trendline_')) {
+        const parts: string[] = id.split('_Series_')[1].split('_Trendline_');
+        ids[0] = parts[0];
+        ids[1] = 'NaN';
+        ids[2] = parts[1];
+    }
+    else if (id.includes('SeriesGroup')) {
         ids = id.split('SeriesGroup');
         ids[0] = ids[1];
     } else if (id.includes('_Point_')) {
@@ -1867,7 +1877,8 @@ export function indexFinder(id: string): ChartIndexesProps {
     }
     return {
         seriesIndex: parseInt(ids[0], 10),
-        pointIndex: parseInt(ids[1], 10)
+        pointIndex: parseInt(ids[1], 10),
+        trendlineIndex: parseInt(ids[2], 10)
     };
 }
 

@@ -2,8 +2,9 @@ import { KeyboardEvent } from 'react';
 import { ActiveViewProps, ViewsInfo } from '../types/internal-interface';
 import { CSS_CLASSES } from '../common/constants';
 import { closest } from '@syncfusion/react-base';
-import { getSelectedEvents, clearAndSelectAppointment } from '../utils/actions';
+import { getSelectedEvents, clearAndSelectAppointment, clearAndSelect, getCellFromIndex } from '../utils/actions';
 import { EventModel } from '../types/scheduler-types';
+import { CrudAction, Direction, AlertAction } from '../types/enums';
 
 /**
  * Hook to add keyboard interactions for the Scheduler component.
@@ -14,7 +15,8 @@ import { EventModel } from '../types/scheduler-types';
  * @returns {void}
  * @private
  */
-export const useKeyboard: (context: ActiveViewProps, eventsData: EventModel[]) => (event: KeyboardEvent<HTMLDivElement>) => void = (
+export const useKeyboard: (context: ActiveViewProps, eventsData: EventModel[], eventsprocessed?: EventModel[]) =>
+(event: KeyboardEvent<HTMLDivElement>) => void = (
     context: ActiveViewProps,
     eventsData: EventModel[]
 ): ((event: KeyboardEvent<HTMLDivElement>) => void) => {
@@ -99,18 +101,114 @@ export const useKeyboard: (context: ActiveViewProps, eventsData: EventModel[]) =
             if (showQuickInfoPopup && context.quickPopupRef?.current?.element) {
                 context.quickPopupRef?.current.handleDelete();
             } else if (showDeleteAlert) {
-                const selectedEvent: Record<string, any> = getSelectedEvents(eventsData || [], scheduleRootElement).data;
-                const items: Record<string, any>[] = Array.isArray(selectedEvent) ? selectedEvent : [selectedEvent];
-                const performDelete: () => void = (): void => {
-                    items.forEach((item: Record<string, any>) => {
-                        schedulerRef?.current?.deleteEvent?.(item);
-                    });
-                };
-                showDeleteAlert(performDelete);
+                const selectedEvent: EventModel = getSelectedEvents(eventsData || [], scheduleRootElement).data;
+                const items: EventModel[] = Array.isArray(selectedEvent) ? selectedEvent : [selectedEvent];
+                const firstItem: EventModel = items[0];
+                if (firstItem && firstItem.recurrenceID && context.showRecurrenceAlert) {
+                    const handleRecurrenceDelete: (selectOption: string) => void = (selectOption: string): void => {
+                        if (firstItem) {
+                            const action: CrudAction = selectOption === 'EditOccurrence' ?
+                                'DeleteOccurrence' : 'DeleteSeries';
+                            schedulerRef?.current?.deleteEvent?.(firstItem, action);
+                        }
+                    };
+                    context.showRecurrenceAlert?.(AlertAction.RecurrenceDelete, handleRecurrenceDelete);
+                } else {
+                    const performDelete: () => void = (): void => {
+                        items.forEach((item: EventModel) => {
+                            schedulerRef?.current?.deleteEvent?.(item);
+                        });
+                    };
+                    showDeleteAlert(performDelete);
+                }
             }
             event.preventDefault();
         }
     };
+
+    const getNextCellPosition: (direction: Direction, rowIndex: number, colIndex: number, rows: NodeListOf<HTMLElement>,
+        fetchCells: (r: number) => NodeListOf<HTMLElement>, cellsInCurrentRow: NodeListOf<HTMLElement>) => {
+        nextRow: number;
+        nextCol: number;
+    } | null = (
+        direction: Direction,
+        rowIndex: number,
+        colIndex: number,
+        rows: NodeListOf<HTMLElement>,
+        fetchCells: (r: number) => NodeListOf<HTMLElement>,
+        cellsInCurrentRow: NodeListOf<HTMLElement>
+    ): { nextRow: number; nextCol: number } | null => {
+        let nextRow: number = rowIndex;
+        let nextCol: number = colIndex;
+
+        switch (direction) {
+        case Direction.Left: {
+            if (colIndex > 0) {
+                nextCol = colIndex - 1;
+            } else if (rowIndex > 0) {
+                nextRow = rowIndex - 1;
+                const prevRowCells: NodeListOf<HTMLElement> = fetchCells(nextRow);
+                nextCol = Math.max(0, (prevRowCells?.length ?? 1) - 1);
+            }
+            break;
+        }
+        case Direction.Right: {
+            if (colIndex < (cellsInCurrentRow?.length ?? 0) - 1) {
+                nextCol = colIndex + 1;
+            } else if (rowIndex < rows.length - 1) {
+                nextRow = rowIndex + 1;
+                nextCol = 0;
+            }
+            break;
+        }
+        case Direction.Up: {
+            if (rowIndex === 0) { return null; }
+            nextRow = rowIndex - 1;
+            const upperCells: NodeListOf<HTMLElement> = fetchCells(nextRow);
+            nextCol = Math.min(colIndex, Math.max(0, (upperCells?.length ?? 1) - 1));
+            break;
+        }
+        case Direction.Down: {
+            if (rowIndex >= rows.length - 1) { return null; }
+            nextRow = rowIndex + 1;
+            const lowerCells: NodeListOf<HTMLElement> = fetchCells(nextRow);
+            nextCol = Math.min(colIndex, Math.max(0, (lowerCells?.length ?? 1) - 1));
+            break;
+        }
+        }
+
+        return { nextRow: nextRow, nextCol: nextCol };
+    };
+
+    const processCellNavigation: (dir: Direction, event: KeyboardEvent<HTMLDivElement>) => void =
+        (dir: Direction, event: KeyboardEvent<HTMLDivElement>): void => {
+            const root: HTMLElement | null | undefined = schedulerRef.current?.element;
+            const activeRowCell: HTMLElement | null = (event.target as HTMLElement).closest?.('.' + CSS_CLASSES.WORK_CELLS_ROW);
+            const rowCells: NodeListOf<HTMLElement> = root.querySelectorAll(`.${CSS_CLASSES.WORK_CELLS_ROW}`);
+            const rowIndex: number = Array.prototype.indexOf.call(rowCells, activeRowCell);
+
+            const getCells: (r: number) => NodeListOf<HTMLElement> = (r: number): NodeListOf<HTMLElement> => rowCells.item(r)?.querySelectorAll(`.${CSS_CLASSES.WORK_CELLS}`);
+            const cellsInRow: NodeListOf<HTMLElement> = getCells(rowIndex);
+            const colIndex: number = Array.prototype.indexOf.call(cellsInRow, (event.target as HTMLElement));
+
+            let nextRow: number = rowIndex;
+            let nextCol: number = colIndex;
+
+            const nextCellPosition: {
+                nextRow: number;
+                nextCol: number;
+            } = getNextCellPosition(dir, rowIndex, colIndex, rowCells, getCells, cellsInRow);
+            if (!nextCellPosition) { return; }
+            nextRow = nextCellPosition.nextRow;
+            nextCol = nextCellPosition.nextCol;
+
+            const targetCell: HTMLElement | null = getCellFromIndex(root, nextRow, nextCol);
+            if (targetCell) {
+                clearAndSelect(targetCell);
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
 
     const handleKey: (event: KeyboardEvent<HTMLDivElement>) => void = (event: KeyboardEvent<HTMLDivElement>): void => {
         if (!keyboardNavigation) { return; }
@@ -136,6 +234,20 @@ export const useKeyboard: (context: ActiveViewProps, eventsData: EventModel[]) =
             processHome(event);
             break;
         }
+        case 'ArrowUp': {
+            if (!event.ctrlKey && !event.metaKey && (targetElement?.closest?.('.' + CSS_CLASSES.WORK_CELLS))) {
+                processCellNavigation(Direction.Up, event);
+            }
+            break;
+        }
+        case 'ArrowDown': {
+            if (!event.ctrlKey && !event.metaKey) {
+                if (targetElement?.closest?.('.' + CSS_CLASSES.WORK_CELLS)) {
+                    processCellNavigation(Direction.Down, event);
+                }
+            }
+            break;
+        }
         case 'Delete': {
             processDelete(event);
             break;
@@ -143,12 +255,20 @@ export const useKeyboard: (context: ActiveViewProps, eventsData: EventModel[]) =
         case 'ArrowLeft': {
             if (event.ctrlKey || event.metaKey) {
                 processPreviousView(event);
+            } else {
+                if (targetElement?.closest?.('.' + CSS_CLASSES.WORK_CELLS)) {
+                    processCellNavigation(Direction.Left, event);
+                }
             }
             break;
         }
         case 'ArrowRight': {
             if (event.ctrlKey || event.metaKey) {
                 processNextView(event);
+            } else {
+                if (targetElement?.closest?.('.' + CSS_CLASSES.WORK_CELLS)) {
+                    processCellNavigation(Direction.Right, event);
+                }
             }
             break;
         }

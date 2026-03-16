@@ -40,6 +40,8 @@ export class Query {
     /** @hidden */
     public isCountRequired: boolean;
     /** @hidden */
+    public isCountDistinct: boolean;
+    /** @hidden */
     public dataManager: DataManager;
     /** @hidden */
     public distincts: string[] = [];
@@ -161,6 +163,7 @@ export class Query {
         cloned.subQuery = this.subQuery;
         cloned.fKey = this.fKey;
         cloned.isCountRequired = this.isCountRequired;
+        cloned.isCountDistinct = this.isCountDistinct;
         cloned.distincts = this.distincts.slice(0);
         cloned.lazyLoad = this.lazyLoad.slice(0);
         return cloned;
@@ -240,7 +243,7 @@ export class Query {
      */
     public where(
         fieldName: string | Predicate | Predicate[], operator?: string,
-        value?: ValueType | null, ignoreCase?: boolean, ignoreAccent?: boolean, matchCase?: boolean): Query {
+        value?: ValueType | null, ignoreCase?: boolean, ignoreAccent?: boolean, matchCase?: boolean, isDistinct?: boolean): Query {
 
         let predicate: Predicate | QueryOptions = null;
         if (typeof fieldName === 'string') {
@@ -249,7 +252,7 @@ export class Query {
             predicate = fieldName;
         }
         this.queries.push({
-            fn: 'onWhere',
+            fn: isDistinct ? 'onDistinct' : 'onWhere',
             e: <QueryOptions>predicate
         });
         return this;
@@ -508,11 +511,13 @@ export class Query {
      * Enables total record count retrieval in the query result.
      *
      * When set, the query result will include the total number of records matching the criteria.
+     * @param {boolean} distinct - Enables distinct record count retrieval in the query result.
      *
      * @return {Query} - Returns the current `Query` instance for chaining.
      */
-    public requiresCount(): Query {
+    public requiresCount(distinct?: boolean): Query {
         this.isCountRequired = true;
+        this.isCountDistinct = distinct || false;
         return this;
     }
 

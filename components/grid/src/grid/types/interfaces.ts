@@ -1,11 +1,11 @@
 import { Dispatch, HTMLAttributes, JSX, ReactElement, ReactNode, RefObject, SetStateAction, MouseEvent, FocusEvent, CSSProperties, UIEvent } from 'react';
 import { ReturnType, DataManager, Predicate, Query, DataResult, Aggregates } from '@syncfusion/react-data';
 import { DateFormatOptions, NumberFormatOptions } from '@syncfusion/react-base';
-import { CellTypes, RenderType } from '../types/enum';
+import { CellTypes, RenderType, ScrollMode } from '../types/enum';
 import { FilterSettings, FilterEvent, filterModule } from '../types/filter.interfaces';
 import { ColumnProps, IColumnBase } from '../types/column.interfaces';
 import { FocusStrategyModule } from '../types/focus.interfaces';
-import { InlineEditFormRef, editModule } from '../types/edit.interfaces';
+import { InlineEditFormRef, payload, editModule } from '../types/edit.interfaces';
 import { selectionModule } from '../types/selection.interfaces';
 import { PagerRef } from '@syncfusion/react-pager';
 import { AggregateColumnProps, AggregateData, AggregateRowProps } from '../types/aggregate.interfaces';
@@ -16,6 +16,7 @@ import { SortSettings, SortModule, SortEvent, SortDescriptor } from '../types/so
 import { ToolbarAPI } from './toolbar.interfaces';
 import * as React from 'react';
 import { UseCommandColumnResult } from './command.interfaces';
+import { VirtualSettings } from './virtualization.interface';
 
 /**
  * IValueFormatter interface defines the methods for value formatting services
@@ -271,7 +272,7 @@ export interface IRow<T> {
      *
      * @default 0
      */
-    index?: number;
+    rowIndex?: number;
 
     /**
      * Indentation level for hierarchical rows.
@@ -285,7 +286,7 @@ export interface IRow<T> {
      *
      * @default -
      */
-    height?: string;
+    height?: number;
 
     /**
      * Parent row unique identifier for hierarchical rows.
@@ -321,9 +322,16 @@ export interface IRow<T> {
  */
 export interface Scroll {
     /**
-     * Sets padding for scroll elements
+     * Method to set padding based on scrollbar width
      */
     setPadding?: () => void;
+    getScrollBarWidth?: () => number;
+    virtualRowInfo: VirtualRowInfo;
+    virtualColumnInfo: VirtualColumnInfo;
+    scrollIntoVirtualRowsRangeView: (startPage: number, endPage: number, filteredTotalRecordsCount?: number) => void;
+    isDataOperationPreventVirtualCache: RefObject<boolean>;
+    scrollToVirtualColumnIndex: (index?: number) => void;
+    setVirtualColumnEndIndex: (visibleColumns?: ColumnProps[]) => void;
 }
 
 /**
@@ -340,7 +348,7 @@ export interface MutableGridBase<T = unknown> {
      *
      * @private
      */
-    uiColumns?: ColumnProps<T>[];
+    uiColumns?: RefObject<ColumnProps<T>[]>;
 
     /**
      * Sort settings model
@@ -363,6 +371,18 @@ export interface MutableGridBase<T = unknown> {
      * Current view data
      */
     currentViewData?: T[];
+
+    /**
+     * Sets the virtual cached current view data
+     *
+     * @param {Map<number, Object>} data - The data to set
+     */
+    setVirtualCachedViewData?: Dispatch<SetStateAction<Map<number, T>>>;
+
+    /**
+     * Current virtual cached view data
+     */
+    virtualCachedViewData?: Map<number, T>;
 
     /**
      * Header row depth for stacked headers
@@ -412,7 +432,9 @@ export interface MutableGridBase<T = unknown> {
     totalRecordsCount?: number;
     responseData?: Object;
     setResponseData?: Dispatch<SetStateAction<Object>>;
-    commandColumnModule?: UseCommandColumnResult;
+    commandColumnModule?: UseCommandColumnResult<T>;
+    // isContentBusy?: boolean
+    // setIsContentBusy?: React.Dispatch<React.SetStateAction<boolean>>;
     /**
      * Get the parent element
      */
@@ -439,7 +461,22 @@ export interface MutableGridBase<T = unknown> {
     /**
      * The toolbar module for toolbar operations
      */
-    toolbarModule?: ToolbarAPI | Record<string, unknown>;
+    toolbarModule?: ToolbarAPI;
+
+    /**
+     * Indicates whether the grid has a checkbox selection column
+     */
+    isCheckBoxColumn?: boolean;
+    /** @default {enableRow: true, enableColumn: true, preventMaxRenderedRows: false, rowBuffer: preventMaxRenderedRows ? 500 : 5, columnBuffer: 5} */
+    virtualSettings?: VirtualSettings;
+    /** @default ScrollMode.Auto */
+    scrollMode?: ScrollMode;
+    totalVirtualColumnWidth?: number;
+    columnOffsets?: {[key: number]: number};
+    offsetX?: number;
+    offsetY?: number;
+    setOffsetX?: Dispatch<SetStateAction<number>>;
+    setOffsetY?: Dispatch<SetStateAction<number>>;
 }
 
 /**
@@ -573,6 +610,18 @@ export interface RenderRef<T = unknown> extends HeaderPanelRef, ContentPanelRef<
      * Refreshes the grid view by getting the updated data
      */
     refresh(): void;
+    /**
+     * Refreshes the grid tbody UI content view
+     *
+     * @private
+     */
+    refreshContentUI(): void;
+    /**
+     * Useful for aria-busy grid role element attribute update purpose
+     *
+     * @private
+     */
+    isContentBusy: boolean;
     /** Shows a loading spinner overlay on the grid to indicate that an operation is in progress. */
     showSpinner(): void;
     /** Hides the loading spinner overlay that was previously shown on the grid. */
@@ -645,6 +694,7 @@ export interface HeaderTableRef extends HeaderRowsRef {
      */
     readonly headerTableRef?: HTMLTableElement | null;
     getHeaderTable?: () => HTMLTableElement | null;
+    columnClientWidth?: number;
 }
 
 /**
@@ -702,6 +752,16 @@ export interface ContentPanelRef<T = unknown> extends ContentTableRef<T> {
      * Reference to the content scroll element
      */
     readonly contentScrollRef?: HTMLDivElement | null;
+
+    /**
+     * Reference to the virtual content row scroll element
+     */
+    readonly virtualContentRowScrollRef?: HTMLDivElement | null;
+
+    /**
+     * Reference to the virtual content column scroll element
+     */
+    readonly virtualContentColumnScrollRef?: HTMLDivElement | null;
 }
 
 /**
@@ -719,6 +779,16 @@ export interface IContentPanelBase {
      * Attributes for the scroll content element
      */
     scrollContentAttributes?: HTMLAttributes<HTMLDivElement>;
+
+    /**
+     * Attributes for the virtual scroll row content element
+     */
+    virtualRowScrollContentAttributes?: HTMLAttributes<HTMLDivElement>;
+
+    /**
+     * Attributes for the virtual scroll column content element
+     */
+    virtualColumnScrollContentAttributes?: HTMLAttributes<HTMLDivElement>;
 
     /**
      * Sets padding for the header
@@ -746,6 +816,7 @@ export interface ContentTableRef<T = unknown> extends ContentRowsRef<T> {
      * @private
      */
     editInlineRowFormRef?: RefObject<InlineEditFormRef<T>>;
+    columnClientWidth?: number;
 }
 
 /**
@@ -765,13 +836,6 @@ export interface ContentRowsRef<T = unknown> {
      * Reference to the content section element
      */
     readonly contentSectionRef?: HTMLTableSectionElement | null;
-
-    /**
-     * Gets the current view records
-     *
-     * @returns {Object[]} The current records
-     */
-    getCurrentViewRecords(): T[];
 
     /**
      * Gets the rows collection
@@ -800,6 +864,10 @@ export interface ContentRowsRef<T = unknown> {
      * @returns {IRow<ColumnProps>}
      */
     getRowObjectFromUID(uid: string): IRow<ColumnProps<T>>;
+    cachedRowObjects: RefObject<Map<number | string, IRow<ColumnProps<T>>>>;
+    totalRenderedRowHeight: RefObject<number>;
+    totalAddFormRenderedRowHeight: RefObject<number>;
+    setRequireMoreVirtualRowsForceRefresh?: Dispatch<SetStateAction<Object>>;
 }
 
 /**
@@ -876,6 +944,7 @@ export interface FooterTableRef extends FooterRowsRef {
      */
     readonly footerTableRef?: HTMLTableElement | null;
     getFooterTable?: () => HTMLTableElement | null;
+    columnClientWidth?: number;
 }
 
 /**
@@ -1187,8 +1256,50 @@ export interface ScrollElements {
     headerScrollElement: HTMLElement | null;
     /** Reference to the content scroll container element */
     contentScrollElement: HTMLElement | null;
+    /** Reference to the virtual content row scroll container element */
+    virtualContentRowScrollElement: HTMLElement | null;
+    /** Reference to the virtual content column scroll container element */
+    virtualContentColumnScrollElement: HTMLElement | null;
     /** Reference to the footer scroll container element */
     footerScrollElement: HTMLElement | null;
+}
+
+/**
+ * @interface VirtualInfo
+ * @private
+ */
+export interface VirtualInfo {
+    startIndex: number;
+    endIndex: number;
+    isFastJumpScroll: boolean;
+    isFocusScrollOffsetChange: boolean;
+}
+
+/**
+ * @interface VirtualRowInfo
+ * @private
+ */
+export interface VirtualRowInfo extends VirtualInfo {
+    offsetY: number;
+    requiredRowsRange: number[];
+    currentPages: number[];
+    previousPages: number[];
+    scrollFocusCurrentAriaRowIndex: number;
+
+    // Browser scroll height limitation handling
+    maxDivHeight?: number;                      // Browser-detected max div height
+    browserLimitStretchedRowOffset?: number;    // Current row offset for stretching
+    isStretchingActive?: boolean;               // Whether stretching is needed
+}
+
+/**
+ * @interface VirtualColumnInfo
+ * @private
+ */
+export interface VirtualColumnInfo extends VirtualInfo {
+    offsetX: number;
+    scrollFocusCurrentAriaColIndex: number;
+    columns: ColumnProps[];
 }
 
 /**
@@ -1210,16 +1321,17 @@ export interface UseScrollResult<T> {
         headerPadding: CSSProperties;
         /** Event handler for content scroll events */
         onContentScroll: (event: UIEvent<HTMLDivElement>) => void;
+        /** Event handler for virtual row content scroll events */
+        onVirtualRowContentScroll: (event: UIEvent<HTMLDivElement>) => void;
+        /** Event handler for virtual column content scroll events */
+        onVirtualColumnContentScroll: (event: UIEvent<HTMLDivElement>) => void;
         /** Event handler for header scroll events */
         onHeaderScroll: (event: UIEvent<HTMLDivElement>) => void;
         /** Event handler for footer scroll events */
         onFooterScroll: (event: UIEvent<HTMLDivElement>) => void;
     };
     /** Protected API for extended components */
-    protectedScrollAPI: {
-        /** Method to set padding based on scrollbar width */
-        setPadding: () => void;
-    };
+    protectedScrollAPI: Scroll;
     /** Method to set header scroll element reference */
     setHeaderScrollElement: (element: HTMLElement | null) => void;
     /** Method to set content scroll element reference */
@@ -1265,7 +1377,7 @@ export interface UseDataResult<T = unknown> {
     /**
      * Perform data operations through DataManager
      */
-    getData: (props?: { requestType?: string; data?: T; index?: number }, query?: Query) =>
+    getData: (props?: { requestType?: string; data?: T | T[]; index?: number }, query?: Query, payload?: payload) =>
     Promise<Response | ReturnType | DataResult>;
     dataState: RefObject<PendingState>;
 }
@@ -1344,12 +1456,12 @@ export interface GridResult<T> {
     /**
      * Public API exposed to consumers of the grid
      */
-    publicAPI: IGrid<T>;
+    gridAPI: IGrid<T>;
 
     /**
      * Private API for internal grid operations
      */
-    privateAPI: {
+    gridInternal: {
         /**
          * CSS styles for the grid container
          */
@@ -1379,7 +1491,7 @@ export interface GridResult<T> {
     /**
      * Protected API for internal grid components
      */
-    protectedAPI: Partial<IGridBase<T>>;
+    gridScoped: Partial<IGridBase<T>>;
 }
 
 

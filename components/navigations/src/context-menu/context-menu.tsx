@@ -1,11 +1,12 @@
 import { useRef, useImperativeHandle, forwardRef, useEffect, useState, HTMLAttributes, useCallback } from 'react';
 import { calculatePosition, isCollide, fit } from '@syncfusion/react-popups';
 import { AnimationOptions, Browser, Effect, IAnimation, MouseEventArgs, preRender, TouchEventArgs } from '@syncfusion/react-base';
-import { Animation, useProviderContext, SvgIcon, useRippleEffect, Touch, ITouch, TapEventArgs  } from '@syncfusion/react-base';
+import { Animation, useProviderContext, SvgIcon, Touch, ITouch, TapEventArgs  } from '@syncfusion/react-base';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
+import { MenuProps } from '../common/menu-types';
+import { MenuItem, MenuListItem, MenuItemComponentProps} from '../common/menu-item';
 
-const SUBMENU_ICON: string = 'M7.58582 18L13.5858 12L7.58582 6L9.00003 4.58578L16.4142 12L9.00003 19.4142L7.58582 18Z';
 const PREVIOUS_ICON: string = 'M12.4142 19L6.41424 13H21V11H6.41424L12.4142 5L11 3.58578L2.58582 12L11 20.4142L12.4142 19Z';
 
 /**
@@ -25,21 +26,6 @@ export interface ContextMenuSelectEvent {
      * @default -
      */
     event?: React.SyntheticEvent;
-}
-
-/**
- * Specifies the absolute position of the component.
- */
-export interface OffsetPosition {
-    /**
-     * Specifies the horizontal offset position.
-     */
-    left: number;
-
-    /**
-     * Specifies the vertical offset position.
-     */
-    top: number;
 }
 
 /**
@@ -108,31 +94,23 @@ export interface MenuItemProps {
     disabled?: boolean;
 }
 
-interface SubmenuType {
-    parentIndex: number[];
-    position: { x: number; y: number; };
-    isVisible: boolean;
-    currentTarget: HTMLElement;
-    positionChanged?: boolean;
-}
-
 /**
- * Specifies the animation effect for the ContextMenu.
+ * Specifies the animation effect for the Menu.
  *
  */
 export type MenuEffect = 'None' | 'SlideDown' | 'ZoomIn' | 'FadeIn';
 
 /**
- * Interface for ContextMenu animation settings that controls how the menu appears.
+ * Interface for Menu animation settings that controls how the menu appears.
  */
 export interface MenuAnimationProps {
     /**
-     * Specifies the effect shown in the ContextMenu transform.
+     * Specifies the effect shown in the Menu transform.
      * The possible effects are:
-     * * None: Specifies the ContextMenu transform with no animation effect.
-     * * SlideDown: Specifies the ContextMenu transform with slide down effect.
-     * * ZoomIn: Specifies the ContextMenu transform with zoom in effect.
-     * * FadeIn: Specifies the ContextMenu transform with fade in effect.
+     * * None: Specifies the Menu transform with no animation effect.
+     * * SlideDown: Specifies the Menu transform with slide down effect.
+     * * ZoomIn: Specifies the Menu transform with zoom in effect.
+     * * FadeIn: Specifies the Menu transform with fade in effect.
      *
      * @default 'FadeIn'
      */
@@ -154,39 +132,32 @@ export interface MenuAnimationProps {
 }
 
 /**
+ * Specifies the absolute position of the component.
+ */
+export interface OffsetPosition {
+    /**
+     * Specifies the horizontal offset position.
+     */
+    left: number;
+
+    /**
+     * Specifies the vertical offset position.
+     */
+    top: number;
+}
+
+interface SubmenuType {
+    parentIndex: number[];
+    position: { x: number; y: number; };
+    isVisible: boolean;
+    currentTarget: HTMLElement;
+    positionChanged?: boolean;
+}
+
+/**
  * Interface for ContextMenu component props.
  */
-export interface ContextMenuProps {
-    /**
-     * Specifies whether to show the sub menu on click instead of hover.
-     * When set to true, the sub menu will open only on mouse click rather than on hover.
-     *
-     * @default false
-     */
-    itemOnClick?: boolean;
-
-    /**
-     * Specifies menu items with their properties which will be rendered as ContextMenu.
-     * This array defines the structure and content of the menu.
-     *
-     * @default []
-     */
-    items?: MenuItemProps[];
-
-    /**
-     * Specifies the delay time in milliseconds before opening the submenu when hovering.
-     *
-     * @default 0
-     */
-    hoverDelay?: number;
-
-    /**
-     * Specifies the animation settings for the ContextMenu open.
-     *
-     * @default { duration: 400, easing: 'ease', effect: 'FadeIn' }
-     */
-    animation?: MenuAnimationProps;
-
+export interface ContextMenuProps extends MenuProps {
     /**
      * Specifies the visibility of the ContextMenu.
      * If set to true, the ContextMenu is displayed. If false, it is hidden.
@@ -218,41 +189,12 @@ export interface ContextMenuProps {
     targetRef?: React.RefObject<HTMLElement>;
 
     /**
-     * Specifies whether to close the ContextMenu when the document is scrolled.
-     * When set to true, scrolling the page will automatically close the menu.
+     * Enables the browser's native context menu on `targetRef`
+     * when the user holds Ctrl (Windows/Linux) or Cmd (macOS) and right-clicks, bypassing the custom ContextMenu
      *
-     * @default true
+     * @default false
      */
-    closeOnScroll?: boolean;
-
-    /**
-     * Specifies a custom template for menu items. This function receives the entire item object
-     * as an argument and should return a React node that will replace the default content.
-     *
-     * @default -
-     */
-    itemTemplate?: (item: MenuItemProps) => React.ReactNode;
-
-    /**
-     * Specifies the callback function that triggers before open the ContextMenu.
-     *
-     * @event onOpen
-     */
-    onOpen?: (event: Event) => void;
-
-    /**
-     * Specifies the callback function that triggers before closing the ContextMenu.
-     *
-     * @event onClose
-     */
-    onClose?: (event: Event) => void;
-
-    /**
-     * Specifies the callback function that triggers when selecting a ContextMenu item.
-     *
-     * @event onSelect
-     */
-    onSelect?: (event: ContextMenuSelectEvent) => void;
+    allowBrowserContext?: boolean;
 }
 
 /**
@@ -269,87 +211,6 @@ export interface IContextMenu extends ContextMenuProps {
 
 type ContextMenuComponentProps = ContextMenuProps & Omit< HTMLAttributes<HTMLDivElement>, 'onSelect'>;
 
-type MenuItemComponentProps = MenuItemProps & Omit<MenuItemProps, 'items' | 'htmlAttributes'> & HTMLAttributes<HTMLLIElement>;
-
-/**
- * The MenuItem component represents an individual item within a ContextMenu.
- * It serves as a configuration component and doesn't render anything directly.
- *
- * @example
- * ```jsx
- * <ContextMenu>
- *   <MenuItem text="File">
- *     <MenuItem text="New" />
- *     <MenuItem text="Open" />
- *     <MenuItem text="Save" />
- *   </MenuItem>
- *   <MenuItem separator={true} />
- *   <MenuItem text="Edit" icon={<svg>...</svg>}>
- *     <MenuItem text="Cut" icon={<svg>...</svg>} />
- *   </MenuItem>
- * </ContextMenu>
- * ```
- *
- * @returns {null} This is a wrapper component that doesn't render anything directly.
- */
-export const MenuItem: React.FC<MenuItemComponentProps> = () => {
-    return null;
-};
-
-interface MenuListItemProps  {
-    item: MenuItemProps;
-    itemClasses: string;
-    isFocused: boolean;
-    hasSubmenu: boolean;
-    isDisabled: boolean;
-    isSelected: boolean;
-    isSeparator: boolean;
-    onMouseEnter: (e: React.MouseEvent<HTMLLIElement, MouseEvent>) => void;
-    onClick: (e: React.MouseEvent<HTMLLIElement, MouseEvent>) => void;
-    getContent: (item: MenuItemProps) => React.ReactNode;
-    focusedItemRef: React.RefObject<HTMLLIElement>;
-    attributes?: React.HTMLAttributes<HTMLLIElement>;
-}
-
-const MenuListItem: React.FC<MenuListItemProps > = (props: MenuListItemProps ) => {
-    const { item, itemClasses, isFocused, hasSubmenu, isDisabled, isSelected, isSeparator,
-        onMouseEnter, onClick, getContent, focusedItemRef, attributes } = props;
-    const { ripple } = useProviderContext();
-    const { rippleMouseDown, Ripple } = useRippleEffect(ripple);
-    const handleMouseDown: (e: React.MouseEvent<HTMLLIElement, MouseEvent>) => void =
-    (e: React.MouseEvent<HTMLLIElement, MouseEvent>): void => {
-        if (ripple && !isDisabled && !isSeparator) {
-            rippleMouseDown(e);
-        }
-    };
-
-    return (
-        <li
-            ref={isFocused ? focusedItemRef : undefined}
-            className={itemClasses}
-            onMouseEnter={onMouseEnter}
-            onMouseDown={handleMouseDown}
-            onClick={onClick}
-            tabIndex={-1}
-            role='menuitem'
-            aria-disabled={!isSeparator ? isDisabled : undefined}
-            aria-haspopup={!isSeparator ? hasSubmenu : undefined}
-            aria-expanded={!isSeparator ? (hasSubmenu && isSelected ? true : false) : undefined}
-            aria-label={isSeparator ? 'separator' : (item.text || undefined)}
-            {...attributes}
-        >
-            {!isSeparator && (item.url ? (
-                <a className='sf-menu-url' href={item.url} onClick={(e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => e.stopPropagation()}>
-                    <div className='sf-anchor-wrap'>
-                        {getContent(item)}
-                    </div>
-                </a>
-            ) : (getContent(item)))}
-            {hasSubmenu && <span className='sf-submenu-icon'><SvgIcon d={SUBMENU_ICON} aria-label='submenu-icon'></SvgIcon></span>}
-            {ripple && !isDisabled && !isSeparator && <Ripple />}
-        </li>
-    );
-};
 
 /**
  * The ContextMenu component displays a menu with a list of options when triggered by a right-click.
@@ -384,6 +245,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
             animation = { duration: 400, easing: 'ease', effect: 'FadeIn' },
             itemOnClick,
             closeOnScroll = true,
+            allowBrowserContext = false,
             targetRef,
             className,
             children,
@@ -407,6 +269,9 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
 
         const handleTargetContextMenu: (event: MouseEvent | TapEventArgs | React.MouseEvent<HTMLDivElement>) => void =
             useCallback((event: MouseEvent | TapEventArgs | React.MouseEvent<HTMLDivElement>): void => {
+                if (allowBrowserContext && (event as MouseEvent).ctrlKey) {
+                    return;
+                }
                 if (Browser.isIos && touchModule.current && (event as TapEventArgs).originalEvent) {
                     (event as TapEventArgs).originalEvent?.preventDefault();
                     const touch: TouchEventArgs | MouseEventArgs = (event as TapEventArgs).originalEvent.changedTouches[0];
@@ -419,7 +284,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
                 onOpen?.(((event as TapEventArgs).originalEvent ? (event as TapEventArgs).originalEvent : event) as Event);
                 if (onOpen && open === false) { return; }
                 setIsOpen(true);
-            }, [onOpen, open]);
+            }, [onOpen, open, allowBrowserContext]);
 
         const touchModule: React.RefObject<ITouch | null> =
             useRef<ITouch>(Touch(Browser.isIos && targetRef ? targetRef : { current: null } as unknown as React.RefObject<HTMLElement>,
@@ -432,6 +297,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
             offset,
             itemOnClick,
             targetRef,
+            allowBrowserContext,
             closeOnScroll,
             itemTemplate
         };
@@ -449,9 +315,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
 
         const handleScroll: (args: Event) => void = (args: Event) => {
             if (isOpen && closeOnScroll && !elementRef?.current?.contains(args.target as Node)) {
-                onClose?.(args);
-                if (onClose && open === true) { return; }
-                closeMenu();
+                triggerClose(args);
             }
         };
 
@@ -474,7 +338,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
                     targetElement.removeEventListener('contextmenu', handleTargetContextMenu);
                 }
             };
-        }, [targetRef, onOpen]);
+        }, [targetRef, onOpen, handleTargetContextMenu]);
 
         useEffect(() => {
             if (!open && initialShowState.current === open) { return; }
@@ -588,18 +452,34 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
             }
         }, [openSubmenus]);
 
-        const closeMenu: () => void = () => {
+        useEffect(() => {
+            const handleResize: (event: UIEvent) => void = (event: UIEvent) => {
+                if (isOpen) {
+                    triggerClose(event);
+                }
+            };
+            window.addEventListener('resize', handleResize);
+            return () => window.removeEventListener('resize', handleResize);
+        }, [isOpen]);
+
+        const closeMenu: () => void = React.useCallback((): void => {
             setIsOpen(false);
             setOpenSubmenus([]);
             submenuRefs?.current?.clear();
-            setFocusedItem({focusedItems: null, hoveredItems: null});
-        };
+            setFocusedItem({ focusedItems: null, hoveredItems: null });
+        }, []);
+
+        const triggerClose: (evt: Event) => void = React.useCallback((evt: Event ): void => {
+            onClose?.(evt);
+            if (onClose && open === true) {
+                return;
+            }
+            closeMenu();
+        }, [onClose, open, closeMenu]);
 
         const handleClickOutside: (event: MouseEvent) => void = (event: MouseEvent) => {
             if (elementRef.current?.contains(event.target as Node)) { return; }
-            onClose?.(event);
-            if (onClose && open === true) { return; }
-            closeMenu();
+            triggerClose(event);
         };
 
         const processChild: (child: React.ReactNode) => MenuItemComponentProps | null =
@@ -766,6 +646,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
             const key: string = e.key;
             switch (key) {
             case 'Escape':
+                e.preventDefault();
                 if (openSubmenus.length > 0) {
                     handleBackNavigation();
                     if (focusedItem.focusedItems && focusedItem.focusedItems.length > 1) {
@@ -773,9 +654,8 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
                             ({focusedItems: prev?.focusedItems?.slice(0, -1) as number[], hoveredItems: prev?.hoveredItems}));
                     }
                 } else {
-                    closeMenu();
+                    triggerClose(e.nativeEvent);
                 }
-                e.preventDefault();
                 break;
 
             case 'Enter':
@@ -786,7 +666,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
                     ? activeItems[focusedItem.focusedItems[focusedItem.focusedItems.length - 1]] : undefined;
                 if (!currentItem?.items || currentItem.items.length === 0) {
                     onSelect?.({item: currentItem as MenuItemProps, event: e});
-                    closeMenu();
+                    triggerClose(e.nativeEvent);
                     return;
                 }
                 navigateToNextLevel();
@@ -999,9 +879,7 @@ export const ContextMenu: React.ForwardRefExoticComponent<ContextMenuComponentPr
                         }
                     } else {
                         onSelect?.({item: item, event: e});
-                        onClose?.(e as unknown as Event);
-                        if (onClose && open === true) { return; }
-                        closeMenu();
+                        triggerClose(e.nativeEvent);
                     }
                 };
 

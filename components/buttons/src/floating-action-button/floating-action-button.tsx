@@ -1,4 +1,4 @@
-import { useRef, useImperativeHandle, forwardRef, ButtonHTMLAttributes, useEffect, Ref } from 'react';
+import { useRef, useImperativeHandle, forwardRef, ButtonHTMLAttributes, useEffect, Ref, useMemo } from 'react';
 import { Button, IButton } from '../button/button';
 import { preRender, useProviderContext, Color, Size, Position} from '@syncfusion/react-base';
 import * as React from 'react';
@@ -145,8 +145,8 @@ export const Fab: React.ForwardRefExoticComponent<IFabProps & React.RefAttribute
             visible = true,
             ...domProps
         } = props;
-        const fabPositionClasses: string[] = getFabPositionClasses(position, dir);
-        const classNames: string = [
+        const fabPositionClasses: string[] = useMemo(() => getFabPositionClasses(position, dir), [position, dir]);
+        const classNames: string = useMemo(() => ([
             'sf-control',
             'sf-fab',
             'sf-btn',
@@ -155,16 +155,16 @@ export const Fab: React.ForwardRefExoticComponent<IFabProps & React.RefAttribute
             dir === 'rtl' ? 'sf-rtl' : '',
             icon && !children ? 'sf-icon-btn' : '',
             ...fabPositionClasses
-        ].filter(Boolean).join(' ');
+        ].filter(Boolean).join(' ')), [className, visible, dir, icon, children, fabPositionClasses]);
 
-        const publicAPI: Partial<IFabButton> = {
+        const publicAPI: Partial<IFabButton> = useMemo(() => ({
             iconPosition,
             icon,
             toggleable,
             visible,
             color,
             size
-        };
+        }), [iconPosition, icon, toggleable, visible, color, size]);
 
         useImperativeHandle(ref, () => ({
             ...publicAPI as IFabButton,

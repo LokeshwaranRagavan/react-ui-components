@@ -50,3 +50,61 @@ export const isTimeWithinRange: (time: Date, minTime: Date | null | undefined, m
 
         return true;
     };
+
+
+
+export const filterTimesByRange: (
+    times: Date[],
+    minTime?: Date | null,
+    maxTime?: Date | null
+) => Date[] = (times: Date[], minTime: Date | null | undefined, maxTime: Date | null | undefined) => {
+    if (!minTime && !maxTime) {
+        return times;
+    }
+    return times.filter((t: Date) => isTimeWithinRange(t, minTime ?? null, maxTime ?? null));
+};
+
+
+export const clampTimeToRange: (
+    time: Date,
+    minTime?: Date | null,
+    maxTime?: Date | null
+) => Date | null = (
+    time: Date,
+    minTime?: Date | null,
+    maxTime?: Date | null
+) => {
+    const hasMin: boolean = !!minTime;
+    const hasMax: boolean = !!maxTime;
+    if (!hasMin && !hasMax) {
+        return time;
+    }
+
+    const t: number = getTimeValue(time);
+    const min: number = hasMin ? getTimeValue(minTime as Date) : -1;
+    const max: number = hasMax ? getTimeValue(maxTime as Date) : Number.MAX_SAFE_INTEGER;
+    if (hasMin && hasMax && isSameCalendarDay(minTime as Date, maxTime as Date) && min > max) {
+        return null;
+    }
+    if (hasMin && t < min) {
+        const mt: Date = minTime as Date;
+        const clamped: Date = new Date(time);
+        clamped.setHours(mt.getHours(), mt.getMinutes(), mt.getSeconds(), 0);
+        return clamped;
+    }
+    if (hasMax && t > max) {
+        const mt: Date = maxTime as Date;
+        const clamped: Date = new Date(time);
+        clamped.setHours(mt.getHours(), mt.getMinutes(), mt.getSeconds(), 0);
+        return clamped;
+    }
+    if (hasMin && hasMax && min > max && t > max && t < min) {
+        const toMin: number = min - t;
+        const toMax: number = t - max;
+        const boundary: Date = toMin <= toMax ? (minTime as Date) : (maxTime as Date);
+        const clamped: Date = new Date(time);
+        clamped.setHours(boundary.getHours(), boundary.getMinutes(), boundary.getSeconds(), 0);
+        return clamped;
+    }
+    return time;
+};

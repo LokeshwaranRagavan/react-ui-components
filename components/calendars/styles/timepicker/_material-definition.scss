@@ -30,17 +30,9 @@ $timepicker-list-hover-bg-color: $flyout-bg-color-hover !default;
 $timepicker-list-hover-border-color: none !default;
 $timepicker-list-hover-font-color: rgba($flyout-text-color-hover) !default;
 
-$timepicker-list-active-bg-color: rgba($primary) !default;
-$timepicker-list-active-font-color: rgba($primary-text-color) !default;
+$timepicker-list-selected-bg-color: rgba($primary-container, 1) !default;
+$timepicker-list-focus-bg-color: $flyout-bg-color-focus;
 $timepicker-list-active-hover-bg-color: rgba($primary) !default;
-$timepicker-list-active-hover-font-color: rgba($primary-text-color) !default;
-
-$timepicker-list-active-icon-color: rgba($icon-color) !default;
-$timepicker-list-popup-icon-active-color: rgba($icon-color) !default;
-
-$timepicker-icon-active-border: $spacing-1 !default;
-$timepicker-icon-active-border-radius: $spacing-20;
-$timepicker-icon-active-bg-color: rgba($content-text-color, .12) !default;
 
 $timepicker-mobile-bg-color: rgba($content-bg-color, 1);
 $timepicker-mobile-header-spacing: $spacing-8 !default;

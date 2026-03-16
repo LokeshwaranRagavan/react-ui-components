@@ -180,14 +180,15 @@ export class PositioningService {
             const eventEndMinutes: number = (eventStartTime.getDate() !== eventEndTime.getDate()) ? MINUTES_PER_DAY :
                 eventEndTime.getHours() * MINUTES_PER_HOUR + eventEndTime.getMinutes();
             const visibleEventDuration: number = Math.min(eventEndMinutes, schedulerEndMinutes) - effectiveStartMinutes;
-            cellsSpanned = Math.max(1, Math.ceil(visibleEventDuration / intervalMinutes));
+            cellsSpanned = visibleEventDuration / intervalMinutes;
             const maxCellsInView: number = Math.ceil(remainingMinutesInView / intervalMinutes);
             cellsSpanned = Math.min(cellsSpanned, maxCellsInView);
         } else {
             // For multi-day events, extend to the end of the current view
             cellsSpanned = Math.min(remainingMinutesInView / intervalMinutes);
         }
-        const height: number = cellsSpanned * ROW_HEIGHT - 2;
+        let height: number = Math.round(cellsSpanned * ROW_HEIGHT - 2);
+        height = height > 0 ? height : 1;
         return `${height}px`;
     }
 

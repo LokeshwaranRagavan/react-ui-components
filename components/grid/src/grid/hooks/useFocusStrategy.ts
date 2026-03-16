@@ -6,12 +6,15 @@ import {
 import {
     IRow,
     ICell,
-    UseCommandColumnResult
+    UseCommandColumnResult,
+    ScrollMode,
+    VirtualSettings
 } from '../types';
 import { GridRef } from '../types/grid.interfaces';
 import { ColumnProps } from '../types/column.interfaces';
 import { isNullOrUndefined } from '@syncfusion/react-base';
 import { IFocusMatrix, FocusStrategyCallbacks, FocusStrategyResult, FocusedCellInfo, CellFocusEvent, Matrix, SwapInfo} from '../types/focus.interfaces';
+import { parseUnit } from '../utils';
 // CSS class constants
 const CSS_FOCUSED: string = 'sf-focused';
 const CSS_FOCUS: string = 'sf-focus';
@@ -299,6 +302,8 @@ export const createMatrix: () => IFocusMatrix = (): IFocusMatrix => {
  * @param {number} aggregateRowCount - Number of aggregate rows
  * @param {ColumnProps} columns - columns state
  * @param {RefObject<GridRef>} gridRef - Reference to the grid
+ * @param {VirtualSettings} virtualSettings - virtual settings
+ * @param {number} virtualChangeDetectedPageSize - Row DOM virtualization last row cell focus handling purpose.
  * @param {FocusStrategyCallbacks} callbacks - Optional callbacks for focus events
  * @param {UseCommandColumnResult} commandColumnModule - Reference to the command column module
  * @returns {FocusStrategyResult} Focus strategy methods and state
@@ -309,6 +314,8 @@ export const useFocusStrategy: (
     aggregateRowCount: number,
     columns: ColumnProps[],
     gridRef: RefObject<GridRef>,
+    virtualSettings: VirtualSettings,
+    virtualChangeDetectedPageSize: number,
     callbacks?: FocusStrategyCallbacks,
     commandColumnModule?: UseCommandColumnResult
 ) => FocusStrategyResult = (
@@ -317,6 +324,8 @@ export const useFocusStrategy: (
     aggregateRowCount: number,
     columns: ColumnProps[],
     gridRef: RefObject<GridRef>,
+    virtualSettings: VirtualSettings,
+    virtualChangeDetectedPageSize: number,
     callbacks?: FocusStrategyCallbacks,
     commandColumnModule?: UseCommandColumnResult
 ) => {
@@ -328,7 +337,9 @@ export const useFocusStrategy: (
     // State for tracking focused cell - single source of truth
     const focusedCell: RefObject<FocusedCellInfo> = useRef<FocusedCellInfo>({
         rowIndex: -1,
+        virtualAriaRowIndex: -1,
         colIndex: -1,
+        virtualAriaColIndex: -1,
         isHeader: false,
         skipAction: false,
         outline: true
@@ -336,7 +347,9 @@ export const useFocusStrategy: (
 
     // State for tracking grid focus
     const [isGridFocused, setIsGridFocused] = useState<boolean>(false);
+    const [updateLastFirstIndexes, setUpdateLastFirstIndexes] = useState<Object>({});
     const focusByClick: boolean = useRef<boolean>(false).current;
+    const lastEvent: RefObject<KeyboardEvent | MouseEvent> = useRef<KeyboardEvent | MouseEvent>(null);
     const { commandEdit, commandEditInlineFormRef, commandAddRef, commandAddInlineFormRef } = commandColumnModule;
 
     // Ref for swap info
@@ -416,7 +429,7 @@ export const useFocusStrategy: (
     const firstFocusableHeaderCellIndex: number[] = useMemo(() => {
         const matrix: IFocusMatrix = headerMatrix.current;
         return matrix.matrix?.[0]?.[0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
-    }, [activeMatrix.current, headerMatrix.current, columns, isGridFocused]);
+    }, [activeMatrix.current, headerMatrix.current, columns, isGridFocused, updateLastFirstIndexes]);
 
     const lastFocusableHeaderCellIndex: number[] = useMemo(() => {
         const matrix: IFocusMatrix = headerMatrix.current;
@@ -424,23 +437,25 @@ export const useFocusStrategy: (
             [matrix.rows, matrix.columns] :
             matrix.findCellIndex([matrix.rows, matrix.columns], matrix.matrix?.[matrix.rows]?.[matrix.columns] !== 0));
         return lastFocusableHeaderCellIndex;
-    }, [activeMatrix.current, headerMatrix.current, columns, isGridFocused]);
+    }, [activeMatrix.current, headerMatrix.current, columns, isGridFocused, updateLastFirstIndexes]);
 
     const firstFocusableContentCellIndex: number[] = useMemo(() => {
         const matrix: IFocusMatrix = contentMatrix.current;
         return matrix.matrix?.[0]?.[0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
-    }, [activeMatrix.current, contentMatrix.current, columns, isGridFocused, gridRef.current?.contentSectionRef?.children?.length]);
+    }, [activeMatrix.current, contentMatrix.current, columns, isGridFocused, gridRef.current?.contentSectionRef?.children?.length,
+        updateLastFirstIndexes]);
 
     const lastFocusableContentCellIndex: number[] = useMemo(() => {
         const matrix: IFocusMatrix = contentMatrix.current;
         return matrix.matrix?.[matrix.rows]?.[matrix.columns] === 1 ? [matrix.rows, matrix.columns] :
             matrix.findCellIndex([matrix.rows, matrix.columns], matrix.matrix?.[matrix.rows]?.[matrix.columns] !== 0);
-    }, [activeMatrix.current, contentMatrix.current, columns, isGridFocused, gridRef.current?.contentSectionRef?.children?.length]);
+    }, [activeMatrix.current, contentMatrix.current, columns, isGridFocused, gridRef.current?.contentSectionRef?.children?.length,
+        updateLastFirstIndexes]);
 
     const firstFocusableAggregateCellIndex: number[] = useMemo(() => {
         const matrix: IFocusMatrix = aggregateMatrix.current;
         return matrix.matrix?.[0]?.[0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
-    }, [activeMatrix.current, aggregateMatrix.current, columns, isGridFocused, aggregateRowCount]);
+    }, [activeMatrix.current, aggregateMatrix.current, columns, isGridFocused, aggregateRowCount, updateLastFirstIndexes]);
 
     const lastFocusableAggregateCellIndex: number[] = useMemo(() => {
         const matrix: IFocusMatrix = aggregateMatrix.current;
@@ -449,7 +464,7 @@ export const useFocusStrategy: (
             matrix.findCellIndex([matrix.rows, matrix.columns], matrix.matrix?.[matrix.rows]?.[matrix.columns] !== 0));
         return lastFocusableAggregateCellIndex;
     }, [activeMatrix.current, aggregateMatrix.current, columns, isGridFocused, aggregateRowCount,
-        gridRef.current?.getFooterRowsObject?.()]);
+        gridRef.current?.getFooterRowsObject?.(), updateLastFirstIndexes]);
 
     /**
      * Validator function for cell navigation
@@ -462,6 +477,78 @@ export const useFocusStrategy: (
             return true;
         };
     }, []);
+
+    const debounceFirstVirtualRowCellFocusHelper: (currentMatrix: number[]) => void = useCallback((currentMatrix: number[]) => {
+        const { scrollModule, getRowsObject, getVisibleColumns, headerScrollRef, contentScrollRef,
+            footerScrollRef } = gridRef.current;
+        const { virtualRowInfo, virtualColumnInfo } = scrollModule;
+        const contentRowsObject: IRow<ColumnProps>[] = getRowsObject();
+        const visibleColumns: ColumnProps[] = getVisibleColumns();
+        if (virtualSettings?.enableRow && activeMatrix.current === 'Content' &&
+            contentRowsObject?.[0]?.rowIndex > 0) {
+            virtualRowInfo.isFocusScrollOffsetChange = true;
+            virtualRowInfo.scrollFocusCurrentAriaRowIndex = currentMatrix[0];
+            virtualColumnInfo.scrollFocusCurrentAriaColIndex = currentMatrix[1];
+            contentScrollRef.scrollTop = 0;
+        }
+        if (virtualSettings?.enableColumn && columns[0 as number]?.uid !== visibleColumns?.[0]?.uid) {
+            virtualRowInfo.scrollFocusCurrentAriaRowIndex = currentMatrix[0];
+            virtualColumnInfo.isFocusScrollOffsetChange = true;
+            virtualColumnInfo.scrollFocusCurrentAriaColIndex = currentMatrix[1];
+            if (headerScrollRef) {
+                headerScrollRef.scrollLeft = 0;
+            }
+            if (contentScrollRef) {
+                contentScrollRef.scrollLeft = 0;
+            }
+            if (footerScrollRef) {
+                footerScrollRef.scrollLeft = 0;
+            }
+        }
+    }, [activeMatrix.current, columns, updateLastFirstIndexes, virtualSettings]);
+
+    const debounceLastVirtualRowCellFocusHelper: (isCellNotRequiredToUpdate?: boolean) => void =
+        useCallback((isCellNotRequiredToUpdate: boolean = true) => {
+            const matrix: IFocusMatrix = getActiveMatrix();
+            const { scrollModule, getRowsObject, getVisibleColumns, headerScrollRef, contentScrollRef,
+                footerScrollRef, scrollMode, pageSettings, enableRtl } = gridRef.current;
+            const { virtualRowInfo, virtualColumnInfo } = scrollModule;
+            const contentRowsObject: IRow<ColumnProps>[] = getRowsObject();
+            const currentVirtualContentLastRowIndex: number = contentRowsObject?.[contentRowsObject.length - 1]?.rowIndex;
+            const originalContentLastRowIndex: number = (scrollMode === ScrollMode.Virtual ? pageSettings?.totalRecordsCount :
+                (contentRowCount < virtualChangeDetectedPageSize ? contentRowCount : virtualChangeDetectedPageSize)) - 1;
+            const visibleColumns: ColumnProps[] = getVisibleColumns();
+            if (virtualSettings?.enableRow && activeMatrix.current === 'Content' &&
+                currentVirtualContentLastRowIndex < originalContentLastRowIndex) {
+                virtualRowInfo.isFocusScrollOffsetChange = true;
+                virtualRowInfo.scrollFocusCurrentAriaRowIndex = (scrollMode === ScrollMode.Virtual ? pageSettings?.totalRecordsCount :
+                    virtualChangeDetectedPageSize) - 1;
+                if (isCellNotRequiredToUpdate) {
+                    virtualColumnInfo.scrollFocusCurrentAriaColIndex = visibleColumns?.length - 1;
+                }
+                contentScrollRef.scrollTop = contentScrollRef?.scrollHeight;
+            }
+            if (virtualSettings?.enableColumn && isCellNotRequiredToUpdate &&
+                columns[columns.length - 1 as number]?.uid !== visibleColumns?.[visibleColumns?.length - 1]?.uid) {
+                if (!virtualRowInfo.isFocusScrollOffsetChange) {
+                    virtualRowInfo.scrollFocusCurrentAriaRowIndex = matrix.rows;
+                }
+                virtualColumnInfo.isFocusScrollOffsetChange = true;
+                virtualColumnInfo.scrollFocusCurrentAriaColIndex = visibleColumns?.length - 1;
+                if (headerScrollRef) {
+                    headerScrollRef.scrollLeft = enableRtl ?
+                        -(headerScrollRef?.scrollWidth) : headerScrollRef?.scrollWidth;
+                }
+                if (contentScrollRef) {
+                    contentScrollRef.scrollLeft = enableRtl ?
+                        -(contentScrollRef?.scrollWidth) : contentScrollRef?.scrollWidth;
+                }
+                if (footerScrollRef) {
+                    footerScrollRef.scrollLeft = enableRtl ?
+                        -(footerScrollRef?.scrollWidth) : footerScrollRef?.scrollWidth;
+                }
+            }
+        }, [activeMatrix.current, columns, contentRowCount, updateLastFirstIndexes, virtualSettings]);
 
     /**
      * Get the current from action
@@ -482,16 +569,20 @@ export const useFocusStrategy: (
         navigator: number[] = [0, 0],
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         _isPresent?: boolean,
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        _e?: KeyboardEvent
+        e?: KeyboardEvent
     ): number[] => {
         const matrix: IFocusMatrix = getActiveMatrix();
+        const { scrollModule, contentScrollRef, enableRtl, getVisibleColumns } = gridRef.current;
+        const { virtualRowInfo, virtualColumnInfo } = scrollModule;
+        const visibleColumns: ColumnProps[] = getVisibleColumns();
 
         // Get current indexes based on action
         const [rowIndex, cellIndex, rN, cN] = indexesByKey(action) || [...matrix.current, ...navigator];
 
         // Handle special actions
         if (action === 'ctrlHome') {
+            const firstCell: number[] = matrix.matrix[0][0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
+            debounceFirstVirtualRowCellFocusHelper(firstCell);
             // First cell of first row
             switch (activeMatrix.current) {
             case 'Content': return firstFocusableContentCellIndex;
@@ -500,6 +591,7 @@ export const useFocusStrategy: (
             default: return firstFocusableHeaderCellIndex;
             }
         } else if (action === 'ctrlEnd') {
+            debounceLastVirtualRowCellFocusHelper();
             // Last cell of last row
             switch (activeMatrix.current) {
             case 'Content': return lastFocusableContentCellIndex;
@@ -516,6 +608,14 @@ export const useFocusStrategy: (
             case 'Header':
             default: firstColIndex = firstFocusableHeaderCellIndex[1]; break;
             }
+            if (virtualSettings?.enableColumn) {
+                if (scrollModule && (columns[0 as number]?.uid !== visibleColumns?.[0]?.uid)) {
+                    virtualColumnInfo.isFocusScrollOffsetChange = true;
+                    virtualRowInfo.scrollFocusCurrentAriaRowIndex = rowIndex;
+                    virtualColumnInfo.scrollFocusCurrentAriaColIndex = 0;
+                    contentScrollRef.scrollLeft = 0;
+                }
+            }
             return [rowIndex, firstColIndex];
         } else if (action === 'end') {
             // Last cell of current row
@@ -525,6 +625,14 @@ export const useFocusStrategy: (
             case 'Aggregate': lastColIndex = lastFocusableAggregateCellIndex[1]; break;
             case 'Header':
             default: lastColIndex = lastFocusableHeaderCellIndex[1]; break;
+            }
+            if (virtualSettings?.enableColumn) {
+                if (scrollModule && (columns[columns.length - 1 as number]?.uid !== visibleColumns?.[visibleColumns?.length - 1]?.uid)) {
+                    virtualColumnInfo.isFocusScrollOffsetChange = true;
+                    virtualRowInfo.scrollFocusCurrentAriaRowIndex = rowIndex;
+                    virtualColumnInfo.scrollFocusCurrentAriaColIndex = visibleColumns?.length - 1;
+                    contentScrollRef.scrollLeft = enableRtl ? -(contentScrollRef?.scrollWidth) : contentScrollRef?.scrollWidth;
+                }
             }
             return [rowIndex, lastColIndex];
         }
@@ -542,7 +650,45 @@ export const useFocusStrategy: (
                 case 'Header':
                 default: firstColIndex = firstFocusableHeaderCellIndex[1]; break;
                 }
+                if (!isNextCommandItem(e) && virtualSettings?.enableColumn && columns[0 as number]?.uid !== visibleColumns?.[0]?.uid) {
+                    if (scrollModule && columns[cellIndex as number]?.uid === visibleColumns?.[visibleColumns?.length - 1]?.uid) {
+                        virtualColumnInfo.isFocusScrollOffsetChange = true;
+                        virtualRowInfo.scrollFocusCurrentAriaRowIndex = rowIndex + 1;
+                        virtualColumnInfo.scrollFocusCurrentAriaColIndex = 0;
+                        contentScrollRef.scrollLeft = 0;
+                    } else if (virtualSettings?.enableColumn && cellIndex === columns.length - 1 && columns[cellIndex as number]?.uid !==
+                        visibleColumns?.[visibleColumns?.length - 1]?.uid) {
+                        // prevent swap
+                        virtualColumnInfo.isFocusScrollOffsetChange = true;
+                        virtualColumnInfo.scrollFocusCurrentAriaColIndex = matrix.current[1] + 1;
+                        contentScrollRef.scrollLeft = contentScrollRef.scrollLeft +
+                            parseFloat(visibleColumns?.[visibleColumns?.length - 1]?.width + '') + 1;
+                    } else {
+                        return [matrix.current[0], matrix.current[1] + 1]; // prevent swap
+                    }
+                } else if (!isNextCommandItem(e) && virtualSettings?.enableColumn && cellIndex === columns.length - 1 &&
+                    columns[cellIndex as number]?.uid !== visibleColumns?.[visibleColumns?.length - 1]?.uid) {
+                    // prevent swap
+                    virtualColumnInfo.isFocusScrollOffsetChange = true;
+                    virtualColumnInfo.scrollFocusCurrentAriaColIndex = matrix.current[1] + 1;
+                    contentScrollRef.scrollLeft = contentScrollRef.scrollLeft +
+                        parseFloat(visibleColumns?.[visibleColumns?.length - 1]?.width + '') + 1;
+                }
                 return [rowIndex + 1, firstColIndex];
+            } else if (!isNextCommandItem(e) && virtualSettings?.enableColumn && columns[0 as number]?.uid !== visibleColumns?.[0]?.uid) {
+                // swap purpose maintain virtual col index
+                if (scrollModule && (columns[cellIndex as number]?.uid === visibleColumns?.[visibleColumns?.length - 1]?.uid)) {
+                    virtualColumnInfo.isFocusScrollOffsetChange = true;
+                    virtualColumnInfo.scrollFocusCurrentAriaColIndex = 0;
+                    contentScrollRef.scrollLeft = 0;
+                }
+            } else if (!isNextCommandItem(e) && virtualSettings?.enableColumn && cellIndex === columns.length - 1 &&
+                columns[cellIndex as number]?.uid !== visibleColumns?.[visibleColumns?.length - 1]?.uid) {
+                // prevent swap
+                virtualColumnInfo.isFocusScrollOffsetChange = true;
+                virtualColumnInfo.scrollFocusCurrentAriaColIndex = matrix.current[1] + 1;
+                contentScrollRef.scrollLeft = contentScrollRef.scrollLeft +
+                    parseFloat(visibleColumns?.[visibleColumns?.length - 1]?.width as number + '') + 1;
             }
         } else if (action === 'shiftTab' && ((activeMatrix.current === 'Content' && cellIndex <= firstFocusableContentCellIndex[1]) ||
             (activeMatrix.current === 'Header' && cellIndex <= firstFocusableHeaderCellIndex[1]) ||
@@ -556,7 +702,27 @@ export const useFocusStrategy: (
                 case 'Header':
                 default: lastColIndex = lastFocusableHeaderCellIndex[1]; break;
                 }
+                if (!isNextCommandItem(e) && virtualSettings?.enableColumn && columns[columns.length - 1 as number]?.uid !==
+                    visibleColumns?.[visibleColumns.length - 1]?.uid) {
+                    if (scrollModule && (columns[cellIndex as number]?.uid === visibleColumns?.[0]?.uid)) {
+                        virtualColumnInfo.isFocusScrollOffsetChange = true;
+                        virtualRowInfo.scrollFocusCurrentAriaRowIndex = rowIndex - 1;
+                        virtualColumnInfo.scrollFocusCurrentAriaColIndex = visibleColumns?.length - 1;
+                        contentScrollRef.scrollLeft = enableRtl ? -(contentScrollRef?.scrollWidth) : contentScrollRef?.scrollWidth;
+                    } else {
+                        return [matrix.current[0], matrix.current[1] - 1]; // prevent swap
+                    }
+                }
                 return [rowIndex - 1, lastColIndex];
+            } else if (!isNextCommandItem(e) && virtualSettings?.enableColumn && columns[columns.length - 1 as number]?.uid !==
+                visibleColumns?.[visibleColumns.length - 1]?.uid) {
+                // swap purpose maintain virtual col index
+                if (scrollModule && (columns[cellIndex as number]?.uid === visibleColumns?.[0]?.uid ||
+                    (activeMatrix.current === 'Content' && virtualColumnInfo?.columns[0]?.uid === 'empty-cell-uid'))) {
+                    virtualColumnInfo.isFocusScrollOffsetChange = true;
+                    virtualColumnInfo.scrollFocusCurrentAriaColIndex = visibleColumns.length - 1;
+                    contentScrollRef.scrollLeft = enableRtl ? -(contentScrollRef?.scrollWidth) : contentScrollRef?.scrollWidth;
+                }
             }
         }
 
@@ -571,14 +737,14 @@ export const useFocusStrategy: (
         );
 
         return current;
-    }, [getActiveMatrix, indexesByKey, validator,
+    }, [getActiveMatrix, indexesByKey, validator, debounceFirstVirtualRowCellFocusHelper,
         firstFocusableContentCellIndex,
         lastFocusableContentCellIndex,
         firstFocusableHeaderCellIndex,
         lastFocusableHeaderCellIndex,
         firstFocusableAggregateCellIndex,
         lastFocusableAggregateCellIndex,
-        activeMatrix.current]);
+        activeMatrix.current, virtualSettings]);
 
     /**
      * Retrieves all command item buttons from a command cell element
@@ -666,26 +832,41 @@ export const useFocusStrategy: (
         current = commandItem ? matrix.current : current;
         if (!current) { return true; }
 
+        const { getRowsObject, pageSettings, scrollModule, scrollMode, getVisibleColumns } = gridRef.current;
+        const { totalRecordsCount } = pageSettings;
+        const contentRowsObject: IRow<ColumnProps>[] = getRowsObject?.();
+        const visibleColumns: ColumnProps[] = getVisibleColumns?.();
+        const isVirtualContentRowTopOrBottom: boolean = (action === 'downArrow' || action === 'upArrow') &&
+            (!virtualSettings.enableRow || contentRowsObject?.[0]?.rowIndex === 0 ||
+                (contentRowsObject?.[contentRowsObject.length - 1]?.rowIndex === (scrollMode === ScrollMode.Virtual ?
+                    totalRecordsCount : (contentRowCount < virtualChangeDetectedPageSize ? contentRowCount :
+                        virtualChangeDetectedPageSize)) - 1) ||
+                ((activeMatrix.current === 'Content' || activeMatrix.current === 'Header') && !contentRowsObject.length));
+        const isVirtualContentRowLeftOrRight: boolean = !virtualSettings.enableColumn || (activeMatrix.current === 'Content' &&
+            scrollModule?.virtualColumnInfo?.columns[0]?.uid === 'empty-cell-uid') ||
+            scrollModule?.virtualColumnInfo?.isFocusScrollOffsetChange || (visibleColumns[0]?.uid === columns[0]?.uid &&
+                visibleColumns[visibleColumns.length - 1]?.uid === columns[columns.length - 1]?.uid);
+
         // Check if we're at the boundary of the current matrix
         const isAtHeaderBottom: boolean = activeMatrix.current === 'Header' &&
             current.toString() === headerMatrix.current.current.toString() && action === 'downArrow';
-        const isAtContentTop: boolean = activeMatrix.current === 'Content' &&
+        const isAtContentTop: boolean = activeMatrix.current === 'Content' && isVirtualContentRowTopOrBottom &&
             current.toString() === contentMatrix.current.current.toString() && action === 'upArrow';
-        const isAtContentBottom: boolean = activeMatrix.current === 'Content' &&
+        const isAtContentBottom: boolean = activeMatrix.current === 'Content' && isVirtualContentRowTopOrBottom &&
             current.toString() === contentMatrix.current.current.toString() && action === 'downArrow';
         const isAtAggregateTop: boolean = activeMatrix.current === 'Aggregate' &&
             current.toString() === aggregateMatrix.current.current.toString() && action === 'upArrow';
         const isAtAggregateBottom: boolean = activeMatrix.current === 'Aggregate' &&
             current.toString() === aggregateMatrix.current.current.toString() && action === 'downArrow';
-        const isAtHeaderRight: boolean = activeMatrix.current === 'Header' &&
+        const isAtHeaderRight: boolean = activeMatrix.current === 'Header' && isVirtualContentRowLeftOrRight &&
             current.toString() === headerMatrix.current.current.toString() && action === 'tab';
-        const isAtContentLeft: boolean = activeMatrix.current === 'Content' &&
+        const isAtContentLeft: boolean = activeMatrix.current === 'Content' && isVirtualContentRowLeftOrRight &&
             current.toString() === contentMatrix.current.current.toString() && action === 'shiftTab' && !commandItem;
-        const isAtContentRight: boolean = activeMatrix.current === 'Content' &&
+        const isAtContentRight: boolean = activeMatrix.current === 'Content' && isVirtualContentRowLeftOrRight &&
             current.toString() === contentMatrix.current.current.toString() && action === 'tab' && !commandItem;
-        const isAtAggregateLeft: boolean = activeMatrix.current === 'Aggregate' &&
+        const isAtAggregateLeft: boolean = activeMatrix.current === 'Aggregate' && isVirtualContentRowLeftOrRight &&
             current.toString() === aggregateMatrix.current.current.toString() && action === 'shiftTab';
-        const isAtAggregateRight: boolean = activeMatrix.current === 'Aggregate' &&
+        const isAtAggregateRight: boolean = activeMatrix.current === 'Aggregate' && isVirtualContentRowLeftOrRight &&
             current.toString() === aggregateMatrix.current.current.toString() && action === 'tab';
 
         // Handle boundary navigation between header, content, and aggregate
@@ -714,7 +895,7 @@ export const useFocusStrategy: (
         matrix.current = [...current];
 
         return true;
-    }, [getCurrentFromAction, getActiveMatrix, activeMatrix.current, focusedCell.current]);
+    }, [getCurrentFromAction, getActiveMatrix, activeMatrix.current, focusedCell.current, virtualSettings]);
 
     /**
      * Clear focus indicator without changing focus state
@@ -744,7 +925,9 @@ export const useFocusStrategy: (
         // Update state
         focusedCell.current = {
             rowIndex: -1,
+            virtualAriaRowIndex: -1,
             colIndex: -1,
+            virtualAriaColIndex: -1,
             isHeader: false,
             skipAction: false,
             outline: true
@@ -775,7 +958,8 @@ export const useFocusStrategy: (
 
             const newInfo: FocusedCellInfo = {
                 ...info,
-                outline: info.outline !== false && !info.element?.closest?.('tr.sf-filter-row .sf-cell') && !info.element.querySelector('.sf-grid-checkselectall.sf-disabled'), // Default to true if not explicitly set to false
+                outline: info.outline !== false && !info.element?.closest?.('tr.sf-filter-row .sf-cell') &&
+                    !info.element?.querySelector('.sf-grid-checkselectall.sf-disabled'), // Default to true if not explicitly set to false
                 element: info.element,
                 elementToFocus: info.elementToFocus
             };
@@ -793,6 +977,7 @@ export const useFocusStrategy: (
             if (newInfo.element) {
                 newInfo.element.tabIndex = 0;
             }
+            const rowObject: IRow<ColumnProps> = gridRef.current?.getRowsObject?.()?.[newInfo.rowIndex];
 
             // Focus the element using DOM API
             requestAnimationFrame(() => {
@@ -802,9 +987,10 @@ export const useFocusStrategy: (
                 if ((e?.target as HTMLElement)?.closest?.('.sf-filterbar-dropdown') && e?.type === 'click') {
                     firstFocusableElement = newInfo?.elementToFocus?.querySelector('.sf-filterbar-dropdown');
                 }
-                if (newInfo.element.closest('.sf-grid-command-cell') && (((e as KeyboardEvent)?.key === 'ArrowRight'
-                    || (e as KeyboardEvent)?.key === 'ArrowLeft' || (e as KeyboardEvent)?.key === 'Tab') || !isNullOrUndefined(focus)
-                    || e?.type === 'click')) {
+                if (newInfo.element?.closest('.sf-grid-command-cell') && (((e as KeyboardEvent)?.key === 'ArrowRight'
+                    || (e as KeyboardEvent)?.key === 'ArrowLeft' || (e as KeyboardEvent)?.key === 'Tab' ||
+                    (lastEvent.current?.type === 'keydown' && (lastEvent.current as KeyboardEvent)?.key === 'Tab')) ||
+                    !isNullOrUndefined(focus) || e?.type === 'click')) {
                     if (!isNullOrUndefined(focus) || e?.type === 'click') {
                         firstFocusableElement = (e?.type === 'click' ? e.target : focus.target) as HTMLElement;
                     } else if ((e?.target as HTMLElement)?.closest('.sf-grid-command-cell')) {
@@ -812,24 +998,61 @@ export const useFocusStrategy: (
                         firstFocusableElement = (commandItem ? commandItem : e.target) as HTMLElement;
                     } else {
                         const commandItems: HTMLElement[] = getCommandItems(newInfo.element);
-                        firstFocusableElement = (e as KeyboardEvent)?.key === 'ArrowLeft' || (e?.shiftKey && (e as KeyboardEvent)?.key === 'Tab') ? commandItems[commandItems.length - 1] : commandItems[0];
+                        firstFocusableElement = (e as KeyboardEvent)?.key === 'ArrowLeft' || ((e?.shiftKey &&
+                            (e as KeyboardEvent)?.key === 'Tab') || (lastEvent.current?.shiftKey &&
+                                (lastEvent.current as KeyboardEvent)?.key === 'Tab')) ?
+                            commandItems[commandItems.length - 1] : commandItems[0];
                     }
                 }
-                const container: HTMLDivElement | null = gridRef.current?.contentScrollRef;
+                const container: HTMLDivElement | null = newInfo.isHeader ? gridRef.current?.headerScrollRef : (newInfo.isAggregate ?
+                    gridRef.current?.footerScrollRef : gridRef.current?.contentScrollRef);
                 const element: HTMLElement | null =
-                    (firstFocusableElement ?? newInfo.elementToFocus)?.closest?.('.sf-grid-content-row td.sf-cell, .sf-grid-header-row th.sf-cell');
+                    (firstFocusableElement ?? newInfo.elementToFocus)?.
+                        closest?.('.sf-grid-content-row td.sf-cell, .sf-grid-header-row th.sf-cell, .sf-grid-summary-row td.sf-cell');
 
                 if (container && element) {
                     const containerRect: DOMRect = container.getBoundingClientRect();
                     const elementRect: DOMRect = element.getBoundingClientRect();
 
+                    const detectVirtualColumnOffsetChange: () => void = () => {
+                        gridRef.current?.element?.removeEventListener('virtualColumnOffsetChange', detectVirtualColumnOffsetChange);
+                        if (!gridRef.current.scrollModule.virtualRowInfo.isFocusScrollOffsetChange &&
+                            !gridRef.current.scrollModule.virtualColumnInfo.isFocusScrollOffsetChange) {
+                            gridRef.current.scrollModule.virtualRowInfo.isFocusScrollOffsetChange = true;
+                            gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex = newInfo.rowIndex;
+                        }
+                    };
                     // Scroll left if element is partially hidden on the left
                     if (elementRect.left < containerRect.left) {
-                        container.scrollLeft = element.offsetLeft;
+                        if (virtualSettings.enableColumn) {
+                            gridRef.current?.element?.addEventListener('virtualColumnOffsetChange', detectVirtualColumnOffsetChange);
+                            const nextScrollLeft: number = (gridRef.current?.scrollModule?.virtualColumnInfo?.offsetX ?? 0) +
+                                element.offsetLeft;
+                            if (nextScrollLeft < container.scrollLeft) {
+                                container.scrollLeft = nextScrollLeft;
+                            }
+                            else {
+                                gridRef.current?.element?.removeEventListener('virtualColumnOffsetChange', detectVirtualColumnOffsetChange);
+                            }
+                        } else {
+                            container.scrollLeft = element.offsetLeft;
+                        }
                     }
                     // Scroll right if element is partially hidden on the right
                     else if (elementRect.right > containerRect.right) {
-                        container.scrollLeft = (element.offsetLeft + element.offsetWidth - container.clientWidth);
+                        if (virtualSettings.enableColumn) {
+                            gridRef.current?.element?.addEventListener('virtualColumnOffsetChange', detectVirtualColumnOffsetChange);
+                            const nextScrollLeft: number = (gridRef.current?.scrollModule?.virtualColumnInfo?.offsetX ?? 0) +
+                                element.offsetLeft + element.offsetWidth - container.clientWidth;
+                            if (nextScrollLeft > container.scrollLeft) {
+                                container.scrollLeft = nextScrollLeft;
+                            }
+                            else {
+                                gridRef.current?.element?.removeEventListener('virtualColumnOffsetChange', detectVirtualColumnOffsetChange);
+                            }
+                        } else {
+                            container.scrollLeft = (element.offsetLeft + element.offsetWidth - container.clientWidth);
+                        }
                     }
                 }
 
@@ -858,8 +1081,10 @@ export const useFocusStrategy: (
                 swapInfo: swapInfo.current,
                 rowIndex: newInfo.rowIndex,
                 columnIndex: newInfo.colIndex,
-                column: gridRef.current.getColumns()[newInfo.colIndex],
-                data: gridRef.current.getRowsObject()[newInfo.rowIndex]?.data,
+                virtualAriaRowIndex: newInfo.virtualAriaRowIndex,
+                virtualAriaColIndex: newInfo.virtualAriaColIndex,
+                column: gridRef.current.getVisibleColumns()[newInfo.colIndex],
+                data: rowObject?.data,
                 event: e
             };
 
@@ -868,7 +1093,7 @@ export const useFocusStrategy: (
             // Update previous indexes
             const [rowIndex, cellIndex]: number[] = matrix.current;
             prevIndexes.current = { rowIndex, cellIndex };
-        }, [getActiveMatrix, callbacks, focusedCell.current, activeMatrix.current, gridRef]);
+        }, [getActiveMatrix, callbacks, focusedCell.current, activeMatrix.current, gridRef, virtualSettings]);
 
     /**
      * Handle click event
@@ -945,6 +1170,8 @@ export const useFocusStrategy: (
                 isAggregate: isAggregate,
                 element: cellElement,
                 elementToFocus: cellElement,
+                virtualAriaRowIndex: parseUnit(rowElement?.getAttribute('aria-rowindex')),
+                virtualAriaColIndex: parseUnit(cellElement?.getAttribute('aria-colindex')),
                 outline: true
             };
 
@@ -967,7 +1194,7 @@ export const useFocusStrategy: (
                 outline: true,
                 rowIndex: rowIndex,
                 columnIndex: cellIndex,
-                column: gridRef.current.getColumns()[parseInt(cellIndex.toString(), 10)],
+                column: gridRef.current.getVisibleColumns()[parseInt(cellIndex.toString(), 10)],
                 data: gridRef.current.getRowsObject()[parseInt(rowIndex.toString(), 10)]?.data,
                 event: e
             };
@@ -996,11 +1223,11 @@ export const useFocusStrategy: (
         const isAggregate: boolean = activeMatrix.current === 'Aggregate';
         let table: HTMLTableElement | undefined;
         if (isContent) {
-            table = gridRef.current?.getContentTable();
+            table = gridRef.current?.getContentTable?.();
         } else if (isAggregate) {
-            table = gridRef.current?.getFooterTable();
+            table = gridRef.current?.getFooterTable?.();
         } else {
-            table = gridRef.current?.getHeaderTable();
+            table = gridRef.current?.getHeaderTable?.();
         }
         const rows: HTMLCollectionOf<HTMLTableRowElement> | NodeListOf<HTMLTableRowElement> = gridRef.current?.isEdit &&
             gridRef.current?.editModule?.isShowAddNewRowActive ? table?.querySelectorAll?.('tr.sf-grid-content-row:not(.sf-grid-add-row)') :
@@ -1013,6 +1240,8 @@ export const useFocusStrategy: (
         if (!row) { return info; }
 
         info.element = row.cells[cellIndex as number] as HTMLElement;
+        info.virtualAriaRowIndex = parseUnit(row?.getAttribute('aria-rowindex'));
+        info.virtualAriaColIndex = parseUnit(info.element?.getAttribute('aria-colindex'));
 
         if (!info.element) {
             return info;
@@ -1038,6 +1267,8 @@ export const useFocusStrategy: (
      */
     const focus: (e?: KeyboardEvent, focus?: FocusEvent) => void =
     useCallback((e?: KeyboardEvent, focus?: FocusEvent): void => {
+        if (gridRef.current?.scrollModule?.virtualRowInfo.isFocusScrollOffsetChange ||
+            gridRef.current?.scrollModule?.virtualColumnInfo.isFocusScrollOffsetChange) { return; }
         // Get the current matrix
         const matrix: IFocusMatrix = getActiveMatrix();
 
@@ -1048,14 +1279,14 @@ export const useFocusStrategy: (
         let table: HTMLTableElement | null;
         switch (activeMatrix.current) {
         case 'Content':
-            table = gridRef.current?.getContentTable();
+            table = gridRef.current?.getContentTable?.();
             break;
         case 'Aggregate':
-            table = gridRef.current?.getFooterTable();
+            table = gridRef.current?.getFooterTable?.();
             break;
         case 'Header':
         default:
-            table = gridRef.current?.getHeaderTable();
+            table = gridRef.current?.getHeaderTable?.();
             break;
         }
 
@@ -1092,7 +1323,15 @@ export const useFocusStrategy: (
 
             info.element = rows[rowIndex as number].cells[cellIndex as number] as HTMLElement;
             info.elementToFocus = info.element;
+            info.virtualAriaRowIndex = parseUnit(rows?.[rowIndex as number]?.getAttribute('aria-rowindex'));
+            info.virtualAriaColIndex = parseUnit(info.element?.getAttribute('aria-colindex'));
 
+            const isInMaskVirtualLoadingCell: boolean | Element = info.element?.querySelector('.sf-cell .sf-skeleton');
+            if (isInMaskVirtualLoadingCell && ['ArrowUp', 'ArrowDown'].includes(e?.key)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
             // If we found an element, add focus to it
             addFocus(info, e, focus);
             return;
@@ -1158,6 +1397,7 @@ export const useFocusStrategy: (
      * @returns {void}
      */
     const handleKeyDown: (event: KeyboardEvent) => void = useCallback((event: KeyboardEvent): void => {
+        lastEvent.current = event;
         // Enhanced edit mode detection and handling
         const isGridInEditMode: boolean = gridRef.current?.isEdit || false;
 
@@ -1249,6 +1489,8 @@ export const useFocusStrategy: (
         if (result === false) {
             // Handle boundary navigation
             if (swapInfo.current.swap) {
+                const { scrollModule, getVisibleColumns } = gridRef.current;
+                const { virtualRowInfo, virtualColumnInfo } = scrollModule;
                 // Determine target matrix from swap info
                 const targetMatrix: Matrix = swapInfo.current.toMatrix || 'Content';
                 setActiveMatrix(targetMatrix);
@@ -1281,6 +1523,14 @@ export const useFocusStrategy: (
                                 (firstFocusableContentCellIndex[1]);
                             matrix.select(0, firstContentCol);
                             matrix.current = [0, firstContentCol];
+                            if (virtualSettings?.enableRow || virtualSettings?.enableColumn) {
+                                if (action === 'tab') {
+                                    const firstCell: number[] = matrix.matrix?.[0]?.[0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
+                                    debounceFirstVirtualRowCellFocusHelper(firstCell);
+                                } else {
+                                    debounceFirstVirtualRowCellFocusHelper([0, firstContentCol]);
+                                }
+                            }
                         } else if (action === 'upArrow' || action === 'shiftTab') {
                             // When moving up to content from aggregate or shift+tab from aggregate
                             const lastContentRow: number = matrix.matrix?.length - 1 || 0;
@@ -1288,7 +1538,21 @@ export const useFocusStrategy: (
                                 lastFocusableContentCellIndex[1];
                             matrix.select(lastContentRow, lastContentCol);
                             matrix.current = [lastContentRow, lastContentCol];
+                            if (virtualSettings?.enableRow || virtualSettings?.enableColumn) {
+                                if (action === 'shiftTab') {
+                                    debounceLastVirtualRowCellFocusHelper();
+                                } else {
+                                    debounceLastVirtualRowCellFocusHelper(false);
+                                    if (virtualRowInfo?.isFocusScrollOffsetChange && !virtualColumnInfo.isFocusScrollOffsetChange) {
+                                        virtualColumnInfo.isFocusScrollOffsetChange = true;
+                                        virtualColumnInfo.scrollFocusCurrentAriaColIndex = matrix.current[1]; // swap occurs
+                                    }
+                                }
+                            }
                         }
+                    } else if (virtualSettings?.enableColumn && contentRowCount === 0 && action === 'downArrow' &&
+                        columns[0]?.uid !== getVisibleColumns?.()[0]?.uid) {
+                        debounceFirstVirtualRowCellFocusHelper([0, 0]);
                     }
                 } else if (targetMatrix === 'Aggregate') {
                     // Moving to aggregate - find appropriate aggregate cell based on navigation direction
@@ -1302,6 +1566,10 @@ export const useFocusStrategy: (
                         }
                     }
                 }
+                if (virtualColumnInfo?.isFocusScrollOffsetChange && !virtualRowInfo?.isFocusScrollOffsetChange) {
+                    virtualRowInfo.isFocusScrollOffsetChange = true;
+                    virtualRowInfo.scrollFocusCurrentAriaRowIndex = matrix.current[0]; // swap occurs
+                }
                 focus(event);
                 // Reset swap info
                 swapInfo.current = { swap: false, toHeader: false, toMatrix: 'Content' };
@@ -1312,7 +1580,7 @@ export const useFocusStrategy: (
         // Focus the cell
         focus(event);
     }, [isGridFocused, setIsGridFocused, focusedCell.current, onKeyPress, setActiveMatrix, getActiveMatrix, focus, callbacks,
-        headerRowCount, contentRowCount, aggregateRowCount, columns?.length, activeMatrix.current, addFocus]);
+        headerRowCount, contentRowCount, aggregateRowCount, columns?.length, activeMatrix.current, addFocus, virtualSettings]);
 
     /**
      * Handle grid-level click event
@@ -1321,6 +1589,7 @@ export const useFocusStrategy: (
      * @returns {void}
      */
     const handleGridClick: (event: MouseEvent) => void = useCallback((event: MouseEvent): void => {
+        lastEvent.current = event;
         if (!isGridFocused) {
             setIsGridFocused(true);
         }
@@ -1351,6 +1620,7 @@ export const useFocusStrategy: (
     useEffect(() => {
         // Initialize content matrix
         const isRowTemplate: boolean = !isNullOrUndefined(gridRef.current.rowTemplate);
+        let isLastFirstUpdateRequired: boolean = false;
         if (contentRowCount > 0 && columns?.length > 0) {
             // Create proper row models similar to the original implementation
             // Use Array.from with index parameter to avoid unused variables
@@ -1361,7 +1631,9 @@ export const useFocusStrategy: (
             }
 
             // Set the rows count explicitly before generating
-            contentMatrix.current.rows = contentRowCount - 1;
+            isLastFirstUpdateRequired = contentMatrix.current.columns !== columns?.length - 1 ||
+                contentMatrix.current.rows !== (rows?.length ?? contentRowCount) - 1;
+            contentMatrix.current.rows = (rows?.length ?? contentRowCount) - 1;
             contentMatrix.current.columns = columns?.length - 1;
 
             // Generate matrix with proper selector function
@@ -1369,11 +1641,6 @@ export const useFocusStrategy: (
                 return (row.isDataRow && cell.visible && (cell.isDataCell)) ||
                 (cell.column && cell.visible);
             }, isRowTemplate);
-
-            // Initialize current position to first valid cell
-            const firstValidCell: number[] = contentMatrix.current?.matrix?.[0]?.[0] === 1 ? [0, 0] :
-                contentMatrix.current.findCellIndex([0, 0], true);
-            contentMatrix.current.current = [...firstValidCell];
         } else {
             contentMatrix.current.matrix[0] = [1]; // empty no records cell [1]
         }
@@ -1385,22 +1652,19 @@ export const useFocusStrategy: (
             const rows: IRow<ColumnProps>[] = gridRef.current.getHeaderRowsObject();
 
             // Set the rows count explicitly before generating
+            isLastFirstUpdateRequired = isLastFirstUpdateRequired || (contentRowCount === 0 && columns?.length === 1 ? false :
+                headerMatrix.current.columns !== columns?.length - 1);
             headerMatrix.current.rows = headerRowCount - 1;
             headerMatrix.current.columns = columns?.length - 1;
 
             // Generate matrix with proper selector function for headers
             // Use destructuring to ignore the first parameter
             headerMatrix.current.generate(rows, (_unusedRow: IRow<ColumnProps>, cell: ICell<ColumnProps>) => {
-                return cell.visible && (cell.column.field !== undefined || cell.isTemplate ||
-                cell.column.template !== undefined ||
-                cell.column.type === 'checkbox');
+                return cell.visible && (cell.column.field !== undefined || cell.column.headerText !== undefined || cell.isTemplate ||
+                cell.column.template !== undefined || cell.column.headerTemplate !== undefined ||
+                (cell.column.type === 'checkbox' && contentRowCount > 0));
             }, isRowTemplate);
             generateHeaderFilterRow(rows);
-
-            // Initialize current position to first valid cell
-            const firstValidCell: number[] = headerMatrix.current.matrix?.[0]?.[0] === 1 ? [0, 0] :
-                headerMatrix.current.findCellIndex([0, 0], true);
-            headerMatrix.current.current = [...firstValidCell];
         }
 
         // Initialize aggregate matrix
@@ -1409,6 +1673,8 @@ export const useFocusStrategy: (
             const rows: IRow<ColumnProps>[] = gridRef.current.getFooterRowsObject ? gridRef.current.getFooterRowsObject() : [];
 
             // Set the rows count explicitly before generating
+            isLastFirstUpdateRequired = isLastFirstUpdateRequired || (contentRowCount === 0 && columns?.length === 1 ? false :
+                aggregateMatrix.current.columns !== columns?.length - 1);
             aggregateMatrix.current.rows = aggregateRowCount - 1;
             aggregateMatrix.current.columns = columns?.length - 1;
 
@@ -1416,25 +1682,130 @@ export const useFocusStrategy: (
             aggregateMatrix.current.generate(rows, (row: IRow<ColumnProps>, cell: ICell<ColumnProps>) => {
                 return row.isAggregateRow && cell.visible;
             }, isRowTemplate);
-
-            // Initialize current position to first valid cell
-            const firstValidCell: number[] = aggregateMatrix.current?.matrix?.[0]?.[0] === 1 ? [0, 0] :
-                aggregateMatrix.current.findCellIndex([0, 0], true);
-            aggregateMatrix.current.current = [...firstValidCell];
         }
-
-        setFirstFocusableTabIndex();
-        if (focusedCell.current.isHeader && focusedCell.current.rowIndex !== -1
-            && focusedCell.current.colIndex !== -1) {
-            headerMatrix.current.current = [focusedCell.current.rowIndex, focusedCell.current.colIndex];
+        if (isLastFirstUpdateRequired) {
+            const focusedElement: HTMLElement = focusedCell.current?.element || focusedCell.current?.elementToFocus;
+            const focusedCellElement: HTMLTableCellElement = focusedElement?.closest('td, th');
+            if (gridRef.current?.element?.contains(focusedElement) && focusedCellElement) {
+                focusedCell.current.colIndex = parseFloat(focusedCellElement?.getAttribute('data-colindex')) - 1;
+            }
+            setUpdateLastFirstIndexes({});
         }
-    }, [headerRowCount, contentRowCount, aggregateRowCount, columns?.length, columns, commandAddRef.current.length]);
+        else {
+            const updateCurrentMatrix: (matrix: IFocusMatrix, rowGroup: 'tbody' | 'thead' | 'tfoot') => void =
+                (matrix: IFocusMatrix, rowGroup: 'tbody' | 'thead' | 'tfoot'): void => {
+                    const currentFocusedCellElement: HTMLTableCellElement = document.activeElement.closest(`${rowGroup +
+                        (rowGroup === 'thead' ? ' th' : ' td')}`) ??
+                        gridRef.current.element.querySelector('.sf-cell.sf-focused[tabindex="0"]') as HTMLTableCellElement;
+                    let currentFocusedRowElement: HTMLTableRowElement;
+                    if (virtualSettings?.enableRow) {
+                        currentFocusedRowElement = currentFocusedCellElement?.closest?.(rowGroup + ' tr');
+                    }
+                    let firstValidCell: number[];
+                    if (currentFocusedRowElement || currentFocusedCellElement?.closest(rowGroup)) {
+                        const currentFocusedRowIndex: number = !currentFocusedRowElement ? -1 :
+                            Array.from(currentFocusedRowElement.parentElement.children).indexOf(currentFocusedRowElement);
+                        const currentMatrix: [number, number] = [!currentFocusedRowElement ? matrix?.current[0] : currentFocusedRowIndex,
+                            virtualSettings?.enableColumn ?
+                                (isNaN(parseFloat(currentFocusedCellElement?.getAttribute('data-colindex')) - 1) ?
+                                    Array.from(currentFocusedCellElement.parentElement.children).indexOf(currentFocusedCellElement) : // filterbar cells do not contains data-colindex
+                                    parseFloat(currentFocusedCellElement?.getAttribute('data-colindex')) - 1) : matrix?.current[1]];
+                        matrix.select(currentMatrix[0], currentMatrix[1]);
+                        // Initialize current position to first valid cell
+                        firstValidCell = currentMatrix;
+                    } else {
+                        // Initialize current position to first valid cell
+                        firstValidCell = matrix?.matrix?.[0]?.[0] === 1 ? [0, 0] :
+                            matrix.findCellIndex([0, 0], true);
+                    }
+                    matrix.current = [...firstValidCell];
+                };
+            if (contentRowCount > 0 && columns?.length > 0) {
+                updateCurrentMatrix(contentMatrix.current, 'tbody');
+            }
+            if (headerRowCount > 0 && columns?.length > 0) {
+                updateCurrentMatrix(headerMatrix.current, 'thead');
+            }
+            if (aggregateRowCount > 0 && columns?.length > 0) {
+                updateCurrentMatrix(aggregateMatrix.current, 'tfoot');
+            }
+            if ((virtualSettings?.enableColumn &&
+                gridRef.current.scrollModule.virtualColumnInfo.isFocusScrollOffsetChange) ||
+                ((virtualSettings?.enableRow || virtualSettings?.enableColumn) &&
+                gridRef.current.scrollModule.virtualRowInfo.isFocusScrollOffsetChange)) {
+                gridRef.current.scrollModule.virtualColumnInfo.isFocusScrollOffsetChange = false;
+                gridRef.current.scrollModule.virtualRowInfo.isFocusScrollOffsetChange = false;
+                const visibleColumns: ColumnProps[] = gridRef.current?.getVisibleColumns?.();
+                if (activeMatrix.current === 'Header') {
+                    const colIndex: number = gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex ===
+                        visibleColumns.length - 1 ? headerMatrix.current.columns :
+                        (!isNaN(gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex) ?
+                            gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex :
+                            headerMatrix.current.current[1]);
+                    const rowIndex: number = isNaN(gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex) ?
+                        focusedCell.current.rowIndex : gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex;
+                    requestAnimationFrame(() => {
+                        navigateToCell(rowIndex, colIndex, 'Header');
+                        headerMatrix.current.current = [rowIndex, colIndex];
+                    });
+                } else if (activeMatrix.current === 'Aggregate') {
+                    const colIndex: number = gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex ===
+                        visibleColumns.length - 1 ? aggregateMatrix.current.columns :
+                        (!isNaN(gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex) ?
+                            gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex :
+                            aggregateMatrix.current.current[1]);
+                    const rowIndex: number = isNaN(gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex) ?
+                        focusedCell.current.rowIndex : gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex;
+                    navigateToCell(rowIndex, colIndex, 'Aggregate');
+                    aggregateMatrix.current.current = [rowIndex, colIndex];
+                } else if (activeMatrix.current === 'Content') {
+                    const colIndex: number = gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex ===
+                        visibleColumns.length - 1 ? contentMatrix.current.columns :
+                        (!isNaN(gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex) ?
+                            gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex :
+                            contentMatrix.current.current[1]);
+                    const rowIndex: number = gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex ===
+                        (gridRef.current?.scrollMode === ScrollMode.Virtual ? gridRef.current?.pageSettings?.totalRecordsCount :
+                            virtualChangeDetectedPageSize) - 1 ? contentMatrix.current.rows :
+                        (isNaN(gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex) ?
+                            focusedCell.current.rowIndex : gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex);
+                    if ((lastEvent.current?.type === 'click' || (lastEvent.current as KeyboardEvent)?.key === 'Enter') &&
+                        (lastEvent.current?.target as HTMLElement)?.closest('.sf-grid-command-items')) {
+                        requestAnimationFrame(() => {
+                            (gridRef.current?.addInlineRowFormRef.current ??
+                                gridRef.current?.editInlineRowFormRef.current)?.focusFirstField();
+                        });
+                    } else {
+                        navigateToCell(rowIndex, colIndex, 'Content');
+                    }
+                    contentMatrix.current.current = [rowIndex, colIndex];
+                }
+                gridRef.current.scrollModule.virtualRowInfo.scrollFocusCurrentAriaRowIndex = NaN;
+                gridRef.current.scrollModule.virtualColumnInfo.scrollFocusCurrentAriaColIndex = NaN;
+            }
+            else if (!gridRef.current?.element?.contains(document.activeElement) && (!focusedCell.current.outline ||
+                !gridRef.current?.element?.contains(focusedCell.current.element ?? focusedCell.current.elementToFocus)) &&
+                (!virtualSettings.enableColumn || columns?.[0]?.uid === gridRef.current?.getVisibleColumns?.()?.[0]?.uid)) {
+                setFirstFocusableTabIndex();
+                if (focusedCell.current.isHeader && focusedCell.current.rowIndex !== -1
+                    && focusedCell.current.colIndex !== -1) {
+                    headerMatrix.current.current = [focusedCell.current.rowIndex, focusedCell.current.colIndex];
+                }
+            }
+        }
+    }, [headerRowCount, contentRowCount, aggregateRowCount, columns?.length, columns, commandAddRef.current.length, updateLastFirstIndexes,
+        gridRef.current?.scrollModule?.virtualRowInfo?.startIndex, gridRef.current?.scrollModule?.virtualColumnInfo?.startIndex]);
     useEffect(() => {
         if (isGridFocused && focusedCell.current.rowIndex === -1 && focusedCell.current.colIndex === -1 &&
                 activeMatrix.current === 'Content') {
             setLastContentCellTabIndex();
         }
     }, [isGridFocused]);
+    useEffect(() => {
+        return () => {
+            lastEvent.current = null;
+        };
+    }, []);
     /**
      * Set the first focusable element's tabIndex to 0
      * This is used to allow users to tab into the grid
@@ -1556,7 +1927,7 @@ export const useFocusStrategy: (
             currentFocusableContentCell.classList.remove(CSS_FOCUSED, CSS_FOCUS);
         }
 
-        const currentFocusableAggregateCell: HTMLElement | null = gridRef.current.getFooterTable?.()?.querySelector('[tabindex="0"]');
+        const currentFocusableAggregateCell: HTMLElement | null = gridRef.current?.getFooterTable?.()?.querySelector('[tabindex="0"]');
         if (currentFocusableAggregateCell && !gridRef.current.isEdit) {
             (currentFocusableAggregateCell as HTMLElement).tabIndex = -1;
             currentFocusableAggregateCell.classList.remove(CSS_FOCUSED, CSS_FOCUS);
@@ -1564,7 +1935,7 @@ export const useFocusStrategy: (
 
         // Use aggregate if available, otherwise use content
         if (aggregateRowCount > 0 && columns?.length > 0 && gridRef.current.allowKeyboard) {
-            const aggregateTable: HTMLTableElement | null = gridRef.current.getFooterTable();
+            const aggregateTable: HTMLTableElement | null = gridRef.current?.getFooterTable?.();
             if (aggregateTable && aggregateTable.rows.length > 0) {
                 const lastFocusableActiveCellIndex: number[] = lastFocusableAggregateCellIndex;
                 // Use the last focusable cell index from the matrix
@@ -1691,8 +2062,8 @@ export const useFocusStrategy: (
      * @param {(Matrix)} [matrixType] - Matrix type for the cell
      * @returns {void}
      */
-    const navigateToCell: (rowIndex: number, colIndex: number, matrixType?: Matrix) => void =
-        useCallback((rowIndex: number, colIndex: number, matrixType: Matrix = 'Content') => {
+    const navigateToCell: (rowIndex: number, colIndex: number, matrixType?: Matrix, virtualFocusDebounceTimer?: NodeJS.Timeout) => void =
+        useCallback((rowIndex: number, colIndex: number, matrixType: Matrix = 'Content', virtualFocusDebounceTimer?: NodeJS.Timeout) => {
             if (!gridRef.current?.allowKeyboard) { return; }
             // Set the active matrix
             setActiveMatrix(matrixType);
@@ -1723,21 +2094,22 @@ export const useFocusStrategy: (
                 let table: HTMLTableElement | undefined;
                 switch (matrixType) {
                 case 'Header':
-                    table = gridRef.current?.getHeaderTable();
+                    table = gridRef.current?.getHeaderTable?.();
                     break;
                 case 'Aggregate':
-                    table = gridRef.current?.getFooterTable();
+                    table = gridRef.current?.getFooterTable?.();
                     break;
                 case 'Content':
                 default:
-                    table = gridRef.current?.getContentTable();
+                    table = gridRef.current?.getContentTable?.();
                     break;
                 }
                 const rows: HTMLCollectionOf<HTMLTableRowElement> | NodeListOf<HTMLTableRowElement> = ((gridRef.current?.isEdit &&
                     gridRef.current?.editModule?.isShowAddNewRowActive) || (matrixType === 'Content' && commandEdit?.current)) ? table?.querySelectorAll?.('tr.sf-grid-content-row:not(.sf-grid-add-row)') :
                     table?.rows;
                 if (table && rows.length > rowIndex) {
-                    const row: HTMLTableRowElement = rows[rowIndex as number];
+                    const rowForm: HTMLTableRowElement = rows[rowIndex as number].querySelector('form table tr');
+                    const row: HTMLTableRowElement = rowForm ?? rows[rowIndex as number];
                     if (row && row.cells.length > colIndex) {
                         // Get the cell element
                         const cellElement: HTMLElement = row.cells[colIndex as number] as HTMLElement;
@@ -1745,16 +2117,26 @@ export const useFocusStrategy: (
                         // Create focus info
                         const info: FocusedCellInfo = {
                             rowIndex: rowIndex,
+                            virtualAriaRowIndex: parseUnit(row?.getAttribute('aria-rowindex')),
                             colIndex: colIndex,
+                            virtualAriaColIndex: parseUnit(cellElement?.getAttribute('aria-colindex')),
                             isHeader: matrixType === 'Header',
                             isAggregate: matrixType === 'Aggregate',
                             element: cellElement,
                             elementToFocus: cellElement,
-                            outline: true
+                            outline: !rowForm
                         };
 
-                        // Add focus to the cell
-                        addFocus(info);
+                        const isInMaskVirtualLoadingCell: boolean | Element = info.element?.querySelector('.sf-cell .sf-skeleton');
+                        if (!isInMaskVirtualLoadingCell) {
+                            // Add focus to the cell
+                            addFocus(info);
+                        } else {
+                            clearTimeout(virtualFocusDebounceTimer);
+                            virtualFocusDebounceTimer = setTimeout(() => {
+                                navigateToCell(info.rowIndex, info.colIndex);
+                            }, 100);
+                        }
                     }
                 }
             }
@@ -1774,7 +2156,13 @@ export const useFocusStrategy: (
 
         matrix.select(firstCell[0], firstCell[1]);
         matrix.current = [...firstCell];
-        focus();
+        debounceFirstVirtualRowCellFocusHelper(firstCell);
+        // Use requestAnimationFrame to ensure the DOM is ready
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                focus();
+            });
+        });
     }, [headerRowCount, setActiveMatrix, getActiveMatrix, focus]);
 
     /**
@@ -1802,6 +2190,7 @@ export const useFocusStrategy: (
             matrix.select(rowIndex, colIndex);
             matrix.current = [rowIndex, colIndex];
         }
+        debounceLastVirtualRowCellFocusHelper();
 
         // Set the tabIndex for the last cell
         setLastContentCellTabIndex();
@@ -1858,12 +2247,13 @@ export const useFocusStrategy: (
 
         // Reset focus to first cell in content
         const matrix: IFocusMatrix = getActiveMatrix();
-        const firstCell: number[] = matrix.matrix[0][0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
+        const firstCell: number[] = matrix.matrix?.[0]?.[0] === 1 ? [0, 0] : matrix.findCellIndex([0, 0], true);
         matrix.select(firstCell[0], firstCell[1]);
         matrix.current = [...firstCell];
+        debounceFirstVirtualRowCellFocusHelper(firstCell); // prevent default non virtual content focus and help to apply focus on useEffect after render.
         setIsGridFocused(true);
         focus();
-    }, [setActiveMatrix, getActiveMatrix, focus]);
+    }, [setActiveMatrix, getActiveMatrix, focus, debounceFirstVirtualRowCellFocusHelper]);
 
     return {
         // State
@@ -1900,6 +2290,7 @@ export const useFocusStrategy: (
         navigateToNextCell,
         navigateToFirstCell,
         navigateToLastCell,
+        debounceLastVirtualRowCellFocusHelper,
 
         // Utility methods
         isNavigationKey,

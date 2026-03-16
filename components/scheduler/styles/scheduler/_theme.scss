@@ -1,5 +1,16 @@
 @use 'theme-variables' as *;
 
+@mixin appointment-color {
+  background: $scheduler-appointment-bg-color;
+  border-radius: $scheduler-appointment-border-radius;
+  color: $scheduler-appointment-font-color;
+}
+
+@mixin appointment-focus {
+  border: $scheduler-border-0;
+  box-shadow: $scheduler-event-box-shadow-1, $scheduler-event-box-shadow-2, $scheduler-event-box-shadow-3;
+}
+
 @include export-module('scheduler-theme') {
 
   .sf-scheduler {
@@ -103,13 +114,10 @@
     }
 
     .sf-appointment {
-        background: $scheduler-appointment-bg-color;
-        border-radius: $scheduler-appointment-border-radius;
-        color: $scheduler-appointment-font-color;
+        @include appointment-color;
 
         &:focus {
-          border: $scheduler-border-0;
-          box-shadow: $scheduler-event-box-shadow-1, $scheduler-event-box-shadow-2, $scheduler-event-box-shadow-3;
+          @include appointment-focus;
         }
     }
 
@@ -148,14 +156,19 @@
 
   .sf-mobile-popup {
     .sf-more-event-content .sf-appointment {
-      background: $scheduler-appointment-bg-color;
-      border-radius: $scheduler-appointment-border-radius;
-      color: $scheduler-appointment-font-color;
+      @include appointment-color;
 
       &:focus {
-        border: $scheduler-border-0;
-        box-shadow: $scheduler-event-box-shadow-1, $scheduler-event-box-shadow-2, $scheduler-event-box-shadow-3;
+        @include appointment-focus;
       }
     }
-  }  
+  }
+
+  .sf-external-drag-clone {
+    @include appointment-color;
+
+    &:focus {
+      @include appointment-focus;
+    }
+  }
 }

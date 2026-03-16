@@ -8,12 +8,16 @@
       display: none;
     }
 
-    &.sf-drp-btn-sm svg {
+    &.sf-drp-btn-sm .sf-caret svg {
       width: $drop-down-btn-sm-icon-size;
       height: $drop-down-btn-sm-icon-size;
     }
+    &.sf-drp-btn-me .sf-caret svg{
+      width: $drop-down-btn-me-icon-size;
+      height: $drop-down-btn-me-icon-size;
+    }
 
-    &.sf-drp-btn-la .sf-btn-icon {
+    &.sf-drp-btn-la .sf-caret svg {
       width: $drop-down-btn-la-icon-size;
       height: $drop-down-btn-la-icon-size;
     }
@@ -60,6 +64,10 @@
 
         .sf-menu-icon {
           margin-inline-end: $drop-down-btn-sm-icon-margin-right;
+          .sf-icon-size{
+            height: $drop-down-btn-sm-menu-icon-size;
+            width: $drop-down-btn-sm-menu-icon-size;
+          }
         }
       }
     }
@@ -76,6 +84,10 @@
 
         .sf-menu-icon {
           margin-inline-end: $drop-down-btn-me-icon-margin-right;
+          .sf-icon-size{
+            height: $drop-down-btn-me-menu-icon-size;
+            width: $drop-down-btn-me-menu-icon-size;
+          }
         }
       }
     }
@@ -92,6 +104,10 @@
 
         .sf-menu-icon {
           margin-inline-end: $drop-down-btn-la-icon-margin-right;
+          .sf-icon-size{
+            height: $drop-down-btn-la-menu-icon-size;
+            width: $drop-down-btn-la-menu-icon-size;
+          }
         }
       }
     }

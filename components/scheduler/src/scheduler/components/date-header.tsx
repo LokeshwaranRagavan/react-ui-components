@@ -12,7 +12,8 @@ export const DateHeader: FC = () => {
 
     const {
         timeScale,
-        dateHeader
+        dateHeader,
+        headerIndent
     } = useSchedulerPropsContext();
 
     const { handleDateClick } = useNavigate();
@@ -36,6 +37,7 @@ export const DateHeader: FC = () => {
             <div
                 key={headerCell.key}
                 className={headerCell.className}
+                data-date={headerCell.date ? headerCell.date.getTime() : undefined}
                 onClick={(e: React.MouseEvent<HTMLDivElement>) => handleCellClick(e, headerCell.date, true)}
                 onDoubleClick={(e: React.MouseEvent<HTMLDivElement>) => handleCellDoubleClick(e, headerCell.date, true)}
             >
@@ -80,10 +82,16 @@ export const DateHeader: FC = () => {
         <div className={CSS_CLASSES.HEADER_SECTION}>
             {timeScale.enable && (
                 <div className={CSS_CLASSES.LEFT_INDENT}>
-                    {weekNumber && (
-                        <div className={CSS_CLASSES.WEEK_NUMBER}>
-                            <div title={`Week ${weekNumber}`}>{weekNumber}</div>
-                        </div>
+                    {headerIndent ? (
+                        headerIndent({ weekNumber })
+                    ) : (
+                        <>
+                            {weekNumber && (
+                                <div className={CSS_CLASSES.WEEK_NUMBER}>
+                                    <div title={`Week ${weekNumber}`}>{weekNumber}</div>
+                                </div>
+                            )}
+                        </>
                     )}
                     {showAllDayToggle && renderAllDayToggle()}
                 </div>

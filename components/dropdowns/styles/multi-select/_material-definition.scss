@@ -1,0 +1,38 @@
+@use '../../../base/styles/themes/variables' as *;
+
+$multiselect-input-padding-start: $spacing-4 !default;
+$multiselect-chip-margin-inline: $spacing-4 !default;
+$multiselect-chip-margin: $spacing-4 $spacing-0 !default;
+$multiselect-separator-margin: $spacing-4 $spacing-0 !default;
+$multiselect-separator-color: rgb($border) !default;
+$multiselect-values-max-width: 100% !default;
+$multiselect-float-label-bg: linear-gradient(rgb($surface), rgb($surface));
+$multiselect-float-bg-size: $spacing-6 !default;
+
+$multiselect-small-chip-padding: $spacing-2 $spacing-8 !default;
+$multiselect-small-chip-font-size: $font-size-xs !default;
+$multiselect-small-chip-line-height: $line-height-xs !default;
+$multiselect-small-chip-close-icon-size: $font-size-sm !default;
+$multiselect-small-chip-close-icon-margin: $spacing-4 !default;
+$multiselect-small-checkbox-item-gap: $spacing-8 !default;
+$multiselect-small-filled-input-line-padding: $spacing-5 $spacing-10 !default;
+$multiselect-small-filled-font-size: $font-size-sm !default;
+$multiselect-small-filled-line-height: $line-height-sm !default;
+$multiselect-small-filled-float-transition: translate3d(0, calc(var(--sf-spacing) * -0.375), 0) !default;
+$multiselect-small-filled-float-left: $spacing-0 !default;
+
+$multiselect-medium-chip-padding: $spacing-3 $spacing-10 !default;
+$multiselect-medium-checkbox-item-gap: $spacing-12 !default;
+$multiselect-medium-filled-input-line-padding: $spacing-9 $spacing-16 !default;
+$multiselect-medium-filled-float-transition: translate3d(0, calc(var(--sf-spacing) * -0.625), 0) !default;
+$multiselect-medium-filled-float-left: $spacing-0 !default;
+
+$multiselect-large-chip-padding: $spacing-4 $spacing-12 !default;
+$multiselect-large-chip-font-size: $font-size-base !default;
+$multiselect-large-chip-line-height: $line-height-base !default;
+$multiselect-large-chip-close-icon-size: $font-size-lg !default;
+$multiselect-large-chip-close-icon-margin: $spacing-8 !default;
+$multiselect-large-checkbox-item-gap: $spacing-16 !default;
+$multiselect-large-filled-input-line-padding: $spacing-11 $spacing-16 !default;
+$multiselect-large-filled-float-transition: translate3d(0, calc(var(--sf-spacing) * -0.75), 0) !default;
+$multiselect-large-filled-float-left: $spacing-0 !default;

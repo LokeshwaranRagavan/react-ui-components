@@ -215,36 +215,7 @@ export interface ViewChangeEvent {
     event?: React.SyntheticEvent;
 }
 
-export interface CalendarProps {
-    /**
-     * Specifies the calendar system to use, such as 'gregorian' or 'islamic'.
-     *
-     * @private
-     * @default 'gregorian'
-     */
-    calendarType?: CalendarType;
-
-    /**
-     * Specifies the selected date of the Calendar in controlled mode.
-     *
-     * @default -
-     */
-    value?: Date | Date[] | null;
-
-    /**
-     * Specifies the default selected date of the Calendar in uncontrolled mode.
-     *
-     * @default -
-     */
-    defaultValue?: Date | Date[] | null;
-
-    /**
-     * When `true`, enables the selection of multiple dates.
-     *
-     * @default false
-     */
-    multiSelect?: boolean;
-
+export interface CalendarBaseProps {
     /**
      * Specifies the minimum date that can be selected in the Calendar.
      *
@@ -297,20 +268,6 @@ export interface CalendarProps {
     weekRule?: WeekRule;
 
     /**
-     * When `true`, displays the 'Today' button in the footer.
-     *
-     * @default true
-     */
-    showTodayButton?: boolean;
-
-    /**
-     * When `true`, an additional toolbar is displayed, typically for showing the full selected date.
-     *
-     * @default false
-     */
-    showToolBar?: boolean;
-
-    /**
      * Specifies the format of the day names to be displayed in the week header.
      *
      * @default WeekDaysFormats.Short
@@ -323,6 +280,13 @@ export interface CalendarProps {
      * @default true
      */
     showDaysOutsideCurrentMonth?: boolean;
+
+    /**
+     * Prevents navigation when clicking on dates from other months in month view
+     *
+     * @default false
+     */
+    disableOtherMonthNavigation?: boolean;
 
     /**
      * When `true`, disables all dates in the past relative to the current day.
@@ -339,25 +303,18 @@ export interface CalendarProps {
     disableFutureDays?: boolean;
 
     /**
-     * Defines the layout orientation of the calendar.
+     * Sets the range for daterangepicker.
      *
-     * @default Orientation.Vertical
+     * @private
+     * @default -
      */
-    orientation?: Orientation;
+    range?: [Date | null, Date | null];
 
-    /**
-     * When `true`, the component is disabled and non-interactive.
+    /** Fires when a month cell is hovered
      *
-     * @default false
+     * @private
      */
-    disabled?: boolean;
-
-    /**
-     * When `true`, the calendar value cannot be changed by user interaction.
-     *
-     * @default false
-     */
-    readOnly?: boolean;
+    onCellHover?: (date: Date, view: CalendarView) => void;
 
     /**
      * Specifies a custom template for rendering the content of each calendar cell.
@@ -366,6 +323,46 @@ export interface CalendarProps {
      * @default -
      */
     cellTemplate?: ((props: CalendarCellProps) => React.ReactNode);
+
+    /**
+     * Triggers when the calendar navigates to a new view or date range.
+     *
+     * @event onViewChange
+     */
+    onViewChange?: (event: ViewChangeEvent) => void;
+
+    /**
+     * Fires when keyboard navigation moves beyond the current month's boundaries.
+     *
+     * @private
+     * @event onOutOfRangeNavigation
+     */
+    onOutOfRangeNavigation?: (direction: 'left' | 'right' | 'up' | 'down', date: Date) => boolean;
+}
+
+
+export interface CalendarUiProps {
+
+    /**
+     * Specifies whether the calendar shows the Today button in the footer.
+     *
+     * @default true
+     */
+    showTodayButton?: boolean;
+
+    /**
+     * Specifies whether the calendar displays an additional toolbar for showing the full selected date.
+     *
+     * @default false
+     */
+    showToolBar?: boolean;
+
+    /**
+     * Specifies the layout orientation of the calendar.
+     *
+     * @default Orientation.Vertical
+     */
+    orientation?: Orientation;
 
     /**
      * Specifies a custom template for the calendar footer.
@@ -382,6 +379,51 @@ export interface CalendarProps {
      * @default -
      */
     headerTemplate?: ((props: CalendarHeaderProps) => React.ReactNode);
+}
+
+export interface CalendarProps extends CalendarBaseProps, CalendarUiProps {
+    /**
+     * Specifies the calendar system to use, such as 'gregorian' or 'islamic'.
+     *
+     * @private
+     * @default 'gregorian'
+     */
+    calendarType?: CalendarType;
+
+    /**
+     * Specifies the selected date of the Calendar in controlled mode.
+     *
+     * @default -
+     */
+    value?: Date | Date[] | null;
+
+    /**
+     * Specifies the default selected date of the Calendar in uncontrolled mode.
+     *
+     * @default -
+     */
+    defaultValue?: Date | Date[] | null;
+
+    /**
+     * When `true`, enables the selection of multiple dates.
+     *
+     * @default false
+     */
+    multiSelect?: boolean;
+
+    /**
+     * When `true`, the component is disabled and non-interactive.
+     *
+     * @default false
+     */
+    disabled?: boolean;
+
+    /**
+     * When `true`, the calendar value cannot be changed by user interaction.
+     *
+     * @default false
+     */
+    readOnly?: boolean;
 
     /**
      * Triggers when the calendar's `value` is changed through user interaction.
@@ -389,12 +431,5 @@ export interface CalendarProps {
      * @event onChange
      */
     onChange?: (event: CalendarChangeEvent) => void;
-
-    /**
-     * Triggers when the calendar navigates to a new view or date range.
-     *
-     * @event onViewChange
-     */
-    onViewChange?: (event: ViewChangeEvent) => void;
 }
 

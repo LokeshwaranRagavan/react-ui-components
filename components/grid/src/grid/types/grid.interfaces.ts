@@ -2,12 +2,12 @@ import { ComponentType, HTMLAttributes, ReactElement, ReactNode } from 'react';
 import { DataManager, DataResult, Query, ReturnType as DataReturnType, Aggregates } from '@syncfusion/react-data';
 import { IL10n } from '@syncfusion/react-base';
 import { HeaderCellRenderEvent, CellRenderEvent, RowRenderEvent, ServiceLocator } from '../types/interfaces';
-import { GridLine, SortDirection, WrapMode, Action, ClipMode, ValueType, RowType, ToolbarItems } from './index';
-import { FilterSettings, FilterEvent } from '../types/filter.interfaces';
+import { GridLine, SortDirection, WrapMode, Action, ClipMode, ValueType, RowType, ToolbarItems, Theme, LoadingIndicatorType } from './index';
+import { FilterSettings, FilterEvent, FilterDialogBeforeOpenEvent, FilterDialogAfterOpenEvent } from '../types/filter.interfaces';
 import { ColumnProps } from '../types/column.interfaces';
 import { CellFocusEvent } from '../types/focus.interfaces';
 import { EditSettings, FormRenderEvent, RowEditEvent, DeleteEvent,
-    RowAddEvent, SaveEvent, FormCancelEvent } from '../types/edit.interfaces';
+    RowAddEvent, SaveEvent, FormCancelEvent, DeleteDialogEventArgs } from '../types/edit.interfaces';
 import { AggregateCellRenderEvent, AggregateRowRenderEvent, AggregateRowProps } from '../types/aggregate.interfaces';
 import { ToolbarClickEvent, ToolbarItemProps } from '../types/toolbar.interfaces';
 import { RenderRef, MutableGridBase, DataChangeRequestEvent, DataRequestEvent, IRowBase, IValueFormatter } from '../types/interfaces';
@@ -15,6 +15,69 @@ import { RowSelectEvent, RowSelectingEvent, SelectionSettings } from '../types/s
 import { PageEvent, PageSettings } from '../types/page.interfaces';
 import { SortEvent, SortSettings } from '../types/sort.interfaces';
 import { SearchEvent, SearchSettings } from '../types/search.interfaces';
+import { VirtualizationSettings } from './virtualization.interface';
+import { SpinnerProps } from '@syncfusion/react-popups';
+import { SkeletonProps } from '@syncfusion/react-notifications';
+
+/**
+ * Defines settings for the loading indicator displayed during grid data operations.
+ * Combines indicator type configuration with component-specific customization options.
+ * Used to provide visual feedback to users when the grid is fetching, processing, or rendering data.
+ *
+ * Supports two indicator types:
+ * * `Spinner` - Displays a traditional spinner animation (circular or linear). Configured with SpinnerProps for customization.
+ * * `Shimmer` - Displays a skeleton placeholder that previews the content layout. Configured with SkeletonProps for customization.
+ *
+ * @default {
+ *   indicatorType: LoadingIndicatorType.Spinner,
+ *   params: {
+ *     visible: true,
+ *     thickness: '3px',
+ *     animationDuration: '1s',
+ *     overlay: true,
+ *     size: '36px',
+ *     color: Color.Primary
+ *   }
+ * }
+ *
+ * @example
+ * ```tsx
+ * // Using default Spinner
+ * <Grid loadingIndicatorSettings={{ indicatorType: LoadingIndicatorType.Spinner }} />
+ *
+ * // Using Shimmer with custom parameters
+ * <Grid loadingIndicatorSettings={{
+ *   indicatorType: LoadingIndicatorType.Shimmer,
+ *   params: {
+ *     width: '100%',
+ *     height: '10px',
+ *     variant: 'text',
+ *     animation: 'wave'
+ *   }
+ * }} />
+ * ```
+ */
+export interface LoadingIndicatorSettings {
+    /**
+     * Specifies the type of loading indicator to display.
+     * * `Spinner` - Displays a circular or linear spinner animation for traditional loading feedback.
+     * * `Shimmer` - Displays a skeleton placeholder that simulates the content being loaded.
+     *
+     * @default LoadingIndicatorType.Spinner
+     */
+    indicatorType?: LoadingIndicatorType;
+
+    /**
+     * Provides customization options for the selected loading indicator type.
+     * Accepts properties from `SpinnerProps` (for Spinner type) or `SkeletonProps` (for Shimmer type).
+     * Allows fine-tuning of appearance, animation, colors, and behavior specific to the selected indicator.
+     *
+     * @default
+     * Spinner: `{ visible: true, thickness: '3px', animationDuration: '1s', overlay: true, type: SpinnerType.Circular, size: '36px', color: Color.Primary }`
+     * Shimmer: `{ width: '100%', height: '10px', variant: Variants.Text, animation: AnimationType.Wave }`
+     */
+    params?: SpinnerProps | SkeletonProps;
+}
 
 /**
  * Represents information about a specific row and cell in the grid.
@@ -58,6 +121,26 @@ export interface RowInfo<T = unknown> {
     rowIndex?: number;
 
     /**
+     * Specifies the zero-based index of the virtual row within the grid.
+     *
+     * Used for identifying the aria virtual row's position in the grid.
+     *
+     * @private
+     * @default null
+     */
+    ariaRowIndex?: number;
+
+    /**
+     * Specifies the zero-based index of the virtual cell within the grid.
+     *
+     * Used for identifying the aria virtual cell's position in the grid.
+     *
+     * @private
+     * @default null
+     */
+    ariaColIndex?: number;
+
+    /**
      * Contains the data object associated with the row.
      *
      * This object holds the row's data, which can be used for rendering or processing.
@@ -77,7 +160,7 @@ export interface RowInfo<T = unknown> {
 }
 
 /**
- * Interface for Grid component reference containing all imperative methods and properties.
+ * Interface for Data Grid component reference containing all imperative methods and properties.
  * Provides access to grid instance methods and current state information.
  *
  * @private
@@ -96,6 +179,13 @@ export interface GridRef<T = unknown> extends Omit<RenderRef<T>, 'refresh'>, IGr
      * @default []
      */
     currentViewData?: T[];
+
+    /**
+     * Gets the current view records
+     *
+     * @returns {Object[]} The current records
+     */
+    getCurrentViewRecords(): T[];
 
     /**
      * Defines the selected row indexes.
@@ -549,12 +639,13 @@ export interface GridProps<T = unknown> extends Omit<HTMLAttributes<HTMLDivEleme
     textWrapSettings?: TextWrapSettings;
 
     /**
-     * Sets a fixed height for all rows in the grid.
+     * Specifies the height for all rows in the grid.
      *
-     * This property sets a uniform height for all rows in the grid. When set to a number, all rows will have exactly that height in pixels.
-     * When null (default), row height is determined automatically based on content and styles.
+     * * When a numeric value is provided, all rows will have a fixed height in pixels.
+     * * If `rowHeight` is `undefined` and row DOM virtualization is enabled, the height defaults to the `theme` property based value (e.g., `Theme.Material` = 50).
+     * * When `null` (default), row height is automatically calculated based on content and applied styles for grids without row DOM virtualization.
      *
-     * @default null
+     * @default null | 50
      *
      * @example
      * ```tsx
@@ -566,6 +657,75 @@ export interface GridProps<T = unknown> extends Omit<HTMLAttributes<HTMLDivEleme
      * ```
      */
     rowHeight?: number;
+
+    /**
+     * Gets the height of a specific row dynamically at runtime.
+     * Accepts a callback function that returns the height in pixels based on row information, allowing row-specific height customization.
+     * This property enables dynamic row sizing based on content, data values, or other custom logic.
+     *
+     * @param props - Partial row information used to calculate the row height, including row index, data, and column configuration.
+     * @returns number - Height of the row in pixels.
+     *
+     * @example
+     * ```tsx
+     * <Grid
+     *   dataSource={employees}
+     *   columns={columns}
+     *   getRowHeight={(props) => props.data?.OrderID === 10248 ? 60 : 40}
+     * />
+     * ```
+     */
+    getRowHeight?: (props: Partial<RowInfo<T>>) => number;
+
+    /**
+     * Specifies the theme configuration for the Data Grid component.
+     * Used internally to determine default values for theme-dependent properties (e.g., row height in virtualization).
+     *
+     * The theme property defines static default values and calculations used during grid initialization and rendering,
+     * such as the default `rowHeight` value when row DOM virtualization is enabled.
+     *
+     * Grid styling and visual appearance are controlled by importing the corresponding theme CSS files,
+     * not by the `theme` property alone. The `theme` property must be coordinated with the appropriate CSS import.
+     *
+     * @default Theme.Material
+     *
+     * @example
+     * ```tsx
+     * // Import Material theme CSS for styling
+     * import '@syncfusion/react-grids/styles/material.css';
+     *
+     * // Specify theme for internal default calculations
+     * <Grid theme={Theme.Material} />
+     * ```
+     */
+    theme?: Theme;
+
+    /**
+     * Configures virtualization behavior for grid rendering.
+     * Includes options for enabling virtualization, defining DOM type, and customizing buffer and scroll settings.
+     *
+     * @default {
+     *   enabled: true,
+     *   type: VirtualDomType.Both,
+     *   viewPortBuffer: { rows: 5, columns: 5 },
+     *   scrollMode: ScrollMode.Auto,
+     *   preventMaxRenderedRows: false
+     * }
+     *
+     * @example
+     * ```tsx
+     * <Grid
+     *   dataSource={employees}
+     *   columns={columns}
+     *   virtualizationSettings={{
+     *     enabled: true,
+     *     type: VirtualDomType.Row,
+     *     viewPortBuffer: { rows: 10, columns: 5 }
+     *   }}
+     * />
+     * ```
+     */
+    virtualizationSettings?: VirtualizationSettings;
 
     /**
      * Child components for the grid.
@@ -820,6 +980,33 @@ export interface GridProps<T = unknown> extends Omit<HTMLAttributes<HTMLDivEleme
      * };
      */
     rowClass?: string | ((props?: RowClassProps<T>) => string);
+
+    /**
+     * Configures loading indicator settings for the Data Grid component.
+     * Applies spinner or skeleton customization during data operations.
+     *
+     * @default
+     * {
+     *   indicatorType: LoadingIndicatorType.Spinner,
+     *   params: {
+     *     visible: true,
+     *     thickness: '3px',
+     *     animationDuration: '1s',
+     *     overlay: true,
+     *     size: '36px',
+     *     color: Color.Primary
+     *   }
+     * }
+     *
+     * @example
+     * ```tsx
+     * <Grid loadingIndicatorSettings={{
+     *   indicatorType: LoadingIndicatorType.Spinner,
+     *   params: { size: '48px', color: '#0078D4' }
+     * }} />
+     * ```
+     */
+    loadingIndicatorSettings?: LoadingIndicatorSettings;
 
     /**
      * Fires at the start of grid initialization before data processing.
@@ -1101,6 +1288,39 @@ export interface GridProps<T = unknown> extends Omit<HTMLAttributes<HTMLDivEleme
      * ```
      */
     onFilter?: (event: FilterEvent) => void;
+
+    /**
+     * Fires before the filter Dialog is displayed or opened.
+     * Allows customization or cancellation before the filter interface appears.
+     *
+     * @private
+     * @event onFilterDialogBeforeOpen
+     */
+    onFilterDialogBeforeOpen?: (event: FilterDialogBeforeOpenEvent) => void;
+
+    /**
+     * Fires after the filter Dialog is fully displayed and ready for interaction.
+     * Suitable for initializing custom filter components or DOM manipulation.
+     *
+     * @event onFilterDialogAfterOpen
+     * @example
+     * ```tsx
+     * const GridComponent = () => {
+     *   const handleFilterDialogOpen = (event: FilterDialogAfterOpenEvent) => {
+     *     // handle your action here
+     *   };
+     *
+     *   return (
+     *     <Grid
+     *       dataSource={employeeData}
+     *       onFilterDialogAfterOpen={handleFilterUIOpen}
+     *       filterSettings={{ enabled: true,  }}
+     *     />
+     *   );
+     * };
+     * ```
+     */
+    onFilterDialogAfterOpen?: (event: FilterDialogAfterOpenEvent) => void;
 
     /**
      * Fires when a sorting operation begins on the grid.
@@ -1518,6 +1738,41 @@ export interface GridProps<T = unknown> extends Omit<HTMLAttributes<HTMLDivEleme
      * ```
      */
     onDataChangeCancel?: (event: FormCancelEvent<T>) => void;
+
+    /**
+     * Fires when the bulk‑delete confirmation dialog opens with cross‑page selection enabled.
+     * Allows customization of dialog options, such as disabling specific choices or setting the default selection.
+     *
+     * Use Cases:
+     * - Disable "Delete Current Page": Prevents partial deletion when records are selected across multiple pages.
+     * - Preselect "Delete All Selected Records": Ensures this option is the default, reducing errors and maintaining consistency.
+     *
+     * @event onDeleteDialogOpen
+     * @example
+     * ```tsx
+     * const GridComponent = () => {
+     *   const handleDeleteDialogOpen = (eventArgs: DeleteDialogEventArgs) => {
+     *     // Customize dialog options
+     *     if (eventArgs.totalSelectedCount > 100) {
+     *       eventArgs.customizations = {
+     *         pageOptionDisabled: true,
+     *         defaultOption: 'all'
+     *       };
+     *     }
+     *   };
+     *
+     *   return (
+     *     <Grid
+     *       dataSource={orderData}
+     *       onDeleteDialogOpen={handleDeleteDialogOpen}
+     *       editSettings={{ allowDelete: true }}
+     *       selectionSettings={{ mode: 'Multiple', persistSelection: true }}
+     *     />
+     *   );
+     * };
+     * ```
+     */
+    onDeleteDialogOpen?: (eventArgs: DeleteDialogEventArgs) => void;
 }
 
 /**
@@ -1558,6 +1813,14 @@ export interface RowClassProps<T = unknown> {
  */
 export interface IGrid<T = unknown> extends GridProps<T> {
     /**
+     * Reference to the grid's root DOM element.
+     *
+     * @private
+     * @default null
+     */
+    element?: HTMLDivElement | null;
+
+    /**
      * Displays a loading spinner overlay on the grid to indicate an ongoing operation.
      * Used to enhance the user experience during asynchronous or time-consuming operations.
      *
@@ -1596,7 +1859,7 @@ export interface IGrid<T = unknown> extends GridProps<T> {
      *
      * @returns {ColumnProps[]} An array of configuration objects for visible columns.
      */
-    getVisibleColumns(): ColumnProps[];
+    getVisibleColumns(): ColumnProps<T>[];
 
     /**
      * Retrieves the column configuration object for a specified unique identifier (UID).
@@ -1752,12 +2015,45 @@ export interface IGrid<T = unknown> extends GridProps<T> {
     getSelectedRowIndexes(): number[];
 
     /**
-     * Retrieves the data objects of the currently selected rows in the grid.
-     * Used to access the data of selected rows for processing or display.
+     * Retrieves the selected row data or selection metadata from the grid.
      *
-     * @returns {Object[] | null} An array of selected row data objects or null if none are selected.
+     * Returns different types based on configuration:
+     * - Local data: Array of selected row data objects (`T[]`)
+     * - Remote data with persistent selection: Object with `isSelectAll` (boolean) and `primaryKeys` (string[])
+     * - No selection: Empty array or null
+     *
+     * @public
+     * @returns {T[] | { isSelectAll: boolean; primaryKeys: string[] } | null} Selected records or selection metadata
+     *
+     * @example
+     * ```tsx
+     * const selection = gridRef.current?.getSelectedRecords();
+     * // Check if it's metadata object or array
+     * if (selection && typeof selection === 'object' && 'isSelectAll' in selection) {
+     *   console.log('Select All:', selection.isSelectAll);
+     * }
+     * ```
      */
-    getSelectedRecords(): T[] | null;
+    getSelectedRecords(): T[] | { isSelectAll: boolean; primaryKeys: string[] } | null;
+
+    /**
+     * Retrieves the persistent selected data as an array of record objects.
+     *
+     * Provides access to the internal persistent selection storage maintained across paging,
+     * sorting, filtering, and other grid operations. Only returns data when `persistSelection`
+     * is enabled in `selectionSettings`.
+     *
+     * @public
+     * @returns {T[]} Array of selected record objects
+     *
+     * @example
+     * ```tsx
+     * const persistData = gridRef.current?.getPersistSelectedData();
+     * console.log('Total selected:', persistData?.length);
+     * ```
+     */
+    getPersistSelectedData(): T[];
+
 
     /**
      * Deselects specific rows by their indexes in the grid.

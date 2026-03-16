@@ -96,6 +96,12 @@ export const AllDayRowCell: FC<AllDayRowCellProps> = (props: AllDayRowCellProps)
             data-date={date.getTime()}
             onClick={(e: React.MouseEvent<HTMLDivElement>) => handleCellClick(e, date, true)}
             onDoubleClick={(e: React.MouseEvent<HTMLDivElement>) => handleCellDoubleClick(e, date, true)}
+            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleCellClick(e as unknown as React.MouseEvent<HTMLDivElement>, date, true);
+                }
+            }}
         >
             {timeScale.enable && (
                 <>

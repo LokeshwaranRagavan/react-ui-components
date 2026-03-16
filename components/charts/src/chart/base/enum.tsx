@@ -112,6 +112,10 @@ export type EmptyPointMode =
  * StackingArea :- Represents a stacking area series.
  * StackingArea100 :- Represents a 100% stacking area series.
  * SplineRangeArea :- Represents a spline range area series.
+ * MultiColoredArea :- Represents a multi colored area series.
+ * Waterfall :- Represents a waterfall series.
+ * Histogram :- Represents a histogram series.
+ * Pareto :- Represents a pareto series.
  * ```
  */
 export type ChartSeriesType =
@@ -137,7 +141,11 @@ export type ChartSeriesType =
     'RangeArea'|
     'RangeColumn'|
     'StackingArea'|
-    'StackingArea100';
+    'StackingArea100'|
+    'Waterfall'|
+    'MultiColoredArea'|
+    'Histogram'|
+    'Pareto';
 
 /**
  * Specifies the position where the step begins in a step line series.
@@ -501,3 +509,22 @@ export type ErrorBarType =
     'StandardDeviation' |
     'StandardError' |
     'Custom';
+
+/**
+ * Defines the types of trendlines available in the chart.
+ * ```props
+ * Linear :- Represents a linear trendline using least squares regression.
+ * Exponential :- Represents an exponential trendline showing exponential growth or decay.
+ * Polynomial :- Represents a polynomial trendline with a specified order (2-6).
+ * Power :- Represents a power trendline showing power law relationships.
+ * Logarithmic :- Represents a logarithmic trendline using natural logarithm.
+ * MovingAverage :- Represents a moving average trendline based on a specified period.
+ * ```
+ */
+export type TrendlineTypes =
+    | 'Linear'
+    | 'Exponential'
+    | 'Polynomial'
+    | 'Power'
+    | 'Logarithmic'
+    | 'MovingAverage';

@@ -89,3 +89,62 @@ export type PieLegendShape =
  * ```
  */
 export type LegendAlignment = 'Left' | 'Top' | 'Center' | 'Bottom' | 'Right';
+
+/**
+ * Specifies the pattern used for highlighting or selecting pie chart elements.
+ *
+ * ```props
+ * * None :- No highlighting or selection pattern.
+ * * Chessboard :- Applies a chessboard pattern.
+ * * Dots :- Applies a dotted pattern.
+ * * DiagonalForward :- Applies a diagonal forward pattern
+ * * Crosshatch :- Applies a crosshatch pattern.
+ * * Pacman :- Applies a pacman-style pattern.
+ * * Diagonalbackward :- Applies a diagonal backward pattern.
+ * * Grid :- Applies a grid pattern.
+ * * Turquoise :- Applies a turquoise pattern.
+ * * Star :- Applies a star pattern.
+ * * Triangle :- Applies a triangle pattern.
+ * * Circle :- Applies a circle pattern.
+ * * Tile :- Applies a tile pattern.
+ * * Horizontaldash :- Applies a vertical dash pattern.
+ * * Verticaldash :- Applies a rectangle pattern.
+ * * Rectangle :- Applies a box pattern.
+ * * Box :- Applies a vertical stripe pattern.
+ * * Verticalstripe :- Applies a vertical stripe pattern.
+ * * Horizontalstripe :- Applies a horizontal stripe pattern.
+ * * Bubble :- Applies a bubble pattern.
+ * ```
+ */
+export type PieSelectionPattern =
+    'None' |
+    'Chessboard' |
+    'Dots' |
+    'DiagonalForward' |
+    'Crosshatch' |
+    'Pacman' |
+    'DiagonalBackward' |
+    'Grid' |
+    'Turquoise' |
+    'Star' |
+    'Triangle' |
+    'Circle' |
+    'Tile' |
+    'HorizontalDash' |
+    'VerticalDash' |
+    'Rectangle' |
+    'Box' |
+    'VerticalStripe' |
+    'HorizontalStripe' |
+    'Bubble';
+
+/**
+ * Specifies the selection mode for pie chart elements.
+ * ```props
+ * * None :- Disables selection.
+ * * Point :- Allows selecting an individual data point.
+ * ```
+ */
+export type PieSelectionMode =
+    'None' |
+    'Point' ;

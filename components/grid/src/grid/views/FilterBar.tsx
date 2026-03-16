@@ -22,7 +22,7 @@ import { MutableGridSetter } from '../types/interfaces';
 import { GridRef } from '../types/grid.interfaces';
 import { FilterPredicates } from '../types/filter.interfaces';
 import { ColumnProps, IColumnBase, ColumnRef } from '../types/column.interfaces';
-import { ChangeEvent as DDLChangeEvent, DropDownList } from '@syncfusion/react-dropdowns';
+import { ChangeEvent as DDLChangeEvent, DropDownList, FieldSettingsModel, PopupSettings } from '@syncfusion/react-dropdowns';
 import { useColumn } from '../hooks';
 import { NumericChangeEvent, NumericTextBox, NumericTextBoxProps, TextBox, TextBoxChangeEvent, TextBoxProps } from '@syncfusion/react-inputs';
 import { getNumberPattern, IL10n, isNullOrUndefined, Variant } from '@syncfusion/react-base';
@@ -48,17 +48,17 @@ const CSS_FILTER_DIV_INPUT: string = 'sf-filter-cell';
 const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Element> = memo((props: Partial<IColumnBase>) => {
 
     // Get column-specific APIs and properties
-    const { publicAPI, privateAPI } = useColumn(props);
-    const { cssClass, filterModule } = useGridMutableProvider();
+    const { gridAPI, gridInternal } = useColumn(props);
+    const { cssClass, filterModule, virtualSettings } = useGridMutableProvider();
     const CSS_FILTER_INPUT_TEXT: string = 'sf-filter-text' + (cssClass !== '' ? (' ' + cssClass) : '');
 
     const {
         cellType,
         visibleClass,
         formattedValue
-    } = privateAPI;
+    } = gridInternal;
 
-    const { ...column } = publicAPI;
+    const { ...column } = gridAPI;
 
     const {
         index,
@@ -68,7 +68,7 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
 
     const { className, role, title } = customAttributes;
     const grid: Partial<GridRef> & Partial<MutableGridSetter> = useGridComputedProvider();
-    const { serviceLocator } = grid;
+    const { serviceLocator, scrollModule } = grid;
     const formatter: IValueFormatter = serviceLocator?.getService<IValueFormatter>('valueFormatter');
     const filterBarClass: string = column.filterTemplate ? 'sf-filter-template-cell' : '';
     const fltrData: FilterTemplateProps = { column: column };
@@ -82,31 +82,44 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
     });
     const [inputValue, setInputValue] = useState<ValueType | ValueType[]>(null);
 
-    const filterColumn: FilterPredicates = grid.filterSettings?.columns?.find((col: FilterPredicates) => col.field === column.field);
-    const updateColumn: ColumnProps = grid.getColumns().find((col: ColumnProps) => col.field === column.field);
-    const filterVal: ValueType | ValueType[] = filterColumn?.value;
+    const filterColumn: FilterPredicates = useMemo(() => {
+        return grid.filterSettings?.columns?.find((col: FilterPredicates) => col.field === column.field);
+    }, [grid.filterSettings?.columns]);
+    const updateColumn: ColumnProps = useMemo(() => {
+        const columns: ColumnProps[] = grid.getColumns();
+        const startVirtualIndex: number = scrollModule?.virtualColumnInfo.startIndex;
+        const endVirtualIndex: number = scrollModule?.virtualColumnInfo.endIndex;
+        const visibleColumns: ColumnProps[] = grid.getVisibleColumns?.();
+        const finalColumns: ColumnProps[] = virtualSettings.enableColumn ?
+            (visibleColumns?.length ? visibleColumns : columns)?.slice(startVirtualIndex, endVirtualIndex) : columns;
+        return finalColumns?.find((col: ColumnProps) => col.field === column.field);
+    }, [column, grid?.getVisibleColumns, scrollModule?.virtualColumnInfo.startIndex, scrollModule?.virtualColumnInfo.endIndex]);
+    const filterVal: ValueType | ValueType[] = useMemo(() => filterColumn?.value, [filterColumn]);
     const isFilterbarOperator : boolean = grid.filterSettings.enableFilterBarOperator;
-    let operatorVal: string = column.filter?.operator || (updateColumn.type === 'string' ? 'startsWith' : 'equal');
+    let operatorVal: string = column.filter?.operator || (updateColumn?.type === 'string' ? 'startsWith' : 'equal');
     let placeholderVal: string = localization?.getConstant(operatorVal);
-    let operators: { value: string; text: string }[] = filterModule.customOperators[updateColumn.type + 'Operator'];
-    if (isFilterbarOperator && updateColumn.filter.filterOperators?.length) {
-        const filterOperators: string[] = updateColumn.filter.filterOperators;
-        operators = [];
-        for (let i: number = 0; i < filterOperators.length; i++) {
-            operators.push(
-                {
-                    value: filterOperators[parseInt(i.toString(), 10)],
-                    text: localization?.getConstant(filterOperators[parseInt(i.toString(), 10)])
-                });
+    const operators: { value: string; text: string }[] = useMemo(() => {
+        let operators: { value: string; text: string }[] = filterModule.customOperators[updateColumn?.type + 'Operator'];
+        if (isFilterbarOperator && updateColumn?.filter.filterOperators?.length) {
+            const filterOperators: string[] = updateColumn?.filter.filterOperators;
+            operators = [];
+            for (let i: number = 0; i < filterOperators.length; i++) {
+                operators.push(
+                    {
+                        value: filterOperators[parseInt(i.toString(), 10)],
+                        text: localization?.getConstant(filterOperators[parseInt(i.toString(), 10)])
+                    });
+            }
+            if (!operators.filter((operator: { value: string; text: string }) => operator.value === operatorVal).length) {
+                operatorVal = operators[0].value;
+                placeholderVal = operators[0].text;
+            }
         }
-        if (!operators.filter((operator: { value: string; text: string }) => operator.value === operatorVal).length) {
-            operatorVal = operators[0].value;
-            placeholderVal = operators[0].text;
-        }
-    }
+        return operators;
+    }, [updateColumn?.type, updateColumn?.filter?.filterOperators]);
     const [operator, setOperator] = useState<string>(operatorVal);
     const [placeholder, setPlaceholder] = useState<string>(placeholderVal);
-    if (isFilterbarOperator && updateColumn.type) {
+    if (isFilterbarOperator && updateColumn?.type) {
         column.filter.operator = operatorVal;
     }
 
@@ -119,9 +132,9 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
         let value: ValueType | ValueType[] = !isNullOrUndefined(filterVal) ?
             filterVal : '';
         if (!isNullOrUndefined(column.format) && !isNullOrUndefined(filterVal) && typeof filterVal !== 'string'
-            && (updateColumn as IColumnBase).formatFn && filterBarType !== FilterBarType.DatePicker &&
+            && (updateColumn as IColumnBase)?.formatFn && filterBarType !== FilterBarType.DatePicker &&
             filterBarType !== FilterBarType.NumericTextBox) {
-            value = formatter.toView(filterVal as  number | Date, (updateColumn as IColumnBase).formatFn).toString();
+            value = formatter.toView(filterVal as  number | Date, (updateColumn as IColumnBase)?.formatFn).toString();
         }
         if (filterBarType === FilterBarType.DatePicker || filterBarType === FilterBarType.NumericTextBox) {
             setInputValue(filterVal ? filterVal : null);
@@ -141,28 +154,30 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
         }
     };
 
-    const dropDownOnChange: (e: DDLChangeEvent) => void = (e: DDLChangeEvent) => {
-        setOperator(e.value as string);
-        setPlaceholder(operators.filter((op: { value: string; text: string }) => {
-            return (op as object as { value: string }).value === (e.value as string);
-        })[0]['text'] as string);
-        column.filter.operator = e.value as string;
-        const value: string = e.value as string;
-        if (filterModule && grid.filterSettings?.enableFilterBarOperator) {
-            const valInput: HTMLInputElement = document.getElementById(column.field + '_filterBarcell') as HTMLInputElement;
-            if (value === 'isNotNull' || value === 'isNull' ||
-                value === 'isNotEmpty' || value === 'isEmpty') {
-                valInput.setAttribute('readOnly', 'true');
-                filterModule?.filterByColumn(column.field, value, null, filterModule.getFilterProperties?.predicate,
-                                             filterModule.getFilterProperties?.caseSensitive,
-                                             filterModule.getFilterProperties?.ignoreAccent);
-            }
-            else if (valInput && valInput.readOnly) {
-                valInput.removeAttribute('readOnly');
-                filterModule?.removeFilteredColsByField?.(column.field);
+    const dropDownOnChange: (e: DDLChangeEvent) => void = useCallback((e: DDLChangeEvent) => {
+        if (e) {
+            setOperator(e.value as string);
+            setPlaceholder(operators.filter((op: { value: string; text: string }) => {
+                return (op as object as { value: string }).value === (e.value as string);
+            })[0]['text'] as string);
+            column.filter.operator = e.value as string;
+            const value: string = e.value as string;
+            if (filterModule && grid.filterSettings?.enableFilterBarOperator) {
+                const valInput: HTMLInputElement = document.getElementById(column.field + '_filterBarcell') as HTMLInputElement;
+                if (value === 'isNotNull' || value === 'isNull' ||
+                    value === 'isNotEmpty' || value === 'isEmpty') {
+                    valInput.setAttribute('readOnly', 'true');
+                    filterModule?.filterByColumn(column.field, value, null, filterModule.getFilterProperties?.predicate,
+                                                 filterModule.getFilterProperties?.caseSensitive,
+                                                 filterModule.getFilterProperties?.ignoreAccent);
+                }
+                else if (valInput && valInput.readOnly) {
+                    valInput.removeAttribute('readOnly');
+                    filterModule?.removeFilteredColsByField?.(column.field);
+                }
             }
         }
-    };
+    }, [operators, grid.filterSettings?.enableFilterBarOperator]);
 
 
     /**
@@ -206,7 +221,7 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
                     title={title}
                     className={CSS_FILTER_INPUT_TEXT}
                     value={inputValue ? new Date(inputValue as Date) : null}
-                    format={updateColumn.format ? getCustomDateFormat(updateColumn.format, updateColumn.type) : 'M/d/yyyy'} // only provided string format support
+                    format={updateColumn?.format ? getCustomDateFormat(updateColumn?.format, updateColumn?.type) : 'M/d/yyyy'} // only provided string format support
                     onChange={handleChange as any}
                     placeholder={isFilterbarOperator ? placeholder : ''}
                     labelMode={isFilterbarOperator ? 'Always' : 'Never'}
@@ -246,7 +261,9 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
     const handleBlur: () => void = useCallback(() => {
         setIsFocused(false);
     }, []);
-
+    const fields: FieldSettingsModel = useMemo(() => ({ text: 'text', value: 'value' }), []);
+    const popupSettings: PopupSettings = useMemo(() => ({ width: 'auto' }), []);
+    const filterIcon: JSX.Element = useMemo(() => (<FilterIcon />), []);
 
     /**
      * Memoized filter cell content
@@ -264,31 +281,31 @@ const FilterBase: MemoExoticComponent<(props: Partial<IColumnBase>) => JSX.Eleme
             >
                 {column.filterTemplate ? (typeof column.filterTemplate === 'string' || isValidElement(column.filterTemplate) ?
                     column.filterTemplate : createElement(column.filterTemplate, fltrData))
-                    : <div className={CSS_FILTER_DIV_INPUT + (isFilterbarOperator ? ' sf-grid-filterbar' : '')}>
+                    : <div className={CSS_FILTER_DIV_INPUT + (isFilterbarOperator ? ' sf-grid-filterbar' : '') +
+                        (column?.type === ColumnType.Checkbox ? ' sf-disabled' : '')}>
                         {renderFilter()}
                         {isFilterbarOperator && <DropDownList
                             value={operator}
                             title={'operator'}
-                            fields= {{ text: 'text', value: 'value' }}
+                            fields={fields}
                             dataSource={operators}
-                            id={updateColumn.uid}
                             onFocus={handleFocus}
                             onBlur={handleBlur}
-                            onOpen={!updateColumn.allowFilter ? undefined : handleBlur}
+                            onOpen={!updateColumn?.allowFilter ? undefined : handleBlur}
                             className={`sf-filterbar-dropdown${isFocused ? ' sf-focused' : ''}`}
                             onChange={dropDownOnChange}
-                            disabled={!updateColumn.allowFilter}
+                            disabled={!updateColumn?.allowFilter}
                             labelMode={'Never'}
                             ignoreCase={true}
-                            dropdownIcon={<FilterIcon />}
-                            popupSettings={{ width: 'auto' }}
-                            tabIndex={!updateColumn.allowFilter ? -1 : 0}
+                            dropdownIcon={filterIcon}
+                            popupSettings={popupSettings}
+                            tabIndex={!updateColumn?.allowFilter ? -1 : 0}
                         />}
                     </div>}
             </th>
         );
     }, [cellType, index, className, isFocused, visibleClass, formattedValue, field,
-        inputValue, cssClass, operator, placeholder, isFilterbarOperator, operators]);
+        inputValue, cssClass, operator, placeholder, isFilterbarOperator, operators, updateColumn?.allowFilter]);
 
     // Return the appropriate cell content based on cell type
     return filterCellContent;

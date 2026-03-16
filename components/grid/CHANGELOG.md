@@ -1,5 +1,15 @@
 # Changelog
 
+## 33.1.44 (2026-03-16)
+
+### Data Grid
+
+**Features**
+
+- **DOM Virtualization & Virtual Scrolling:** Enables efficient rendering of large datasets with improved performance and responsiveness. View [DOM virtualization configuration](https://react.syncfusion.com/react-ui/data-grid/scrolling/configuration/#dom-virtualization) & [Virtual Scrolling](https://react.syncfusion.com/react-ui/data-grid/scrolling/virtual-scroll/) demo.
+- **Excel Mode & CheckBox Filtering:** Provides advanced filtering options with intuitive, checkbox-based selection. Try [Excel mode filtering](https://react.syncfusion.com/react-ui/data-grid/filtering/excel-mode/) & [CheckBox mode Filtering](https://react.syncfusion.com/react-ui/data-grid/filtering/checkbox-filtering/) demo.
+- **Enhanced CheckBox Selection:** Supports multi-row selection, allowing users to select multiple rows efficiently using checkboxes. Try [CheckBox Selection](https://react.syncfusion.com/react-ui/data-grid/selection/checkbox-selection/) demo.
+
 ## 32.1.19 (2025-12-16)
 
 ### Data Grid
@@ -7,8 +17,8 @@
 **Features**
 
 - Added Command column line editing support, enabling CRUD actions directly through action buttons in the grid.
-- Introduced Popup editing and customizable Popup template editing, allowing CRUD operations within internal or external forms.
-- Enabled filter bar operator popup support, letting users select and apply different operators based on their needs.
+- Introduced `Popup` editing and customizable `Popup` template editing, allowing CRUD operations within internal or external forms.
+- Enabled filter bar operator `popup` support, letting users select and apply different operators based on their needs.
 - Added Checkbox selection, making it possible to select multiple rows efficiently using checkboxes.
 
 ## 31.1.17 (2025-09-05)

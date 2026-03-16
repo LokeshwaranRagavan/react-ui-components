@@ -47,7 +47,9 @@ export function useMonthRows(): MonthRowsResult {
         interval,
         showTrailingAndLeadingDates = true,
         showWeekend,
-        workDays
+        workDays,
+        weekRule,
+        firstDayOfWeek
     } = useSchedulerPropsContext();
 
     const { renderDates } = useSchedulerRenderDatesContext();
@@ -59,24 +61,21 @@ export function useMonthRows(): MonthRowsResult {
         if (!renderDates || renderDates.length === 0) {
             return { weeksToRender: [], weekNumbers: [] };
         }
-
         const weeks: Date[][] = [];
         const weekNums: number[] = [];
         const daysPerRow: number = showWeekend ? WEEK_LENGTH : workDays?.length;
-
         for (let i: number = 0; i < renderDates.length; i += daysPerRow) {
             const weekDates: Date[] = renderDates.slice(i, i + daysPerRow);
             if (weekDates.length > 0) {
                 weeks.push(weekDates);
                 // Calculate week number from the first date of the week
-                const weekStartDate: Date = weekDates[0];
-                const weekNumber: number = DateService.getWeekNumber(weekStartDate);
+                const weekNumber: number = DateService.getWeekNumber(weekDates[0], weekRule, firstDayOfWeek);
                 weekNums.push(weekNumber);
             }
         }
 
         return { weeksToRender: weeks, weekNumbers: weekNums };
-    }, [renderDates, showWeekend, workDays]);
+    }, [renderDates, showWeekend, workDays, weekRule, firstDayOfWeek]);
 
     const hideOtherMonths: boolean = useMemo(() => {
         return !showTrailingAndLeadingDates && !(numberOfWeeks || interval > 1);

@@ -4,7 +4,7 @@ import { Button, Position, Color, Size, Variant, IButton } from '@syncfusion/rea
 import { AnimationOptions, useProviderContext, preRender, IAnimation, Animation, Effect } from '@syncfusion/react-base';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-export {  Color, Size, Variant, Position };
+export { Color, Size, Variant, Position };
 
 interface AnimationProps {
     /**
@@ -73,7 +73,7 @@ export interface ButtonSelectEvent {
      * The original mouse event that triggered the selection.
      * Contains information about the click event on the list item.
      */
-    event: React.MouseEvent<HTMLLIElement, MouseEvent>;
+    event?: React.SyntheticEvent;
 
     /**
      * The data object representing the selected item.
@@ -152,14 +152,14 @@ export interface DropDownButtonProps {
      *
      * @event onClose
      */
-    onClose?: (event?: React.MouseEvent) => void;
+    onClose?: (event?: React.SyntheticEvent) => void;
 
     /**
      * Triggers while opening the Dropdown Button popup.
      *
      * @event onOpen
      */
-    onOpen?: (event?: React.MouseEvent) => void;
+    onOpen?: (event?: React.SyntheticEvent) => void;
 
     /**
      * Triggers while selecting action item in Dropdown Button popup.
@@ -220,7 +220,7 @@ export interface IDropDownButton extends DropDownButtonProps {
     element?: HTMLElement | null;
 }
 
-type IDropDownButtonProps = IDropDownButton & ButtonHTMLAttributes<HTMLButtonElement>;
+type IDropDownButtonProps = IDropDownButton & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onSelect'>;
 
 /**
  * The Dropdown Button component is an interactive button that reveals a menu of actions or options when clicked, providing a dropdown interface for intuitive user interaction.
@@ -259,6 +259,10 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
 
         const buttonRef: React.RefObject<IButton | null> = useRef<IButton>(null);
         const popupRef: React.RefObject<IPopup | null> = useRef<IPopup>(null);
+        const listRef: React.RefObject<HTMLUListElement | null> = useRef<HTMLUListElement>(null);
+        const itemRefs: React.MutableRefObject<Array<HTMLLIElement | null>> = useRef<Array<HTMLLIElement | null>>([]);
+        const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+
         const [isPopupOpen, setIsPopupOpen] = useState<boolean>(false);
         const [menuItems, setMenuItems] = useState<ItemModel[]>(items);
         const { dir } = useProviderContext();
@@ -269,10 +273,11 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
         }, []);
 
         const isMounted: React.RefObject<boolean> = useRef(true);
+
         const itemClickHandler: (
             item: ItemModel,
-            event: React.MouseEvent<HTMLLIElement, MouseEvent>
-        ) => void = useCallback((item: ItemModel, event: React.MouseEvent<HTMLLIElement, MouseEvent>) => {
+            event?: React.SyntheticEvent
+        ) => void = useCallback((item: ItemModel, event?: React.SyntheticEvent) => {
             if (item.disabled) {
                 return;
             }
@@ -280,9 +285,6 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
             if (onSelect) {
                 const args: ButtonSelectEvent = { event, item };
                 onSelect(args);
-            }
-            if (buttonRef.current?.element) {
-                buttonRef.current.element.focus();
             }
         }, [onSelect]);
 
@@ -317,8 +319,48 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
             preRender('dropDownButton');
         }, []);
 
+
+        const focusableIndices: number[] = React.useMemo(() => {
+            return menuItems
+                .map((it: ItemModel, idx: number) => (!it.disabled && !it.hasSeparator ? idx : -1))
+                .filter((idx: number) => idx >= 0);
+        }, [menuItems]);
+
+        const getNextFocusableIndex: (current: number, down: boolean) => number =
+        useCallback((current: number, down: boolean): number => {
+            const len: number = focusableIndices.length;
+            if (!len) { return -1; }
+            const pos: number = focusableIndices.indexOf(current);
+            if (pos < 0) {
+                return focusableIndices[down ? 0 : len - 1];
+            }
+            const nextPos: number = (pos + (down ? 1 : -1) + len) % len;
+            return focusableIndices[nextPos as number];
+        }, [focusableIndices]);
+
+        const ensureValidFocusIndex: (idx: number | null) => number | null =
+        useCallback((idx: number | null): number | null => {
+            if (idx != null && focusableIndices.includes(idx)) {
+                return idx;
+            }
+            return null;
+        }, [focusableIndices]);
+
+        const focusIndex: (idx: number | null) => void = useCallback(
+            (idx: number | null): void => {
+                const valid: number | null = ensureValidFocusIndex(idx);
+                setFocusedIndex(valid);
+                if (valid != null) {
+                    itemRefs.current[valid as number]?.focus();
+                }
+            }, [ensureValidFocusIndex]);
+
         useEffect(() => {
-            const handleClickOutside: (event: MouseEvent) => void = (event: MouseEvent) => {
+            setFocusedIndex((prev: number | null) => ensureValidFocusIndex(prev));
+        }, [menuItems, ensureValidFocusIndex]);
+
+        useEffect(() => {
+            const handleClickOutside: (event: MouseEvent) => void = (event: MouseEvent): void => {
                 const buttonElement: HTMLElement | null | undefined = buttonRef.current?.element;
                 const popupElement: HTMLElement | null | undefined = popupRef.current?.element;
                 const targetNode: Node = event.target as Node;
@@ -332,65 +374,25 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
                 }
             };
 
-            if (isPopupOpen) {
-                document.addEventListener('mousedown', handleClickOutside);
-            } else {
-                document.removeEventListener('mousedown', handleClickOutside);
-            }
-
-            const handleKeyDown: (event: KeyboardEvent) => void = (event: KeyboardEvent) => {
-                if (!isPopupOpen || !popupRef.current) { return; }
-                const popupElement: HTMLElement | null | undefined = popupRef.current?.element;
-                const ul: HTMLUListElement | null | undefined = popupElement?.querySelector('ul');
-
-                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    const isDownKey: boolean = event.key === 'ArrowDown';
-                    upDownKeyHandler(ul as HTMLElement, isDownKey);
-                    if (buttonRef.current?.element) {
-                        (buttonRef.current?.element as HTMLElement).blur();
-                    }
-                }
-
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    const focusedItem: HTMLElement = popupElement?.querySelector('.sf-focused') as HTMLElement;
-                    if (focusedItem) {
-                        const items: Element[] = Array.from(ul?.children || []);
-                        const itemIndex: number = items.indexOf(focusedItem);
-                        if (itemIndex !== -1 && itemIndex < menuItems.length) {
-                            const item: ItemModel = menuItems[itemIndex as number];
-                            if (!item.disabled && !item.hasSeparator) {
-                                try {
-                                    focusedItem.click();
-                                } catch (e) {
-                                    const syntheticEvent: React.MouseEvent<HTMLLIElement, MouseEvent> = {
-                                        currentTarget: focusedItem,
-                                        target: focusedItem,
-                                        type: 'click'
-                                    } as unknown as React.MouseEvent<HTMLLIElement, MouseEvent>;
-                                    itemClickHandler(item, syntheticEvent);
-                                }
-                                if (buttonRef.current?.element) {
-                                    buttonRef.current.element.focus();
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (event.key === 'Escape') {
+            const handleKeyDown: (e: KeyboardEvent) => void = (e: KeyboardEvent): void => {
+                if ((e.altKey || e.metaKey) && e.key === 'ArrowUp' || e.key === 'Escape' || e.key === 'Esc') {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setIsPopupOpen(false);
+                    onClose?.(e as unknown as React.MouseEvent);
+                    buttonRef.current?.element?.focus();
                 }
             };
 
-            document.addEventListener('keydown', handleKeyDown);
-
+            if (isPopupOpen) {
+                document.addEventListener('mousedown', handleClickOutside);
+                document.addEventListener('keydown', handleKeyDown);
+            }
             return () => {
                 document.removeEventListener('mousedown', handleClickOutside);
                 document.removeEventListener('keydown', handleKeyDown);
             };
-        }, [isPopupOpen, onClose, menuItems, itemClickHandler]);
+        }, [isPopupOpen, onClose]);
 
         const publicAPI: Partial<IDropDownButton> = {
             iconPosition,
@@ -416,7 +418,7 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
             timingFunction: animation.show.timingFunction
         } : null;
 
-        const togglePopup: (event?: React.MouseEvent) => void = (event?: React.MouseEvent) => {
+        const togglePopup: (event?: React.SyntheticEvent) => void = (event?: React.SyntheticEvent) => {
             if (!isPopupOpen) {
                 if (animationOption) {
                     const animationInstance: IAnimation = Animation(animationOption);
@@ -442,6 +444,8 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
                 if (onOpen) {
                     onOpen(event);
                 }
+                const initial: number | null = ensureValidFocusIndex(focusedIndex);
+                focusIndex(initial);
             } else {
                 setIsPopupOpen(false);
                 if (onClose) {
@@ -455,6 +459,88 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
             toggle: togglePopup,
             element: buttonRef.current?.element
         }), [publicAPI]);
+
+        const handleKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void =
+            useCallback((e: React.KeyboardEvent<HTMLElement>): void => {
+                switch (e.key) {
+                case 'ArrowDown': {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.altKey || e.metaKey) {
+                        togglePopup(e as React.SyntheticEvent);
+                    } else {
+                        const nextIndex: number = getNextFocusableIndex(focusedIndex ?? -1, true);
+                        focusIndex(nextIndex);
+                    }
+                    break;
+                }
+                case 'ArrowUp': {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.altKey || e.metaKey) {
+                        setIsPopupOpen(false);
+                        onClose?.(e as React.KeyboardEvent<HTMLElement>);
+                        buttonRef.current?.element?.focus();
+                    } else {
+                        const prevIndex: number = getNextFocusableIndex(focusedIndex ?? -1, false);
+                        focusIndex(prevIndex);
+                    }
+                    break;
+                }
+                case 'Home': {
+                    if (isPopupOpen) {
+                        e.preventDefault();
+                        focusIndex(focusableIndices[0] ?? null);
+                    }
+                    break;
+                }
+                case 'End': {
+                    if (isPopupOpen) {
+                        e.preventDefault();
+                        focusIndex(focusableIndices[focusableIndices.length - 1] ?? null);
+                    }
+                    break;
+                }
+                case 'Enter':
+                case ' ': {
+                    e.preventDefault();
+                    if (isPopupOpen) {
+                        const idx: number | null = ensureValidFocusIndex(focusedIndex);
+                        if (idx != null) {
+                            itemClickHandler(menuItems[idx as number], e);
+                        }
+                    } else {
+                        togglePopup(e as unknown as React.MouseEvent);
+                    }
+                    break;
+                }
+                case 'Escape':
+                case 'Esc': {
+                    e.preventDefault();
+                    if (isPopupOpen) {
+                        setIsPopupOpen(false);
+                        onClose?.(e as React.SyntheticEvent);
+                        buttonRef.current?.element?.focus();
+                    }
+                    break;
+                }
+                default:
+                    break;
+                }
+            }, [
+                isPopupOpen,
+                focusedIndex,
+                focusableIndices,
+                getNextFocusableIndex,
+                ensureValidFocusIndex,
+                togglePopup,
+                setIsPopupOpen,
+                onClose,
+                buttonRef,
+                focusIndex,
+                itemClickHandler,
+                menuItems
+            ]);
 
         const renderItemContent: (item: ItemModel) => React.ReactNode = React.useCallback((item: ItemModel): React.ReactNode => {
             if (itemTemplate) {
@@ -482,22 +568,33 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
         const handleItemClick: (item: ItemModel, event: React.MouseEvent<HTMLLIElement, MouseEvent>) => void
         = React.useCallback((item: ItemModel, event: React.MouseEvent<HTMLLIElement, MouseEvent>) => {
             event.stopPropagation();
+            const el: Element = event.currentTarget;
+            const idx: number = itemRefs.current.findIndex((li: HTMLLIElement | null) => li === el);
+            focusIndex(idx);
             itemClickHandler(item, event);
-        }, [itemClickHandler]);
+        }, [itemClickHandler, focusIndex]);
 
         const renderItems: () => JSX.Element = React.useCallback(() => (
-            <ul role='menu' tabIndex={0} aria-label='dropdown menu'>
+            <ul
+                role='menu'
+                tabIndex={0}
+                aria-label='dropdown menu'
+                ref={listRef}
+                onKeyDown={handleKeyDown}
+                onMouseDown={(e: React.SyntheticEvent) => e.preventDefault()}
+            >
                 {menuItems.map((item: ItemModel, index: number) => {
-                    const liClassName: string = `sf-item sf-ellipsis ${item.hasSeparator ? 'sf-separator' : ''} ${item.disabled ? 'sf-disabled' : ''}`;
-
+                    const isFocused: boolean = focusedIndex === index;
+                    const liClassName: string = `sf-item sf-ellipsis ${item.hasSeparator ? 'sf-separator' : ''} ${item.disabled ? 'sf-disabled' : ''} ${isFocused ? 'sf-focused' : ''}`;
                     return (
                         <li
                             key={item.id || `item-${index}`}
+                            ref={(el: HTMLLIElement | null) => { itemRefs.current[index as number] = el; }}
                             className={liClassName}
                             role={item.hasSeparator ? 'separator' : 'menuitem'}
                             aria-label={item.text}
                             aria-disabled={item.disabled ? 'true' : 'false'}
-                            onClick={item.disabled && item.hasSeparator ? undefined :
+                            onClick={item.disabled || item.hasSeparator ? undefined :
                                 (event: React.MouseEvent<HTMLLIElement, MouseEvent>) => handleItemClick(item, event)}
                         >
                             {!item.hasSeparator && renderItemContent(item)}
@@ -505,39 +602,7 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
                     );
                 })}
             </ul>
-        ), [menuItems, renderItemContent, handleItemClick]);
-
-
-        const upDownKeyHandler: (ul: HTMLElement, isDownKey: boolean) => void = (ul: HTMLElement, isDownKey: boolean): void => {
-            const items: HTMLElement[] = Array.from(ul.children) as HTMLElement[];
-            const currentIdx: number = items.findIndex((item: HTMLElement) => item.classList.contains('sf-focused'));
-            items.forEach((item: HTMLElement) => {
-                item.classList.remove('sf-selected', 'sf-focused');
-            });
-            const itemsCount: number = items.length;
-            let nextIdx: number;
-            if (currentIdx === -1) {
-                nextIdx = isDownKey ? 0 : itemsCount - 1;
-            } else {
-                nextIdx = isDownKey ? currentIdx + 1 : currentIdx - 1;
-                if (nextIdx < 0) {nextIdx = itemsCount - 1; }
-                else if (nextIdx >= itemsCount) {nextIdx = 0; }
-            }
-            let tries: number = 0;
-            while (
-                (items[nextIdx as number].classList.contains('sf-disabled') ||
-                 items[nextIdx as number].classList.contains('sf-separator')) &&
-                tries < itemsCount
-            ) {
-                nextIdx = isDownKey
-                    ? (nextIdx + 1) % itemsCount
-                    : (nextIdx - 1 + itemsCount) % itemsCount;
-                tries++;
-            }
-            const nextItem: HTMLElement = items[nextIdx as number];
-            nextItem.classList.add('sf-focused');
-            nextItem.focus();
-        };
+        ), [menuItems, renderItemContent, handleItemClick, focusedIndex, focusIndex, handleKeyDown]);
 
         return (
             <>
@@ -551,6 +616,7 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
                     size={size}
                     iconPosition={iconPosition}
                     disabled={disabled}
+                    onKeyDown={handleKeyDown}
                     onClick={(event: React.MouseEvent) => {
                         event.preventDefault();
                         togglePopup(event);
@@ -573,7 +639,15 @@ export const DropDownButton: React.ForwardRefExoticComponent<IDropDownButtonProp
                         collision={(dir === 'rtl') ? { X: CollisionType.Fit, Y: CollisionType.Flip } : { X: CollisionType.Flip, Y: CollisionType.Flip }}
                         width={popupWidth}
                         className={`sf-dropdown-popup sf-drp-btn-${size.toLowerCase().substring(0, 2)} ${popupWidth !== 'auto' ? 'sf-dropdown-popup-width' : ''}`}
-                        onClose={() => setIsPopupOpen(false)}
+                        onClose={() => {
+                            setIsPopupOpen(false);
+                            if (buttonRef.current?.element) {
+                                buttonRef.current.element.focus();
+                            }
+                        }}
+                        onOpen={() => {
+                            listRef.current?.focus();
+                        }}
                     >
                         {renderItems()}
                     </Popup>,

@@ -5,11 +5,13 @@ The **Syncfusion React Scheduler** is a flexible, configurable, and high-perform
 **Key Features**
 - **Views:** Day, Week, Work Week, and Month with per-view configuration (Week is default).
 - **Data binding:** Seamless data bining with local arrays/objects and remote APIs with custom field mappings.
-- **Customization:** The key elements like events, date header, work cells come with the default template support which allows the flexible end-user customization to embed any kind of text, images, or styles to it.
+- **Recurrence support:** Supports creating and managing recurring events with daily, weekly, monthly, and yearly repeat patterns, along with options to edit or delete individual occurrences or the entire series.
+- **Customization:** The key elements like events, date header, work cells, header, editor window, quick popup, event resizing, event tooltip, header indent come with the default template support which allows the flexible end-user customization to embed any kind of text, images, or styles to it.
 - **Working days and hours:** Configurable visible/working hours (highlighted) and working/non-working days.
-- **Responsiveness:** Adapts with optimal user interfaces for mobile and desktop form-factors, thus helping the user’s application to scale elegantly across all the form-factors without any additional effort.
-- **Event interactions:** Built-in CRUD via dialogs and quick popups.
+- **Responsiveness:** Adapts with optimal user interfaces for mobile and desktop form-factors, thus helping the user's application to scale elegantly across all the form-factors without any additional effort.
+- **Event interactions and validation:** Built-in CRUD via dialogs and quick popups with field validation.
 - **Drag-and-drop and resizing:** Easy rescheduling and duration adjustments.
+- **Context menu integration:** Supports right-click context menu on cells and events with built-in and custom menu items for quick actions.
 - **Accessibility:** ARIA support and full keyboard navigation.
 - **Localization:** All the static text and date content can be localized to any desired language. Also, it can be displayed with appropriate time mode and date-format as per the localized language.
 - **RTL:** Supports displaying the component to display in the direction from right to left.
@@ -43,7 +45,7 @@ export default function App() {
 **Resources**
 
 - [Scheduler Demo/Docs](https://react.syncfusion.com/react-ui/scheduler/overview)
-- [Scheduler API](https://react.syncfusion.com/api/scheduler/overview)
+- [Scheduler API](https://react-api.syncfusion.com/scheduler/overview)
 
 <p align="center">
 Trusted by the world's leading companies
@@ -70,4 +72,4 @@ Check the changelog [here](https://github.com/syncfusion/react-ui-components/blo
 
 See [LICENSE FILE](https://github.com/syncfusion/react-ui-components/blob/master/license?utm_source=npm&utm_campaign=notification) for more info.
 
-&copy; Copyright 2026 Syncfusion®, Inc. All Rights Reserved. The Syncfusion® Essential Studio® license and copyright applies to this distribution.
+&copy; Copyright 2025 Syncfusion®, Inc. All Rights Reserved. The Syncfusion® Essential Studio® license and copyright applies to this distribution.

@@ -1,4 +1,4 @@
-import { FC, memo, Fragment, ReactNode, MouseEvent, KeyboardEvent } from 'react';
+import { FC, memo, ReactNode, MouseEvent, KeyboardEvent } from 'react';
 import { useSchedulerPropsContext } from '../context/scheduler-context';
 import { useSchedulerRenderDatesContext } from '../context/scheduler-render-dates-context';
 import { useTimeSlotEvent, DayEventsWrapper } from '../hooks/useTimeSlotEvent';
@@ -7,161 +7,41 @@ import { useMoreIndicator } from '../hooks/useMoreIndicator';
 import { EventService } from '../services/EventService';
 import { DateService } from '../services/DateService';
 import { ProcessedEventsData } from '../types/internal-interface';
-import { ChevronDownDoubleIcon, ChevronUpDoubleIcon, ChevronLeftDoubleIcon, ChevronRightDoubleIcon } from '@syncfusion/react-icons';
-import { SchedulerEventClickEvent } from '../types/scheduler-types';
 import { CSS_CLASSES } from '../common/constants';
 import { DraggableEvent } from './drag-and-drop';
-import { useSchedulerLocalization } from '../common/locale';
-import { useProviderContext } from '@syncfusion/react-base';
 import { MoreIndicator } from './more-indicator';
 import { PositioningService } from '../services/PositioningService';
 import ResizeHandlers from './resizeHandlers';
-import { clearAndSelectAppointment } from '../utils/actions';
+import { useEventRendering } from '../hooks/useEventRendering';
 
 export const TimeSlotEvent: FC = memo(() => {
 
     const {
-        eventTemplate,
-        onEventClick,
-        onEventDoubleClick,
         eventDrag,
-        eventResize = true,
+        eventResize,
         maxEventsPerRow = 3,
         timeScale,
         readOnly,
-        quickPopupRef,
         startHourTuple,
         endHourTuple
     } = useSchedulerPropsContext();
 
     const { dayWrappers } = useTimeSlotEvent();
-    const { locale } = useProviderContext();
-    const { getString } = useSchedulerLocalization(locale || 'en-US');
     const { renderDates } = useSchedulerRenderDatesContext();
     const { getAllEventsForDate, getHiddenEventCount } = useMonthEvents(renderDates, maxEventsPerRow);
     const { handleMoreClick } = useMoreIndicator(getAllEventsForDate);
 
-    const renderSpannedContent: (eventInfo: ProcessedEventsData) => ReactNode = (eventInfo: ProcessedEventsData) => {
-        if (timeScale.enable) {
-            const { isOverflowTop, isOverflowBottom } =
-                PositioningService.getOverflowDirection(eventInfo, renderDates, startHourTuple, endHourTuple);
-            return (
-                <Fragment>
-                    {isOverflowTop && (
-                        <div className={`${CSS_CLASSES.INDICATOR} ${CSS_CLASSES.ICONS} ${CSS_CLASSES.UP_ARROW_ICON}`}>
-                            <ChevronUpDoubleIcon />
-                        </div>
-                    )}
-                    {renderStandardEventContent(eventInfo)}
-                    {isOverflowBottom && (
-                        <div className={`${CSS_CLASSES.INDICATOR} ${CSS_CLASSES.ICONS} ${CSS_CLASSES.DOWN_ARROW_ICON}`}>
-                            <ChevronDownDoubleIcon />
-                        </div>
-                    )}
-                </Fragment>
-            );
-        } else {
-            const { isOverflowLeft, isOverflowRight } = PositioningService.getOverflowDirection(eventInfo, renderDates);
-            return (
-                <Fragment>
-                    {isOverflowLeft && (
-                        <div className={`${CSS_CLASSES.INDICATOR} ${CSS_CLASSES.ICONS} ${CSS_CLASSES.LEFT_ARROW_ICON}`}>
-                            <ChevronLeftDoubleIcon />
-                        </div>
-                    )}
-                    {renderStandardEventContent(eventInfo)}
-                    {isOverflowRight && (
-                        <div className={`${CSS_CLASSES.INDICATOR} ${CSS_CLASSES.ICONS} ${CSS_CLASSES.RIGHT_ARROW_ICON}`}>
-                            <ChevronRightDoubleIcon />
-                        </div>
-                    )}
-                </Fragment>
-            );
-        }
-    };
-
-    const renderStandardEventContent: (eventInfo: ProcessedEventsData) => ReactNode = (eventInfo: ProcessedEventsData) => {
-        const { event, timeDisplay } = eventInfo;
-        return (
-            <div className={CSS_CLASSES.APPOINTMENT_DETAILS}>
-                <div className={`${CSS_CLASSES.SUBJECT}`}>
-                    {event.subject || getString('addTitle')}
-                </div>
-                {!event.isBlock && event.location && (
-                    <div className={`${CSS_CLASSES.EVENT_LOCATION} ${CSS_CLASSES.ELLIPSIS}`} title={event.location}>
-                        {event.location}
-                    </div>
-                )}
-                {!event.isBlock && (
-                    <div className={`${CSS_CLASSES.EVENT_TIME} ${CSS_CLASSES.ELLIPSIS}`} title={timeDisplay}>
-                        {timeDisplay}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
     /**
-     * Render the content of an event
-     *
-     * @param {ProcessedEventsData} eventInfo - The event information
-     * @returns {ReactNode} The rendered event content
+     * Hook is called once at component level (Rules of Hooks compliant).
+     * Context values (timeFormat, locale, eventTemplate, timeScale, renderDates)
+     * are read once and captured in stable memoized callbacks.
+     * Each function accepts eventInfo as a parameter, serving all events in the loop.
      */
-    const renderEventContent: (eventInfo: ProcessedEventsData) => ReactNode = (eventInfo: ProcessedEventsData): ReactNode => {
-        if (eventTemplate) {
-            return eventTemplate(eventInfo.event);
-        }
-        else if (eventInfo.totalSegments || startHourTuple || endHourTuple) {
-            return renderSpannedContent(eventInfo);
-        }
-        return renderStandardEventContent(eventInfo);
-    };
-
-    const handleEventClick: (
-        e: MouseEvent<HTMLDivElement>,
-        eventInfo: ProcessedEventsData
-    ) => void = (
-        e: MouseEvent<HTMLDivElement>,
-        eventInfo: ProcessedEventsData
-    ): void => {
-        if (eventInfo.event.isBlock) {
-            e?.preventDefault();
-            e?.stopPropagation();
-            return;
-        }
-        clearAndSelectAppointment(e.currentTarget);
-        if (onEventClick) {
-            const eventClickArgs: SchedulerEventClickEvent = {
-                event: e,
-                data: eventInfo.event,
-                element: e.currentTarget
-            };
-            onEventClick(eventClickArgs);
-        }
-    };
-
-    const handleEventDoubleClick: (
-        e: MouseEvent<HTMLDivElement>,
-        eventInfo: ProcessedEventsData
-    ) => void = (
-        e: MouseEvent<HTMLDivElement>,
-        eventInfo: ProcessedEventsData
-    ): void => {
-        if (eventInfo.event.isReadonly || readOnly || eventInfo.event.isBlock) {
-            e?.preventDefault();
-            e?.stopPropagation();
-            return;
-        }
-        if (onEventDoubleClick) {
-            quickPopupRef?.current?.hide();
-            const eventClickArgs: SchedulerEventClickEvent = {
-                event: e,
-                data: eventInfo.event,
-                element: e.currentTarget
-            };
-            onEventDoubleClick(eventClickArgs);
-        }
-    };
+    const {
+        getEventContent: renderEventContent,
+        handleClick,
+        handleDoubleClick
+    } = useEventRendering({ variant: 'timeSlot' });
 
     const handleKeyDown: (
         e: KeyboardEvent<HTMLDivElement>,
@@ -171,7 +51,7 @@ export const TimeSlotEvent: FC = memo(() => {
         eventInfo: ProcessedEventsData
     ): void => {
         if (e.key === 'Enter' || e.key === ' ') {
-            handleEventClick(e as unknown as MouseEvent<HTMLDivElement>, eventInfo);
+            handleClick(e as unknown as MouseEvent<HTMLDivElement>, eventInfo.event, !!eventInfo.event.isBlock);
         }
     };
 
@@ -215,20 +95,21 @@ export const TimeSlotEvent: FC = memo(() => {
                                 'data-guid': eventInfo.event.guid,
                                 'aria-label': EventService.getAriaLabel(eventInfo.event),
                                 tabIndex: 0,
-                                onClick: (e: MouseEvent<HTMLDivElement>) => handleEventClick(e, eventInfo),
-                                onDoubleClick: (e: MouseEvent<HTMLDivElement>) => handleEventDoubleClick(e, eventInfo),
+                                onClick: (e: MouseEvent<HTMLDivElement>) => handleClick(e, eventInfo.event, !!eventInfo.event.isBlock),
+                                onDoubleClick: (e: MouseEvent<HTMLDivElement>) =>
+                                    handleDoubleClick(e, eventInfo.event, !!eventInfo.event.isBlock),
                                 onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => handleKeyDown(e, eventInfo)
                             } as unknown as React.HTMLAttributes<HTMLDivElement>;
                             const children: ReactNode = renderEventContent(eventInfo);
                             const allowEdit: boolean = !eventInfo.event.isBlock && !eventInfo.event.isReadonly && !readOnly;
-                            return eventDrag && allowEdit ? (
+                            return eventDrag.enable && allowEdit ? (
                                 <DraggableEvent
                                     key={eventInfo.eventKey}
                                     data={eventInfo.event}
                                     className={className}
                                     containerProps={commonProps}
                                 >
-                                    {eventResize && allowEdit ? (
+                                    {eventResize.enable && allowEdit ? (
                                         <ResizeHandlers
                                             isVertical={timeScale.enable}
                                             data={eventInfo.event}
@@ -243,7 +124,7 @@ export const TimeSlotEvent: FC = memo(() => {
                                 </DraggableEvent>
                             ) : (
                                 <div key={eventInfo.eventKey} className={className} {...commonProps}>
-                                    {eventResize && allowEdit ? (
+                                    {eventResize.enable && allowEdit ? (
                                         <ResizeHandlers
                                             isVertical={timeScale.enable}
                                             data={eventInfo.event}

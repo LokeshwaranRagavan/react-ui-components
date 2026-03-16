@@ -99,19 +99,19 @@ export interface DroppableProps {
      *
      * @event drop
      */
-    drop?: (args: DropEvent) => void;
+    onDrop?: (args: DropEvent) => void;
     /**
      * Specifies the callback function, which will be triggered while drag element is moved over droppable element.
      *
      * @event over
      */
-    over?: (args: OverEvent) => void;
+    onOver?: (args: OverEvent) => void;
     /**
      * Specifies the callback function, which will be triggered while drag element is moved out of droppable element.
      *
      * @event out
      */
-    out?: (args: OutEvent) => void;
+    onOut?: (args: OutEvent) => void;
 }
 
 /**
@@ -164,9 +164,9 @@ export function useDroppable(element?: RefObject<HTMLElement>, props?: IDroppabl
         accept: '',
         scope: 'default',
         dragData: {},
-        drop: null,
-        over: null,
-        out: null,
+        onDrop: null,
+        onOver: null,
+        onOut: null,
         ...props
     };
     const propsStateRef: React.RefObject<IDroppable> = useRef<IDroppable>(propsRef);
@@ -194,8 +194,8 @@ export function useDroppable(element?: RefObject<HTMLElement>, props?: IDroppabl
     propsRef.intOver = (event: MouseEvent & TouchEvent, element?: Element): void => {
         if (!mouseOverRef) {
             const drag: DropInfo = propsRef.dragData[propsStateRef.current.scope];
-            if (propsStateRef.current && propsStateRef.current.over) {
-                propsStateRef.current.over({ event, target: element, dragData: drag } as OverEvent);
+            if (propsStateRef.current && propsStateRef.current.onOver) {
+                propsStateRef.current.onOver({ event, target: element, dragData: drag } as OverEvent);
             }
             mouseOverRef = true;
         }
@@ -210,8 +210,8 @@ export function useDroppable(element?: RefObject<HTMLElement>, props?: IDroppabl
      */
     propsRef.intOut = (event: MouseEvent & TouchEvent, element?: Element): void => {
         if (mouseOverRef) {
-            if (propsStateRef.current && propsStateRef.current.out) {
-                propsStateRef.current.out({ event, target: element } as OutEvent);
+            if (propsStateRef.current && propsStateRef.current.onOut) {
+                propsStateRef.current.onOut({ event, target: element } as OutEvent);
             }
             mouseOverRef = false;
         }
@@ -232,7 +232,8 @@ export function useDroppable(element?: RefObject<HTMLElement>, props?: IDroppabl
         }
         let accept: boolean = true;
         const drag: DropInfo = propsRef.dragData[propsStateRef.current.scope];
-        const isDrag: boolean = drag ? (drag.helper && isVisible(drag.helper)) : false;
+        const isTouch: boolean = evt.type === 'touchend';
+        const isDrag: boolean = drag ? (drag.helper && (isTouch || isVisible(drag.helper))) : false;
         let area: DropData;
         if (isDrag) {
             area = isDropArea(evt, drag.helper, element);
@@ -240,10 +241,11 @@ export function useDroppable(element?: RefObject<HTMLElement>, props?: IDroppabl
                 accept = matches(drag.helper, propsStateRef.current.accept);
             }
         }
-        if (isDrag && propsStateRef.current && propsStateRef.current.drop && area.canDrop && accept) {
-            propsStateRef.current.drop({ event: evt, target: area.target, droppedElement: drag.helper, dragData: drag });
+        if (isDrag && propsStateRef.current && propsStateRef.current.onDrop && area.canDrop && accept) {
+            propsStateRef.current.onDrop({ event: evt, target: area.target, droppedElement: drag.helper, dragData: drag });
         }
         mouseOverRef = false;
+        dragStopCalledRef = true;
     };
 
     /**

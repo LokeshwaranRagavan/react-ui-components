@@ -2,11 +2,11 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import {
     IToolbar
 } from '@syncfusion/react-navigations';
-import { SelectionModel } from '../types/selection.interfaces';
+import { SelectionModel, SelectionSettings } from '../types/selection.interfaces';
 import { editModule } from '../types/edit.interfaces';
 import * as React from 'react';
 import { ToolbarConfig, ToolbarAPI, ToolbarClickEvent } from '../types/toolbar.interfaces';
-import { UseCommandColumnResult } from '../types';
+import { UseCommandColumnResult, VirtualSettings } from '../types';
 
 /**
  * Custom hook to manage toolbar operations for the grid
@@ -18,16 +18,23 @@ import { UseCommandColumnResult } from '../types';
  * @param {Object[]} currentViewData - Current view data (passed directly to avoid context issues)
  * @param {boolean} allowSearching - Enable or disable the searching UI
  * @param {UseCommandColumnResult} commandColumnModule - Reference to the command column module
+ * @param {SelectionSettings} selectionSettings - Defines settings for enabling selection, specifying selection mode, and controlling selection type
+ * @param {VirtualSettings} virtualSettings - {virtualSettings}
+ * @param {number} [totalRecordsCount] - Total records count across all pages
  * @returns {ToolbarAPI} Toolbar API methods and state
  */
-export const useToolbar: (config: ToolbarConfig, editModule?: editModule, selectionModule?: SelectionModel,
-    currentViewData?: Object[], allowSearching?: boolean, commandColumnModule?: UseCommandColumnResult) => ToolbarAPI = (
+export const useToolbar: (config: ToolbarConfig, editModule?: editModule, selectionModule?: SelectionModel, currentViewData?: Object[],
+    allowSearching?: boolean, commandColumnModule?: UseCommandColumnResult, selectionSettings?: SelectionSettings,
+    virtualSettings?: VirtualSettings, totalRecordsCount?: number) => ToolbarAPI = <T = unknown>(
     config: ToolbarConfig,
     editModule?: editModule,
-    selectionModule?: SelectionModel,
-    currentViewData?: Object[],
+    selectionModule?: SelectionModel<T>,
+    currentViewData?: T[],
     allowSearching?: boolean,
-    commandColumnModule?: UseCommandColumnResult
+    commandColumnModule?: UseCommandColumnResult,
+    selectionSettings?: SelectionSettings,
+    virtualSettings?: VirtualSettings,
+    totalRecordsCount?: number
 ): ToolbarAPI => {
     const { commandEdit } = commandColumnModule;
     // Always call hooks in the same order - no conditional hooks
@@ -90,7 +97,8 @@ export const useToolbar: (config: ToolbarConfig, editModule?: editModule, select
 
         const selectedRowIndexes: number[] = selectionMod?.selectedRowIndexes;
         const hasData: boolean = (viewData && viewData.length > 0);
-        const hasSelection: boolean = selectedRowIndexes.length > 0;
+        const hasSelection: boolean = selectionSettings.persistSelection ? selectionMod?.getPersistSelectedData().length
+            > 0 : selectedRowIndexes.length > 0;
 
         const gridElement: HTMLElement | null = toolbarRef.current?.element?.closest('.sf-grid');
         const addRow: boolean = editSettings?.showAddNewRow && !gridElement?.querySelector('.sf-grid-edit-row');
@@ -101,13 +109,13 @@ export const useToolbar: (config: ToolbarConfig, editModule?: editModule, select
             disableItemsList.push(`${gridId}_add`);
         }
 
-        if (editSettings?.allowEdit && hasData) {
+        if (editSettings?.allowEdit && hasData && !commandEdit.current) {
             enableItemsList.push(`${gridId}_edit`);
         } else {
             disableItemsList.push(`${gridId}_edit`);
         }
 
-        if (editSettings.allowDelete && hasData) {
+        if (editSettings.allowDelete && hasData && !commandEdit.current) {
             enableItemsList.push(`${gridId}_delete`);
         } else {
             disableItemsList.push(`${gridId}_delete`);
@@ -120,8 +128,9 @@ export const useToolbar: (config: ToolbarConfig, editModule?: editModule, select
         }
 
         if ((editMod.isEdit || editSettings.showAddNewRow) && (editSettings.allowAdd || editSettings.allowEdit)) {
-            if (addRow) {
-                const itemsToEnable: string[] = [`${gridId}_update`, `${gridId}_cancel`, `${gridId}_edit`, `${gridId}_delete`, `${gridId}_search`];
+            if (addRow || (virtualSettings.enableRow && commandEdit.current && commandColumnModule?.commandAddRef.current?.length)) {
+                const itemsToEnable: string[] = !addRow ? [`${gridId}_search`] :
+                    [`${gridId}_update`, `${gridId}_cancel`, `${gridId}_edit`, `${gridId}_delete`, `${gridId}_search`];
                 const itemsToDisable: string[] = [`${gridId}_add`];
 
                 itemsToEnable.forEach((item: string) => {
@@ -142,7 +151,9 @@ export const useToolbar: (config: ToolbarConfig, editModule?: editModule, select
                 // Normal edit mode or showAddNewRow with edited row
                 // When editing an existing row with showAddNewRow enabled, the add new row should be disabled
                 const itemsToEnable: string[] = [`${gridId}_update`, `${gridId}_cancel`, `${gridId}_search`];
-                const itemsToDisable: string[] = commandEdit.current ? [] : [`${gridId}_add`, `${gridId}_edit`, `${gridId}_delete`];
+                const itemsToDisable: string[] = commandEdit.current ?
+                    [`${gridId}_edit`, `${gridId}_delete`, `${gridId}_update`, `${gridId}_cancel`] :
+                    [`${gridId}_add`, `${gridId}_edit`, `${gridId}_delete`];
 
                 itemsToEnable.forEach((item: string) => {
                     if (!enableItemsList.includes(item)) {
@@ -197,7 +208,7 @@ export const useToolbar: (config: ToolbarConfig, editModule?: editModule, select
         // Apply enable/disable states
         enableItems(enableItemsList, true);
         enableItems(disableItemsList, false);
-    }, [gridId, enableItems]);
+    }, [gridId, enableItems, totalRecordsCount]);
 
     const disableShowAddNewRowInputs: (enable: boolean) => void = useCallback((enable: boolean): void => {
         const gridElement: HTMLElement | null = toolbarRef.current?.element?.closest('.sf-grid');
@@ -270,12 +281,16 @@ export const useToolbar: (config: ToolbarConfig, editModule?: editModule, select
         // Only refresh after actual actions, not on every click
         // Use a small delay to ensure the action has completed
         setTimeout(() => refreshToolbarItems(), 50);
-    }, [gridId, onToolbarItemClick, refreshToolbarItems]);
+    }, [gridId, onToolbarItemClick, refreshToolbarItems, totalRecordsCount]);
 
     // Only set rendered state once, no other effects
     useEffect(() => {
         setIsRendered(true);
     }, []);
+
+    useEffect(() => {
+        refreshToolbarItems();
+    }, [config.toolbar]);
 
     return {
         getToolbar,

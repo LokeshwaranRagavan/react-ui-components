@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useCallback, useState } from 'react';
 import { DataManager, Query } from '@syncfusion/react-data';
 import { FieldSettingsModel, FilterEvent, FilterType } from '../types';
-import { normalizeOperator } from './useDropDownList';
+import { getResolvedQuery, normalizeOperator } from '../../common/utils';
 
 /**
  * Specifies the properties used by the `useFilter` hook to manage the state and behavior of the DropDownList component.
@@ -31,15 +31,9 @@ interface UseFilterParams {
  * @private
  */
 interface UseFilterReturn {
-    typedString: string;
-    setTypedString: (v: string) => void;
-    filterInputElementRef: React.RefObject<HTMLInputElement | null>;
-    onFilterUp: (e: React.KeyboardEvent<HTMLInputElement>, keyActionHandler?: (e: React.KeyboardEvent<HTMLElement>) => void) => void;
     handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    searchLists: (e: React.ChangeEvent<HTMLInputElement>, filterValue?: string) => void;
     clearText: (e: React.MouseEvent) => void;
-    filter: (ds: { [key: string]: unknown }[] | DataManager | string[] | number[] | boolean[],
-        query?: Query, flds?: FieldSettingsModel) => void;
+    filter: (ds: { [key: string]: unknown }[] | DataManager | string[] | number[] | boolean[], query?: Query) => void;
 }
 
 export const useFilter: (params: UseFilterParams) => UseFilterReturn = (params: UseFilterParams): UseFilterReturn => {
@@ -52,41 +46,38 @@ export const useFilter: (params: UseFilterParams) => UseFilterReturn = (params: 
         dataSource,
         onFilter,
         setListData,
-        baseQuery
+        baseQuery,
+        externalFilterInputRef
     } = params;
 
     const [internalTypedString, setInternalTypedString] = useState<string>('');
-    const [isCustomFilter, setIsCustomFilter] = useState<boolean>(false);
-
-    const internalFilterInputElementRef: React.RefObject<HTMLInputElement | null> = React.useRef<HTMLInputElement | null>(null);
 
     const typedString: string = params.externalTypedString !== undefined ? params.externalTypedString : internalTypedString;
     const setTypedString: (v: string) => void = params.setExternalTypedString || setInternalTypedString;
-    const filterInputElementRef: React.RefObject<HTMLInputElement | null> = params.externalFilterInputRef || internalFilterInputElementRef;
 
     const filteringAction: ( ds: { [key: string]: unknown }[] | DataManager | string[] | number[] | boolean[], query?: Query | null )
     => void = useCallback(( ds: { [key: string]: unknown }[] | DataManager | string[] | number[] | boolean[], query?: Query | null ) => {
-        if (filterInputElementRef.current != null && filterInputElementRef.current.value.trim() !== '') {
-            const filterQuery: Query = query || baseQuery || new Query();
+        if (externalFilterInputRef?.current != null && externalFilterInputRef.current.value.trim() !== '') {
+            const filterQuery: Query = getResolvedQuery(query || baseQuery);
             if (!query) {
                 const op: 'startsWith' | 'endsWith' | 'contains' = normalizeOperator(filterType);
                 const isPrimitive: boolean = Array.isArray(ds) && ds.length > 0 && (typeof (ds)[0] === 'string' || typeof (ds)[0] === 'number'
                 || typeof (ds)[0] === 'boolean');
                 if (isPrimitive) {
-                    filterQuery.where('', op, filterInputElementRef.current.value, ignoreCase, ignoreAccent);
+                    filterQuery.where('', op, externalFilterInputRef.current.value, ignoreCase, ignoreAccent);
                 } else {
-                    filterQuery.where((fields.text || 'text') as string, op, filterInputElementRef.current.value, ignoreCase, ignoreAccent);
+                    filterQuery.where((fields.text || 'text') as string, op, externalFilterInputRef.current.value, ignoreCase, ignoreAccent);
                 }
             }
-            setListData(ds, filterQuery, true, filterInputElementRef.current.value);
+            setListData(ds, filterQuery, true, externalFilterInputRef.current.value);
         } else {
-            setListData(ds, query || baseQuery || new Query(), true);
+            setListData(ds, getResolvedQuery(query || baseQuery), true);
         }
     }, [filterType, fields, ignoreCase, ignoreAccent, setListData, baseQuery] );
 
     const searchLists: (e: React.ChangeEvent<HTMLInputElement>, filterValue?: string) => void =
         useCallback((e: React.ChangeEvent<HTMLInputElement>, filterValue?: string) => {
-            if (isDropdownFiltering && filterInputElementRef.current != null) {
+            if (isDropdownFiltering && externalFilterInputRef?.current != null) {
                 const eventArgs: {
                     preventDefaultAction: boolean;
                     text: string;
@@ -99,33 +90,16 @@ export const useFilter: (params: UseFilterParams) => UseFilterReturn = (params: 
                 if (onFilter) {
                     onFilter(eventArgs);
                 }
-                if (!isCustomFilter && !eventArgs.preventDefaultAction && dataSource) {
+                if (!eventArgs.preventDefaultAction && dataSource) {
                     filteringAction(dataSource, null);
                 }
             }
-        }, [isDropdownFiltering, filteringAction, onFilter, isCustomFilter, dataSource] );
+        }, [isDropdownFiltering, filteringAction, onFilter, dataSource] );
 
-    const onFilterUp: (  e: React.KeyboardEvent<HTMLInputElement>,  keyActionHandler?: (e: React.KeyboardEvent<HTMLElement>) => void )
-    => void = useCallback( (e: React.KeyboardEvent<HTMLInputElement>, keyActionHandler?: (e: React.KeyboardEvent<HTMLElement>) => void) => {
-        if (keyActionHandler) {
-            keyActionHandler(e);
-        }
-    }, []);
-
-    const filter: ( ds: { [key: string]: unknown }[] | DataManager | string[] | number[] | boolean[], query?: Query,
-        flds?: FieldSettingsModel  ) => void = useCallback( (  ds: { [key: string]: unknown }[] | DataManager | string[] | number[] |
-    boolean[], query?: Query, flds?: FieldSettingsModel ) => {
-        setIsCustomFilter(true);
-        const currentValue: string = filterInputElementRef.current?.value || typedString;
-        if (currentValue) {
-            const filterQuery: Query = query || new Query();
-            if (!query) {
-                filterQuery.where((flds?.text || 'text') as string, 'contains', currentValue, ignoreCase);
-            }
-            filteringAction(ds, filterQuery);
-        } else {
-            filteringAction(ds, query);
-        }
+    const filter: ( ds: { [key: string]: unknown }[] | DataManager | string[] | number[] | boolean[], query?: Query) => void =
+    useCallback( (  ds: { [key: string]: unknown }[] | DataManager | string[] | number[] |
+    boolean[], query?: Query ) => {
+        filteringAction(ds, query);
     }, [typedString, ignoreCase, filteringAction] );
 
     const handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void = useCallback(
@@ -143,5 +117,5 @@ export const useFilter: (params: UseFilterParams) => UseFilterReturn = (params: 
         setListData(dataSource, baseQuery || new Query(), true);
     }, [setTypedString, setListData, dataSource, baseQuery]);
 
-    return { typedString, setTypedString, filterInputElementRef, onFilterUp, handleInputChange, searchLists, clearText, filter };
+    return { handleInputChange, clearText, filter };
 };

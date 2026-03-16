@@ -1,15 +1,17 @@
 @use '../../../base/styles/themes/variables' as *;
 
-$listview-icon-back-margin: $spacing-0 $spacing-14 $spacing-0 $spacing-0 !default;
-$listview-root-border-radius: $radius-4 !default;
-$listview-header-text-padding: $spacing-8 $spacing-15 $spacing-8 $spacing-15 !default;
-$listview-header-border-bottom: 0 !default;
-$listview-border-size: 0.0625rem !default;
-$listview-back-padding-right: $spacing-8 !default;
+$listview-padding: $spacing-4 $spacing-0 $spacing-4 $spacing-0 !default;
+$listview-border-radius: $radius-4 !default;
+$listview-border-size: 1px !default;
+$listview-border-color: rgb($flyout-border) !default;
+$listview-background-color: $flyout-bg-color !default;
+$listview-list-item-padding: $spacing-12 $spacing-16 !default;
+
 $listview-header-font-size: $font-size-sm !default;
 $listview-header-font-weight: $font-weight-medium !default;
-
-$listview-line-color: rgba($border-light) !default;
-$listview-header-text-color: rgba($content-text-color-alt1) !default;
-$listview-header-bg: transparent !default;
-$listview-header-border: rgba($border-light) !default;
+$listview-header-line-height: $line-height-sm !default;
+$listview-header-min-height: calc(var(--sf-spacing) * 2.5) !default;
+$listview-header-text-color: $content-text-color-alt1 !default;
+$listview-header-letter-spacing-wide: $letter-spacing-wide !default;
+$listview-header-padding: $spacing-10 $spacing-16 $spacing-10 $spacing-16 !default;
+$listview-header-gap: $spacing-12 !default;

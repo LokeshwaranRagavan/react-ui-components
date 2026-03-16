@@ -1,5 +1,27 @@
 # Changelog
 
+## 33.1.44 (2026-03-16)
+
+### Scheduler
+
+#### Features
+
+- **Recurrence support:** Built-in support for defining and managing recurring events with flexible repeat patterns such as daily, weekly, monthly, and yearly, including end conditions like end date and occurrence count, with options to edit or delete individual occurrences or the entire series.
+
+- **Event resize customization:** Support for customizing event resize behavior, allowing control over resize actions through events and interactive updating of event duration by dragging the resize handle to the desired time slot.
+
+- **Header customization:** Support for customizing the Scheduler header area using custom templates, allowing modification or replacement of the default navigation bar, view buttons, and date range display with custom content and styles.
+
+- **Editor window customization:** Support for customizing the default event editor dialog with custom fields, templates, and layouts, enabling extension or complete redesign to fit application requirements. Includes built-in field validation to define rules such as required fields, format checks, and custom validation logic before saving an event.
+
+- **Quick popup customization:** Support for customizing the quick info popup that appears on cell click and event click, allowing override of the default popup header, content, and footer sections with custom templates and actions.
+
+- **Header indent customization:** Header indent template support for customizing the indent cell area displayed at the top-left corner, enabling placement of custom content such as labels, icons, or controls in that region.
+
+- **Context menu integration:** Context menu support providing a right click menu on Scheduler cells and events, offering quick access actions such as add, edit, and delete, with full support for custom menu items and action handling.
+
+- **Tooltip integration:** Built-in tooltip support for events, enabling display of additional event details on hover through default or fully customizable tooltip templates.
+
 ## 32.1.23 (2026-01-13)
 
 ### Scheduler

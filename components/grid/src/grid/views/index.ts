@@ -14,3 +14,4 @@ export * from './ContentTable';
 export * from './ContentRows';
 export * from './Aggregate';
 export * from './PagerPanel';
+export * from './DeleteDialog';

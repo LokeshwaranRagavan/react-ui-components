@@ -13,11 +13,11 @@ import {
     useEffect
 } from 'react';
 import { ITooltip, Tooltip } from '@syncfusion/react-popups';
-import { SortDirection, RenderRef, ValueType, ActionType, UseDataResult } from '../types';
+import { SortDirection, RenderRef, ValueType, ActionType, UseDataResult, ScrollMode } from '../types';
 import { GridProps, GridRef, IGridBase } from '../types/grid.interfaces';
 import { PagerArgsInfo } from '../types/page.interfaces';
 import { useGridComputedProps } from '../hooks';
-import { RenderBase, ConfirmDialog } from '../views';
+import { RenderBase, ConfirmDialog, DeleteDialog } from '../views';
 import { ColumnProps } from '../types/column.interfaces';
 import { GridComputedProvider, GridMutableProvider } from '../contexts';
 
@@ -54,60 +54,61 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
                 columns
             };
         }, [renderExposedRef.current]);
-        const { publicAPI, privateAPI, protectedAPI } = useGridComputedProps(props, gridRef, ellipsisTooltipRef);
-        const { className, id, columns } = publicAPI;
+        const { gridAPI, gridInternal, gridScoped } = useGridComputedProps(props, gridRef, ellipsisTooltipRef);
+        const { className, id, columns } = gridAPI;
         const { styles, setCurrentViewData, setCurrentPage,
-            setTotalRecordsCount, setGridAction, setInitialLoad } = privateAPI;
-        const { columnsDirective } = protectedAPI;
+            setTotalRecordsCount, setGridAction, setInitialLoad } = gridInternal;
+        const { columnsDirective } = gridScoped;
 
         // Initialize gridRef with all the properties
         if (gridRef.current === null) {
             gridRef.current = {
                 // Grid specific properties
                 element: null,
-                getColumns: () => (protectedAPI?.uiColumns ?? columns).map((col: ColumnProps<T>) => ({...col})),
+                getColumns: () => (gridScoped?.uiColumns.current ?? columns).map((col: ColumnProps<T>) => ({...col})),
                 currentViewData: [],
-                focusModule: protectedAPI.focusModule,
-                selectionModule: protectedAPI.selectionModule,
-                pageSettings: publicAPI.pageSettings,
+                focusModule: gridScoped.focusModule,
+                selectionModule: gridScoped.selectionModule,
+                pageSettings: gridAPI.pageSettings,
                 // Filter method
                 filterByColumn: (fieldName: string, filterOperator: string,
                                  filterValue: ValueType| number[]| string[]| Date[]| boolean[],
                                  predicate?: string, caseSensitive?: boolean,
                                  ignoreAccent?: boolean) => {
-                    protectedAPI.filterModule?.filterByColumn?.(fieldName, filterOperator, filterValue, predicate,
-                                                                caseSensitive, ignoreAccent);
+                    gridScoped.filterModule?.filterByColumn?.(fieldName, filterOperator, filterValue, predicate
+                        , caseSensitive, ignoreAccent);
                 },
                 clearFilter: (fields?: string[]) => {
-                    protectedAPI.filterModule?.clearFilter?.(fields);
+                    gridScoped.filterModule?.clearFilter?.(fields);
                 },
                 removeFilteredColsByField: (field?: string, isClearFilterBar?: boolean) => {
-                    protectedAPI.filterModule?.removeFilteredColsByField?.(field, isClearFilterBar);
+                    gridScoped.filterModule?.removeFilteredColsByField?.(field, isClearFilterBar);
                 },
 
                 // Search method
                 search: (searchString: string) => {
-                    protectedAPI.searchModule.search(searchString);
+                    gridScoped.searchModule.search(searchString);
                 },
 
                 // Sort method
                 sortByColumn: (columnName: string, sortDirection: SortDirection | string, isMultiSort?: boolean) => {
-                    protectedAPI.sortModule?.sortByColumn?.(columnName, sortDirection, isMultiSort);
+                    gridScoped.sortModule?.sortByColumn?.(columnName, sortDirection, isMultiSort);
                 },
                 removeSortColumn: (columnName: string) => {
-                    protectedAPI.sortModule?.removeSortColumn?.(columnName);
+                    gridScoped.sortModule?.removeSortColumn?.(columnName);
                 },
                 clearSort: (fields?: string[]) => {
-                    protectedAPI.sortModule?.clearSort?.(fields);
+                    gridScoped.sortModule?.clearSort?.(fields);
                 },
 
                 //page Method
                 goToPage: async(pageNo: number) => {
                     const args: PagerArgsInfo = { cancel: false, currentPage: pageNo,
-                        previousPage: publicAPI.pageSettings.currentPage, requestType: ActionType.Paging
+                        previousPage: gridAPI.pageSettings.currentPage, requestType: ActionType.Paging
                     };
                     args.type = 'pageChanging';
-                    const confirmResult: boolean = await protectedAPI?.editModule?.checkUnsavedChanges?.();
+                    const confirmResult: boolean = gridAPI.virtualizationSettings?.scrollMode === ScrollMode.Virtual ? true :
+                        await gridScoped?.editModule?.checkUnsavedChanges?.();
                     if (!confirmResult) {
                         return;
                     }
@@ -119,58 +120,62 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
                     setGridAction(args);
                 },
                 setPagerMessage: (message: string) => {
-                    renderExposedRef.current.pagerModule?.updateExternalMessage(message);
+                    renderExposedRef.current?.pagerModule?.updateExternalMessage(message);
                 },
                 getDataModule: () => {
-                    return protectedAPI.dataModule as UseDataResult;
+                    return gridScoped.dataModule as UseDataResult;
                 },
                 get selectedRowIndexes(): number[] {
-                    return protectedAPI.selectionModule.selectedRowIndexes;
+                    return gridScoped.selectionModule.selectedRowIndexes;
                 },
                 getSelectedRows: () => {
-                    return protectedAPI.selectionModule.selectedRows as HTMLTableRowElement[];
+                    return gridScoped.selectionModule.selectedRows as HTMLTableRowElement[];
                 },
                 getSelectedRecords: () => {
-                    return protectedAPI.selectionModule.getSelectedRecords() as T[];
+                    return gridScoped.selectionModule.getSelectedRecords() as T[];
+                },
+                getPersistSelectedData: () => {
+                    return gridScoped.selectionModule.getPersistSelectedData() as T[];
                 },
                 getSelectedRowIndexes: () =>  {
-                    return protectedAPI.selectionModule.getSelectedRowIndexes() as number[];
+                    return gridScoped.selectionModule.getSelectedRowIndexes() as number[];
                 },
+                getCurrentViewRecords: () => gridScoped?.currentViewData as T[],
                 selectRow: (rowIndex: number, isToggle?: boolean) => {
-                    protectedAPI.selectionModule.selectRow(rowIndex, isToggle);
+                    gridScoped.selectionModule.selectRow(rowIndex, isToggle);
                 },
                 selectRows: (rowIndexes: number[]) => {
-                    protectedAPI.selectionModule.selectRows(rowIndexes);
+                    gridScoped.selectionModule.selectRows(rowIndexes);
                 },
                 selectRowByRange: (startIndex: number, endIndex: number) => {
-                    protectedAPI.selectionModule.selectRowByRange(startIndex, endIndex);
+                    gridScoped.selectionModule.selectRowByRange(startIndex, endIndex);
                 },
                 clearRowSelection: (indexes: number[]) => {
-                    protectedAPI.selectionModule.clearRowSelection(indexes);
+                    gridScoped.selectionModule.clearRowSelection(indexes);
                 },
                 clearSelection: () => {
-                    protectedAPI.selectionModule.clearSelection();
+                    gridScoped.selectionModule.clearSelection();
                 },
 
                 // Edit methods
-                isEdit: protectedAPI.editModule?.isEdit || false,
-                editSettings: protectedAPI.editModule?.editSettings || {},
-                editRowIndex: protectedAPI.editModule?.editRowIndex || -1,
-                editData: (protectedAPI.editModule?.editData as T | null) ||
+                isEdit: gridScoped.editModule?.isEdit || false,
+                editSettings: gridScoped.editModule?.editSettings || {},
+                editRowIndex: gridScoped.editModule?.editRowIndex || -1,
+                editData: (gridScoped.editModule?.editData as T | null) ||
                     null,
-                editRecord: protectedAPI.editModule?.editRecord,
-                saveDataChanges: protectedAPI.editModule?.saveDataChanges,
-                cancelDataChanges: protectedAPI.editModule?.cancelDataChanges,
-                addRecord: protectedAPI.editModule?.addRecord,
-                deleteRecord: protectedAPI.editModule?.deleteRecord,
-                setRowData: publicAPI.setRowData,
-                updateRecord: protectedAPI.editModule?.updateRecord,
-                setCellValue: publicAPI.setCellValue,
-                validateEditForm: protectedAPI.editModule?.validateEditForm,
-                validateField: protectedAPI.editModule?.validateField,
+                editRecord: gridScoped.editModule?.editRecord,
+                saveDataChanges: gridScoped.editModule?.saveDataChanges,
+                cancelDataChanges: gridScoped.editModule?.cancelDataChanges,
+                addRecord: gridScoped.editModule?.addRecord,
+                deleteRecord: gridScoped.editModule?.deleteRecord,
+                setRowData: gridAPI.setRowData,
+                updateRecord: gridScoped.editModule?.updateRecord,
+                setCellValue: gridAPI.setCellValue,
+                validateEditForm: gridScoped.editModule?.validateEditForm,
+                validateField: gridScoped.editModule?.validateField,
 
                 // Include all public API computed properties
-                ...publicAPI,
+                ...gridAPI,
                 ...renderExposedRef.current
             };
         }
@@ -179,19 +184,19 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
         useEffect(() => {
             gridRef.current = {
                 ...gridRef.current,
-                columns: (protectedAPI?.uiColumns ?? columns).map((col: ColumnProps<T>) => ({...col})),
-                getColumns: () => (protectedAPI?.uiColumns ?? columns).map((col: ColumnProps<T>) => ({...col})),
-                currentViewData: protectedAPI?.currentViewData as T[],
-                editModule: protectedAPI.editModule,
+                columns: (gridScoped?.uiColumns.current ?? columns).map((col: ColumnProps<T>) => ({...col})),
+                getColumns: () => (gridScoped?.uiColumns.current ?? columns).map((col: ColumnProps<T>) => ({...col})),
+                currentViewData: gridScoped?.currentViewData as T[],
+                editModule: gridScoped.editModule,
                 // Update edit methods directly on gridRef
-                isEdit: protectedAPI.editModule?.isEdit,
-                editSettings: protectedAPI.editModule?.editSettings,
-                editRowIndex: protectedAPI.editModule?.editRowIndex,
-                editData: protectedAPI.editModule?.editData as T | null
+                isEdit: gridScoped.editModule?.isEdit,
+                editSettings: gridScoped.editModule?.editSettings,
+                editRowIndex: gridScoped.editModule?.editRowIndex,
+                editData: gridScoped.editModule?.editData as T | null
             };
-            gridRef.current.pageSettings.currentPage = protectedAPI.currentPage;
-            gridRef.current.pageSettings.totalRecordsCount = protectedAPI.totalRecordsCount;
-        }, [protectedAPI.currentPage, protectedAPI.totalRecordsCount, protectedAPI.editModule, protectedAPI.uiColumns]);
+            gridRef.current.pageSettings.currentPage = gridScoped.currentPage;
+            gridRef.current.pageSettings.totalRecordsCount = gridScoped.totalRecordsCount;
+        }, [gridScoped.currentPage, gridScoped.totalRecordsCount, gridScoped.editModule, gridScoped.uiColumns.current]);
 
         // Expose gridRef directly through ref
         useImperativeHandle(ref, () => ({
@@ -199,31 +204,31 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
             ...renderExposedRef.current,
             getHeaderContent: () => renderExposedRef.current.headerPanelRef,
             getContent: () => renderExposedRef.current.contentPanelRef,
-            isEdit: protectedAPI.editModule?.isEdit,
-            editRecord: protectedAPI.editModule?.editRecord,
+            isEdit: gridScoped.editModule?.isEdit,
+            editRecord: gridScoped.editModule?.editRecord,
             saveDataChanges: (rowElement?: HTMLTableRowElement) => {
-                return (protectedAPI.editModule?.saveDataChanges as Function)?.(
+                return (gridScoped.editModule?.saveDataChanges as Function)?.(
                     undefined, undefined, undefined,
-                    protectedAPI.commandColumnModule.commandEdit.current ? rowElement?.getAttribute('data-uid') : undefined
+                    gridScoped.commandColumnModule.commandEdit.current ? rowElement?.getAttribute('data-uid') : undefined
                 );
             },
             cancelDataChanges: (rowElement?: HTMLTableRowElement) => {
-                return (protectedAPI.editModule?.cancelDataChanges as Function)?.(
-                    undefined, protectedAPI.commandColumnModule.commandEdit.current ? rowElement?.getAttribute('data-uid') : undefined
+                return (gridScoped.editModule?.cancelDataChanges as Function)?.(
+                    undefined, gridScoped.commandColumnModule.commandEdit.current ? rowElement?.getAttribute('data-uid') : undefined
                 );
             },
-            addRecord: protectedAPI.editModule?.addRecord,
-            deleteRecord: protectedAPI.editModule?.deleteRecord,
-            setRowData: publicAPI.setRowData,
-            updateRecord: protectedAPI.editModule?.updateRecord,
-            setCellValue: publicAPI.setCellValue,
-            validateEditForm: protectedAPI.editModule?.validateEditForm,
-            validateField: protectedAPI.editModule?.validateField,
-            getCurrentViewRecords: () => protectedAPI?.currentViewData as T[],
+            addRecord: gridScoped.editModule?.addRecord,
+            deleteRecord: gridScoped.editModule?.deleteRecord,
+            setRowData: gridAPI.setRowData,
+            updateRecord: gridScoped.editModule?.updateRecord,
+            setCellValue: gridAPI.setCellValue,
+            validateEditForm: gridScoped.editModule?.validateEditForm,
+            validateField: gridScoped.editModule?.validateField,
+            getCurrentViewRecords: () => gridScoped?.currentViewData as T[],
             get selectedRowIndexes(): number[] {
-                return protectedAPI.selectionModule.selectedRowIndexes;
+                return gridScoped.selectionModule.selectedRowIndexes;
             }
-        }), [gridRef.current, renderExposedRef.current, protectedAPI, publicAPI]);
+        }), [gridRef.current, renderExposedRef.current, gridScoped, gridAPI]);
 
         // Calculate column count for accessibility
         const colCount: number = useMemo(() => {
@@ -232,7 +237,7 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
 
         // Conditionally render ellipsis tooltip only when needed
         const ellipsisTooltip: JSX.Element | null = useMemo(() => {
-            if (!privateAPI.isEllipsisTooltip) {
+            if (!gridInternal.isEllipsisTooltip) {
                 return null;
             }
             return (
@@ -240,12 +245,12 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
                     key={id + '_EllipsisTooltip'}
                     ref={ellipsisTooltipRef}
                     opensOn={'Custom'}
-                    className={`sf-ellipsis-tooltip ${protectedAPI.cssClass}`}
+                    className={`sf-ellipsis-tooltip ${gridScoped.cssClass}`}
                     target={undefined}
-                    content={() => <div>{privateAPI.getEllipsisTooltipContent()}</div>}
+                    content={() => <div>{gridInternal.getEllipsisTooltipContent()}</div>}
                 />
             );
-        }, [privateAPI.isEllipsisTooltip, id, protectedAPI.cssClass, privateAPI.getEllipsisTooltipContent]);
+        }, [gridInternal.isEllipsisTooltip, id, gridScoped.cssClass, gridInternal.getEllipsisTooltipContent]);
 
         // Memoize render component to prevent unnecessary re-renders
         const renderComponent: JSX.Element = useMemo(() => {
@@ -259,11 +264,11 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
 
         return (
             <GridComputedProvider<T> grid={useMemo(() => ({
-                ...gridRef.current, ...publicAPI, setCurrentViewData, setCurrentPage,
+                ...gridRef.current, ...gridAPI, setCurrentViewData, setCurrentPage,
                 setTotalRecordsCount, setGridAction, setInitialLoad
-            }), [publicAPI, setCurrentViewData, setCurrentPage,
+            }), [gridAPI, setCurrentViewData, setCurrentPage,
                 setTotalRecordsCount, setGridAction, setInitialLoad])}>
-                <GridMutableProvider<T> grid={protectedAPI}>
+                <GridMutableProvider<T> grid={gridScoped}>
                     <div
                         ref={(el: HTMLDivElement) => {
                             gridRef.current.element = el;
@@ -273,28 +278,39 @@ const GridBase: <T, >(props: Partial<IGridBase<T>> & RefAttributes<GridRef<T>>) 
                         role='grid'
                         tabIndex={-1}
                         aria-colcount={colCount}
-                        aria-rowcount={protectedAPI?.currentViewData?.length}
+                        aria-rowcount={gridScoped?.currentViewData?.length}
+                        aria-busy={renderExposedRef.current?.isContentBusy}
                         style={styles}
-                        onMouseOut={privateAPI.handleGridMouseOut}
-                        onMouseOver={privateAPI.handleGridMouseOver}
-                        onMouseDown={privateAPI.handleGridMouseDown}
-                        onKeyDown={publicAPI.allowKeyboard ? privateAPI.handleGridKeyDown : undefined}
-                        onKeyUp={privateAPI.handleGridKeyUp}
-                        onClick={privateAPI.handleGridClick}
-                        onDoubleClick={privateAPI.handleGridDoubleClick}
-                        onFocus={privateAPI.handleGridFocus}
-                        onBlur={privateAPI.handleGridBlur}
+                        onMouseOut={gridInternal.handleGridMouseOut}
+                        onMouseOver={gridInternal.handleGridMouseOver}
+                        onMouseDown={gridInternal.handleGridMouseDown}
+                        onKeyDown={gridAPI.allowKeyboard ? gridInternal.handleGridKeyDown : undefined}
+                        onKeyUp={gridInternal.handleGridKeyUp}
+                        onClick={gridInternal.handleGridClick}
+                        onDoubleClick={gridInternal.handleGridDoubleClick}
+                        onFocus={gridInternal.handleGridFocus}
+                        onBlur={gridInternal.handleGridBlur}
                         onMouseUp={props.onMouseUp}
                     >
                         {renderComponent}
                         {ellipsisTooltip}
                         {/* Add ConfirmDialog component for inline editing confirmation dialogs */}
-                        {protectedAPI.editModule && protectedAPI.editModule?.isDialogOpen && (
+                        {gridScoped.editModule && gridScoped.editModule?.isDialogOpen && (
                             <ConfirmDialog
-                                isOpen={protectedAPI.editModule?.isDialogOpen}
-                                config={protectedAPI.editModule?.dialogConfig}
-                                onConfirm={protectedAPI.editModule?.onDialogConfirm}
-                                onCancel={protectedAPI.editModule?.onDialogCancel}
+                                isOpen={gridScoped.editModule?.isDialogOpen}
+                                config={gridScoped.editModule?.dialogConfig}
+                                onConfirm={gridScoped.editModule?.onDialogConfirm}
+                                onCancel={gridScoped.editModule?.onDialogCancel}
+                            />
+                        )}
+                        {/* Add DeleteDialog component for selection-based delete operations */}
+                        {gridScoped.editModule && gridScoped.editModule?.isDeleteDialogOpen &&
+                            gridAPI.selectionSettings?.persistSelection && (
+                            <DeleteDialog
+                                isOpen={gridScoped.editModule?.isDeleteDialogOpen || false}
+                                onConfirm={gridScoped.editModule?.onSelectionDeleteConfirm}
+                                onCancel={gridScoped.editModule?.onSelectionDeleteCancel}
+                                onDialogOpen={gridAPI.onDeleteDialogOpen}
                             />
                         )}
                     </div>

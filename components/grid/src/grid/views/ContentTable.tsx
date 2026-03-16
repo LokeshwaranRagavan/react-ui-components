@@ -8,19 +8,21 @@ import {
     memo,
     JSX,
     RefObject,
-    ReactElement
+    ReactElement,
+    useState,
+    useLayoutEffect
 } from 'react';
 import { ContentRowsBase } from './index';
 import {
     ContentTableRef,
     IContentTableBase,
-    ContentRowsRef, MutableGridSetter
+    ContentRowsRef
 } from '../types/interfaces';
-import { IGrid } from '../types/grid.interfaces';
 import {
     useGridComputedProvider,
     useGridMutableProvider
 } from '../contexts';
+import { parseUnit } from '../utils';
 
 /**
  * ContentTableBase component renders the table structure for grid content
@@ -39,26 +41,56 @@ const ContentTableBase: <T>(props: Partial<IContentTableBase> & RefAttributes<Co
     memo(forwardRef<ContentTableRef, Partial<IContentTableBase>>(
         <T, >(props: Partial<IContentTableBase>, ref: RefObject<ContentTableRef<T>>) => {
             // Access grid context providers
-            const { colElements: ColElements } = useGridMutableProvider<T>();
-            const grid: Partial<IGrid> & Partial<MutableGridSetter> = useGridComputedProvider<T>();
-            const { id } = grid;
+            const { colElements: ColElements, offsetX, virtualSettings } = useGridMutableProvider<T>();
+            const { id, scrollModule } = useGridComputedProvider<T>();
 
             // Refs for DOM elements and child components
             const contentTableRef: RefObject<HTMLTableElement | null>  = useRef<HTMLTableElement>(null);
             const rowSectionRef: RefObject<ContentRowsRef<T> | null> = useRef<ContentRowsRef<T>>(null);
-
+            const [forceRerender, setForceRerender] = useState<Object>({});
+            const totalWidth: RefObject<number> = useRef(0);
             /**
              * Memoized colgroup element to prevent unnecessary re-renders
              * Contains column definitions for the table
              */
-            const colGroupContent: JSX.Element = useMemo<JSX.Element>(() => (
-                <colgroup
-                    key={`content-${id}-colgroup`}
-                    id={`content-${id}-colgroup`}
-                >
-                    {ColElements.length ? ColElements : null}
-                </colgroup>
-            ), [ColElements, id]);
+            const colGroupContent: JSX.Element = useMemo(() => {
+                let visibleCols: JSX.Element[] = [];
+
+                if (ColElements.length) {
+                    if (!virtualSettings.enableColumn) {
+                        visibleCols = ColElements;
+                    } else {
+                        const startIndex: number = scrollModule?.virtualColumnInfo?.startIndex ?? 0;
+                        const endIndex: number = scrollModule?.virtualColumnInfo?.endIndex ?? ColElements.length;
+                        totalWidth.current = 0;
+                        for (let i: number = startIndex; i < endIndex; i++) {
+                            const col: JSX.Element = ColElements[i as number];
+                            visibleCols.push(col);
+
+                            // Optional: If you ever need cumulative width, you can calculate here
+                            const styleWidth: number = col?.props?.style?.width;
+                            totalWidth.current += parseUnit(styleWidth);
+                        }
+                    }
+                }
+
+                return (
+                    <colgroup
+                        key={`content-${id}-colgroup`}
+                        id={`content-${id}-colgroup`}
+                    >
+                        {visibleCols.length > 0 ? visibleCols : null}
+                    </colgroup>
+                );
+            }, [
+                ColElements,
+                id,
+                offsetX,
+                virtualSettings.enableColumn,
+                scrollModule?.virtualColumnInfo?.startIndex,
+                scrollModule?.virtualColumnInfo?.endIndex,
+                forceRerender, totalWidth.current
+            ]);
 
             /**
              * Expose internal elements and methods through the forwarded ref
@@ -68,9 +100,14 @@ const ContentTableBase: <T>(props: Partial<IContentTableBase> & RefAttributes<Co
                 // ContentTable specific properties
                 contentTableRef: contentTableRef.current,
                 getContentTable: () => contentTableRef.current,
+                columnClientWidth: totalWidth.current,
                 // Forward all properties from ContentRows
                 ...(rowSectionRef.current)
-            }), [contentTableRef.current, rowSectionRef.current]);
+            }), [contentTableRef.current, rowSectionRef.current, totalWidth.current]);
+
+            useLayoutEffect(() => {
+                setForceRerender({});
+            }, [offsetX]);
 
             /**
              * Memoized content rows component to prevent unnecessary re-renders

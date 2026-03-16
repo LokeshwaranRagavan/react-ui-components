@@ -1,10 +1,13 @@
 import { DataManager, DataUtil, Query } from '@syncfusion/react-data';
 import { useData } from '../../common/data';
-import { isNullOrUndefined } from '@syncfusion/react-base';
+import { isNullOrUndefined, extend } from '@syncfusion/react-base';
 import { EmptyPointMode } from '../../base/enum';
 import { findSeriesCollection, isRectangularSeriesType, setRange, useVisiblePoints } from '../../utils/helper';
 import { refreshAxisLabel } from '../AxesRenderer/AxisRender';
-import { Chart, Points, SeriesProperties } from '../../chart-area/chart-interfaces';
+import { Chart, ChartTrendlineModel, Points, SeriesProperties } from '../../chart-area/chart-interfaces';
+import { initDataSource } from './TrendlinesRenderer';
+import HistogramSeriesRenderer from './HistogramSeriesRenderer';
+import { performCumulativeCalculation } from './ParetoSeriesRenderer';
 
 /**
  * Constants used in the ProcessData component
@@ -49,6 +52,14 @@ const dataManagerSuccess: (dataObject: { result: Object; count: number }, series
                 seriesArray.recordsCount = dataObject.count;
                 seriesArray.currentViewData = null;
             }
+            if (seriesArray && seriesArray.trendlines && seriesArray.category !== 'TrendLine') {
+                for (const trendline of seriesArray.trendlines) {
+                    if (trendline.visible) {
+                        trendline.points = seriesArray.points;
+                        initDataSource(trendline);
+                    }
+                }
+            }
         });
     };
 
@@ -65,6 +76,14 @@ export const processJsonData: (series: SeriesProperties) => void = (series: Seri
     const xName: string = series.xField as string;
     const textMappingName: string = series.marker?.dataLabel?.labelField ?
         series.marker.dataLabel.labelField : '';
+    if (series) {
+        if (series.category === 'Pareto') {
+            series.currentViewData = extend([], series.currentViewData as Object, undefined, true) as Object[];
+            if (series.type === 'Line') {
+                series.currentViewData = performCumulativeCalculation(series.currentViewData, series);
+            }
+        }
+    }
     // Check if currentViewData exists and is an array before accessing length
     if (!series.currentViewData || !Array.isArray(series.currentViewData)) {
         series.points = [];
@@ -107,6 +126,9 @@ export const processJsonData: (series: SeriesProperties) => void = (series: Seri
             i++;
         }
     }
+    if (series.type === 'Histogram') {
+        HistogramSeriesRenderer.processInternalData(series);
+    }
 };
 
 /**
@@ -138,6 +160,14 @@ const getSeriesType: (series: SeriesProperties) => void = (series: SeriesPropert
             }
         }
         series.seriesType = s.seriesType;
+        if (series.trendlines && series.trendlines.length > 0) {
+            series.trendlines.forEach((trendline: ChartTrendlineModel) => {
+                if (trendline.targetSeries) {
+                    trendline.targetSeries.seriesType = s.seriesType;
+                }
+            });
+        }
+
     });
 };
 
@@ -330,7 +360,9 @@ export const processChartSeries: (chartSeries: SeriesProperties[]) => SeriesProp
             }
 
             // Initialize data module for the series
-            initializeDataModule(series);
+            if (series.category !== 'TrendLine') {
+                initializeDataModule(series);
+            }
         }
     };
 

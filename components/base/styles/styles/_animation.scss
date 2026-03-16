@@ -4,81 +4,73 @@
 
   @keyframes SlideLeftOut {
     from {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
-
     to {
-      transform: translate(-100%, 0);
+      transform: translate3d(calc(var(--slide-width, -100%) * -1), 0, 0);
     }
   }
 
   @keyframes SlideLeftIn {
     from {
-      transform: translate(-100%, 0);
+      transform: translate3d(calc(var(--slide-width, -100%) * -1), 0, 0);
     }
-
     to {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
   }
 
   @keyframes SlideRightIn {
     from {
-      transform: translate(100%, 0);
+      transform: translate3d(var(--slide-width, 100%), 0, 0);
     }
-
     to {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
-  }
+  }  
 
   @keyframes SlideRightOut {
     from {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
-
     to {
-      transform: translate(100%, 0);
+      transform: translate3d(var(--slide-width, 100%), 0, 0);
     }
   }
 
   @keyframes SlideBottomIn {
     from {
-      transform: translate(0, 100%);
+      transform: translate3d(0, var(--slide-height, 100%), 0);
     }
-
     to {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
   }
 
   @keyframes SlideBottomOut {
     from {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
-
     to {
-      transform: translate(0, 100%);
+      transform: translate3d(0, var(--slide-height, 100%), 0);
     }
   }
 
   @keyframes SlideTopIn {
     from {
-      transform: translate(0, -100%);
+      transform: translate3d(0, calc(var(--slide-height, -100%) * -1), 0);
     }
-
     to {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
   }
 
   @keyframes SlideTopOut {
     from {
-      transform: translate(0, 0);
+      transform: translate3d(0, 0, 0);
     }
-
     to {
-      transform: translate(0, -100%);
+      transform: translate3d(0, calc(var(--slide-height, -100%) * -1), 0);
     }
   }
 

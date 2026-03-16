@@ -1,17 +1,15 @@
 import { FC, useRef, RefObject, useCallback, MouseEvent, ReactNode, KeyboardEvent, HTMLAttributes } from 'react';
-import { SchedulerEventClickEvent } from '../types/scheduler-types';
 import { useSchedulerPropsContext } from '../context/scheduler-context';
 import { useSchedulerRenderDatesContext } from '../context/scheduler-render-dates-context';
-import { ChevronLeftDoubleIcon, ChevronRightDoubleIcon } from '@syncfusion/react-icons';
 import { DayEventProps } from '../types/internal-interface';
 import { EventService } from '../services/EventService';
 import { useEventPositioning } from '../hooks/useEventPositioning';
-import { useProviderContext, formatDate } from '@syncfusion/react-base';
+import { useProviderContext } from '@syncfusion/react-base';
 import { CSS_CLASSES } from '../common/constants';
 import { DraggableEvent } from './drag-and-drop';
 import { useSchedulerLocalization } from '../common/locale';
 import ResizeHandlers from './resizeHandlers';
-import { clearAndSelectAppointment } from '../utils/actions';
+import { useEventRendering } from '../hooks/useEventRendering';
 
 export const DayEvent: FC<DayEventProps> = (props: DayEventProps) => {
     const {
@@ -23,13 +21,8 @@ export const DayEvent: FC<DayEventProps> = (props: DayEventProps) => {
     const { renderDates } = useSchedulerRenderDatesContext();
 
     const {
-        timeFormat,
-        eventTemplate,
-        onEventClick,
-        onEventDoubleClick,
         eventDrag,
-        eventResize = true,
-        quickPopupRef,
+        eventResize,
         readOnly
     } = useSchedulerPropsContext();
 
@@ -48,90 +41,27 @@ export const DayEvent: FC<DayEventProps> = (props: DayEventProps) => {
 
     const { isOverflowLeft, isOverflowRight } = overflowDirection;
 
+    const {
+        getEventContent: getSharedEventContent,
+        handleClick: onClickHandler,
+        handleDoubleClick: onDoubleClickHandler
+    } = useEventRendering({
+        variant: 'day',
+        event: eventInfo.event,
+        totalSegments: eventInfo.totalSegments,
+        isOverflowLeft,
+        isOverflowRight
+    });
+
     const handleClick: (e: MouseEvent<HTMLDivElement>) => void =
-    useCallback((e: MouseEvent<HTMLDivElement>) => {
-        if (isBlockedEvent) {
-            e?.preventDefault();
-            e?.stopPropagation();
-            return;
-        }
-        clearAndSelectAppointment(e.currentTarget);
-        e.stopPropagation();
-        if (onEventClick) {
-            const eventClickArgs: SchedulerEventClickEvent = {
-                event: e,
-                data: eventInfo.event,
-                element: e.currentTarget
-            };
-            onEventClick(eventClickArgs);
-        }
-    }, [onEventClick, processedEvent]);
+        useCallback((e: MouseEvent<HTMLDivElement>): void => {
+            onClickHandler(e, eventInfo.event, isBlockedEvent);
+        }, [onClickHandler, eventInfo.event, isBlockedEvent]);
 
-    const handleDoubleClick: (e: MouseEvent<HTMLDivElement>) => void = useCallback((e: MouseEvent<HTMLDivElement>) => {
-        if (eventInfo.event.isReadonly || readOnly || isBlockedEvent) {
-            e?.preventDefault();
-            e?.stopPropagation();
-            return;
-        }
-        e.stopPropagation();
-        if (onEventDoubleClick) {
-            quickPopupRef?.current?.hide();
-            const eventClickArgs: SchedulerEventClickEvent = {
-                event: e,
-                data: eventInfo.event,
-                element: e.currentTarget
-            };
-            onEventDoubleClick(eventClickArgs);
-        }
-    }, [onEventDoubleClick, processedEvent]);
-
-    const formattedTime: (time: Date) => string = (time: Date) => {
-        return formatDate(
-            time ?? new Date(),
-            { type: 'time', skeleton: 'short', format: timeFormat, locale: locale }
-        );
-    };
-
-    const renderOverflowIndicator: (direction: 'left' | 'right') => ReactNode = (direction: 'left' | 'right') => (
-        <div className={`sf-indicator sf-icons sf-${direction}-icon`}>
-            {direction === 'left' ? <ChevronLeftDoubleIcon /> : <ChevronRightDoubleIcon />}
-        </div>
-    );
-
-    const renderTime: (time: string) => ReactNode = (time: string) => <div className={CSS_CLASSES.TIME}>{time}</div>;
-
-    const renderSpannedContent: () => ReactNode = useCallback(() => {
-        const { subject, isAllDay, startTime, endTime } = processedEvent;
-        if (!eventInfo.totalSegments) { return null; }
-
-        const renderLeft: () => ReactNode = () =>
-            isOverflowLeft ? renderOverflowIndicator('left') : !isAllDay && renderTime(formattedTime(startTime));
-
-        const renderRight: () => ReactNode = () =>
-            isOverflowRight ? renderOverflowIndicator('right') : !isAllDay && renderTime(formattedTime(endTime));
-
-        return (
-            <div className={CSS_CLASSES.APPOINTMENT_DETAILS}>
-                {renderLeft()}
-                <div className={`${CSS_CLASSES.SUBJECT} ${CSS_CLASSES.TEXT_CENTER} ${CSS_CLASSES.ELLIPSIS}`} title={subject}>
-                    {subject || getString('addTitle')}
-                </div>
-                {renderRight()}
-            </div>
-        );
-    }, [processedEvent, eventInfo, locale, timeFormat, isOverflowLeft, isOverflowRight]);
-
-    const renderStandardEventContent: () => ReactNode = useCallback(() => {
-        const { subject, startTime, isAllDay } = processedEvent;
-        return (
-            <div className={CSS_CLASSES.APPOINTMENT_DETAILS}>
-                {!isAllDay && renderTime(formattedTime(startTime))}
-                <div className={`${CSS_CLASSES.SUBJECT} ${CSS_CLASSES.ELLIPSIS}`} title={subject}>
-                    {subject || getString('addTitle')}
-                </div>
-            </div>
-        );
-    }, [processedEvent]);
+    const handleDoubleClick: (e: MouseEvent<HTMLDivElement>) => void =
+        useCallback((e: MouseEvent<HTMLDivElement>): void => {
+            onDoubleClickHandler(e, eventInfo.event, isBlockedEvent);
+        }, [onDoubleClickHandler, eventInfo.event, isBlockedEvent]);
 
     const renderBlockEventContent: () => ReactNode = useCallback(() => {
         const { subject } = processedEvent;
@@ -142,29 +72,14 @@ export const DayEvent: FC<DayEventProps> = (props: DayEventProps) => {
                 </div>
             </div>
         );
-    }, [processedEvent]);
+    }, [processedEvent, getString]);
 
     const renderEventContent: () => ReactNode = useCallback(() => {
-        if (eventTemplate) {
-            return eventTemplate(processedEvent);
-        }
-        else if (isBlockedEvent) {
+        if (isBlockedEvent) {
             return renderBlockEventContent();
         }
-        else if (eventInfo.totalSegments) {
-            return renderSpannedContent();
-        }
-        return renderStandardEventContent();
-    }, [
-        eventTemplate,
-        processedEvent,
-        renderSpannedContent,
-        renderStandardEventContent,
-        renderBlockEventContent,
-        eventInfo,
-        isOverflowLeft,
-        isOverflowRight
-    ]);
+        return getSharedEventContent(props);
+    }, [isBlockedEvent, renderBlockEventContent, getSharedEventContent]);
 
     // Combined style with event specific and position styles
     const finalStyle: React.CSSProperties = {
@@ -197,14 +112,14 @@ export const DayEvent: FC<DayEventProps> = (props: DayEventProps) => {
     const allowEdit: boolean = !isBlockedEvent && !eventInfo.event.isReadonly && !readOnly;
 
     return (
-        eventDrag && allowEdit ? (
+        eventDrag?.enable && allowEdit ? (
             <DraggableEvent
                 data={processedEvent}
                 className={className}
                 containerProps={commonProps}
                 ref={eventRef}
             >
-                {eventResize && allowEdit ? (
+                {eventResize?.enable && allowEdit ? (
                     <ResizeHandlers
                         data={processedEvent}
                         hasPrevious={isOverflowLeft}
@@ -218,7 +133,7 @@ export const DayEvent: FC<DayEventProps> = (props: DayEventProps) => {
             </DraggableEvent>
         ) : (
             <div ref={eventRef} className={className} {...commonProps}>
-                {eventResize && allowEdit ? (
+                {eventResize?.enable && allowEdit ? (
                     <ResizeHandlers
                         data={processedEvent}
                         hasPrevious={isOverflowLeft}

@@ -28,6 +28,7 @@ const CLS_ICON: string = 'sf-toolbar-popup-icon sf-icon';
 
 /**
  * Specifies the props for the ToolbarPopup component.
+ *
  * @private
  */
 export interface ToolbarPopupProps {
@@ -99,6 +100,7 @@ export interface ToolbarPopupProps {
 
 /**
  * Specifies the reference interface for the ToolbarPopup component.
+ *
  * @private
  */
 export interface ToolbarPopupRef {
@@ -152,8 +154,7 @@ ToolbarPopupRef, IToolbarPopupProps
     const memoizedItems: IToolbarItems[] = useMemo(() => getItems(children), [children, getItems]);
     const resizeObserverRef: RefObject<ResizeObserver | null> = useRef<ResizeObserver | null>(null);
     const previousChildrenCountRef: RefObject<number> = useRef<number>(Children.count(children));
-    const itemsRef: RefObject<IToolbarItems[]> = useRef<IToolbarItems[]>(getItems(children));
-    const toolbarItemsRef: RefObject<IToolbarItems[]> = useRef<IToolbarItems[]>([...itemsRef.current]);
+    const toolbarItemsRef: RefObject<IToolbarItems[]> = useRef<IToolbarItems[]>([...getItems(children)]);
     const popupItemsRef: RefObject<IToolbarItems[]> = useRef<IToolbarItems[]>([]);
     const popupNavRef: RefObject<HTMLDivElement | null> = useRef<HTMLDivElement | null>(null);
     const popupRef: RefObject<IPopup | null> = useRef<IPopup>(null);
@@ -420,7 +421,7 @@ ToolbarPopupRef, IToolbarPopupProps
             const isResetToDefault: boolean = (availableSpace + getPopupNavOffset()) > popupItemsWidth;
 
             if (isResetToDefault) {
-                toolbarItemsRef.current = [...itemsRef.current];
+                toolbarItemsRef.current = [...memoizedItems];
                 popupItemsRef.current = [];
             } else if (isSpaceAvailable) {
                 popupEleRefresh(availableSpace, popupRef.current.element);
@@ -521,7 +522,6 @@ ToolbarPopupRef, IToolbarPopupProps
         const hasChildrenCountChanged: boolean = previousChildrenCountRef.current !== currentCount;
         if (hasChildrenCountChanged) {
             previousChildrenCountRef.current = currentCount;
-            itemsRef.current = memoizedItems;
             toolbarItemsRef.current = [...memoizedItems];
             popupItemsRef.current = [];
             setToolbarItems([...toolbarItemsRef.current]);

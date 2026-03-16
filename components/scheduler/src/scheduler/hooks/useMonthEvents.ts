@@ -5,12 +5,10 @@ import { DateService } from '../services/DateService';
 import { EventService } from '../services/EventService';
 import { useSchedulerPropsContext } from '../context/scheduler-context';
 import { useSchedulerEventsContext } from '../context/scheduler-events-context';
+import { CSS_CLASSES } from '../common/constants';
 
 const EVENT_HEIGHT: number = 24; // Height of each event in pixels
 const BASE_ROW_HEIGHT: number = 124; // Base row height
-const DATE_HEADER_HEIGHT: number = 25; // Height of the date header
-const TOOLBAR_HEIGHT: number = 48;
-const EMPTY_SPACE_IN_BOTTOM: number = 30; // 30 px empty space in bottom.
 const EVENT_GAP: number = 4;
 
 /**
@@ -78,7 +76,7 @@ export const useMonthEvents: (
     renderDates: Date[],
     maxEventsPerRow: number
 ): UseMonthEventsResult => {
-    const { height, rowAutoHeight, numberOfWeeks, eventSettings } = useSchedulerPropsContext();
+    const { height, rowAutoHeight, numberOfWeeks, eventSettings, schedulerRef } = useSchedulerPropsContext();
     const { eventsData } = useSchedulerEventsContext();
 
     /**
@@ -98,22 +96,47 @@ export const useMonthEvents: (
      */
     const calculatedRowHeight: string = useMemo(() => {
         const maxEventsInRow: number = EventService.getMaxEventsInCell(eventsByDate, renderDates);
+        const eventHeight: number = (schedulerRef?.current?.element?.querySelector('.' + CSS_CLASSES.MONTH_VIEW + ' ' + '.' + CSS_CLASSES.APPOINTMENT) as HTMLElement)?.offsetHeight ?? EVENT_HEIGHT;
+        const dateHeaderHeight: number = (schedulerRef?.current?.element?.querySelector('.' + CSS_CLASSES.MONTH_VIEW + ' ' + '.' + CSS_CLASSES.DATE_HEADER) as HTMLElement)?.offsetHeight ?? 0;
+        let rowHeight: number = (schedulerRef?.current?.element?.querySelector('.' + CSS_CLASSES.MONTH_VIEW + ' ' + '.' + CSS_CLASSES.WORK_CELLS_ROW) as HTMLElement)?.offsetHeight ?? BASE_ROW_HEIGHT;
 
-        if (!rowAutoHeight || maxEventsInRow === 0) {
-            return `${BASE_ROW_HEIGHT}px`;
+        const eventsHeight: (maxEventsInRow: number) => number = (maxEventsInRow: number) =>
+            maxEventsInRow * eventHeight + ((maxEventsInRow > 0 ? maxEventsInRow - 1 : 0) * EVENT_GAP);
+
+        const getCalculatedRowHeight: () => number = (): number => {
+            const toolbarHeight: number = (schedulerRef?.current?.element?.querySelector('.' + CSS_CLASSES.SCHEDULER_TOOLBAR_CONTAINER) as HTMLElement)?.offsetHeight ?? 0;
+            const headerRow: number = (schedulerRef?.current?.element?.querySelector('.' + CSS_CLASSES.MONTH_VIEW + ' ' + '.' + CSS_CLASSES.HEADER_ROW) as HTMLElement)?.offsetHeight ?? 0;
+            const totalHeight: number = schedulerRef?.current?.element?.offsetHeight ?? parseInt(height, 10);
+            const available: number = totalHeight - toolbarHeight - headerRow;
+            return parseInt(Math.abs(available / numberOfWeeks).toFixed(2), 10);
+        };
+
+        if (rowAutoHeight) {
+            const contentHeight: number = eventsHeight(maxEventsInRow) + dateHeaderHeight +
+                (rowAutoHeight && eventSettings?.ignoreWhitespace ? 0 : EVENT_HEIGHT);
+
+            if (height !== 'auto' && numberOfWeeks) {
+                rowHeight = getCalculatedRowHeight();
+            }
+            return `${Math.max(contentHeight, rowHeight)}px`;
         }
 
-        const eventsHeight: number = (maxEventsInRow * EVENT_HEIGHT) + DATE_HEADER_HEIGHT +
-            (rowAutoHeight && eventSettings?.ignoreWhitespace ? 16 : EMPTY_SPACE_IN_BOTTOM) +
-            ((maxEventsInRow > 0 ? maxEventsInRow - 1 : 0) * EVENT_GAP);
-        let rowHeight: number = BASE_ROW_HEIGHT;
-
-        if (height !== 'auto' && numberOfWeeks && rowAutoHeight) {
-            const contentHeight: number = parseInt(height, 10) - TOOLBAR_HEIGHT;
-            rowHeight = parseInt(Math.abs(contentHeight / numberOfWeeks).toFixed(2), 10);
+        if (numberOfWeeks && height !== 'auto' && maxEventsPerRow >= 3) {
+            const calculatedRowHeight: number = getCalculatedRowHeight();
+            const contentHeightForMaxEvents: number = eventsHeight(maxEventsPerRow) + dateHeaderHeight +
+                eventHeight + EVENT_GAP;
+            return `${Math.max(contentHeightForMaxEvents, calculatedRowHeight)}px`;
         }
-        return `${Math.max(eventsHeight, rowHeight)}px`;
-    }, [renderDates, eventsByDate, rowAutoHeight, numberOfWeeks]);
+
+        if (maxEventsInRow >= 3) {
+            const eventsToDisplay: number = Math.min(maxEventsInRow, maxEventsPerRow);
+            const contentHeight: number = eventsHeight(eventsToDisplay) + dateHeaderHeight +
+                (maxEventsInRow > maxEventsPerRow ? eventHeight : 0) + EVENT_GAP;
+            return `${Math.max(contentHeight, rowHeight)}px`;
+        }
+
+        return `${rowHeight}px`;
+    }, [renderDates, eventsByDate, rowAutoHeight, numberOfWeeks, height, eventSettings?.ignoreWhitespace, maxEventsPerRow, schedulerRef]);
 
     /**
      * Gets visible events for a specific date

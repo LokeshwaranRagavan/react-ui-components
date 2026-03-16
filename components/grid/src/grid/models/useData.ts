@@ -1,7 +1,9 @@
 import { RefObject, useCallback, useMemo } from 'react';
 import {
     Action, DataChangeRequestEvent, DataRequestEvent,
-    MutableGridBase, PendingState
+    payload,
+    MutableGridBase, PendingState,
+    ScrollMode
 } from '../types';
 import { SortDescriptor } from '../types/sort.interfaces';
 import { GridActionEvent, IGrid } from '../types/grid.interfaces';
@@ -11,8 +13,8 @@ import { AggregateColumnProps, AggregateRowProps } from '../types/aggregate.inte
 import { SearchSettings } from '../types/search.interfaces';
 import { MutableGridSetter, UseDataResult } from '../types/interfaces';
 import { extend, isNullOrUndefined} from '@syncfusion/react-base';
-import { AdaptorOptions, DataManager, DataUtil, Predicate, Query, DataResult, Deferred, UrlAdaptor } from '@syncfusion/react-data';
-import { getCaseValue, getDatePredicate } from '../utils';
+import { AdaptorOptions, DataManager, Predicate, Query, DataResult, Deferred, UrlAdaptor } from '@syncfusion/react-data';
+import { getPredicate } from '../utils';
 
 /**
  * Custom hook to manage data operations for the grid
@@ -171,7 +173,7 @@ export const useData: <T>(gridInstance?: Partial<IGrid<T>> & Partial<MutableGrid
 
     const pageQuery: (query: Query) => Query = useCallback((query: Query): Query => {
         const fName: string = 'fn';
-        if (grid.pageSettings?.enabled) {
+        if (grid.pageSettings?.enabled || grid.scrollMode === ScrollMode.Virtual) {
             const currentPageVal: number = Math.max(1, grid?.currentPage);
             if (grid.pageSettings.pageCount <= 0) {
                 grid.pageSettings.pageCount = 8;
@@ -189,7 +191,7 @@ export const useData: <T>(gridInstance?: Partial<IGrid<T>> & Partial<MutableGrid
             query.page(currentPageVal, grid.pageSettings.pageSize);
         }
         return query;
-    }, [grid.pageSettings, grid?.currentPage, grid.pageSettings?.enabled]);
+    }, [grid.pageSettings, grid?.currentPage, grid.pageSettings?.enabled, grid.scrollMode]);
 
     const getSearchColumnFieldNames: () => string[] = (): string[] => {
         const colFieldNames: string[] = [];
@@ -202,75 +204,9 @@ export const useData: <T>(gridInstance?: Partial<IGrid<T>> & Partial<MutableGrid
         return colFieldNames;
     };
 
-    const getPredicate: (columns: FilterPredicates[], isExecuteLocal?: boolean) => Predicate = (columns: FilterPredicates[],
-                                                                                                isExecuteLocal?: boolean): Predicate => {
-
-        const cols: FilterPredicates[] = DataUtil.distinct(columns, 'field', true);
-        let collection: Object[] = [];
-        const pred: Predicate = {} as Predicate;
-        for (let i: number = 0; i < cols.length; i++) {
-            collection = new DataManager(columns as JSON[]).executeLocal(
-                new Query().where('field', 'equal', cols[parseInt(i.toString(), 10)].field));
-            pred[cols[parseInt(i.toString(), 10)].field] = generatePredicate(collection, isExecuteLocal);
-        }
-        return pred;
-    };
-
-    const generatePredicate: (cols: FilterPredicates[], isExecuteLocal?: boolean) => Predicate = (
-        cols: FilterPredicates[], isExecuteLocal?: boolean): Predicate => {
-        const len: number = cols.length;
-        let predicate: Predicate;
-        const operate: string = 'or';
-        const first: FilterPredicates = cols[0];
-        first.ignoreAccent = !isNullOrUndefined(first.ignoreAccent) ? first.ignoreAccent : false;
-        if (first.type === 'date' || first.type === 'datetime' || first.type === 'dateonly') {
-            predicate = getDatePredicate(first, first.type, isExecuteLocal);
-        } else {
-            predicate = first.ejpredicate ? first.ejpredicate as Predicate :
-                new Predicate(
-                    first.field, first.operator, first.value, !getCaseValue(first),
-                    first.ignoreAccent) as Predicate;
-        }
-        for (let p: number = 1; p < len; p++) {
-            if (len > 2 && p > 1 && ((cols[p as number].predicate === 'or' && cols[p as number - 1].predicate === 'or')
-                || (cols[p as number].predicate === 'and' && cols[p as number - 1].predicate === 'and'))) {
-                if (cols[p as number].type === 'date' || cols[p as number].type === 'datetime' || cols[p as number].type === 'dateonly') {
-                    predicate.predicates.push(
-                        getDatePredicate(cols[parseInt(p.toString(), 10)], cols[p as number].type, isExecuteLocal));
-                } else {
-                    predicate.predicates.push(new Predicate(
-                        cols[p as number].field, cols[parseInt(p.toString(), 10)].operator,
-                        cols[parseInt(p.toString(), 10)].value, !getCaseValue(cols[parseInt(p.toString(), 10)]),
-                        cols[parseInt(p.toString(), 10)].ignoreAccent));
-                }
-            } else {
-                if (cols[p as number].type === 'date' || cols[p as number].type === 'datetime' || cols[p as number].type === 'dateonly') {
-                    if (cols[parseInt(p.toString(), 10)].predicate === 'and' && cols[parseInt(p.toString(), 10)].operator === 'equal') {
-                        predicate = (predicate[`${operate}`] as Function)(
-                            getDatePredicate(cols[parseInt(p.toString(), 10)], cols[parseInt(p.toString(), 10)].type, isExecuteLocal),
-                            cols[parseInt(p.toString(), 10)].type, cols[parseInt(p.toString(), 10)].ignoreAccent);
-                    } else {
-                        predicate = (predicate[((cols[parseInt(p.toString(), 10)] as Predicate).predicate) as string] as Function)(
-                            getDatePredicate(cols[parseInt(p.toString(), 10)], cols[parseInt(p.toString(), 10)].type, isExecuteLocal),
-                            cols[parseInt(p.toString(), 10)].type, cols[parseInt(p.toString(), 10)].ignoreAccent);
-                    }
-                } else {
-                    predicate = cols[parseInt(p.toString(), 10)].ejpredicate ?
-                        (predicate[(cols[parseInt(p.toString(), 10)] as Predicate)
-                            .predicate as string] as Function)(cols[parseInt(p.toString(), 10)].ejpredicate) :
-                        (predicate[(cols[parseInt(p.toString(), 10)].predicate) as string] as Function)(
-                            cols[parseInt(p.toString(), 10)].field, cols[parseInt(p.toString(), 10)].operator,
-                            cols[parseInt(p.toString(), 10)].value, !getCaseValue(cols[parseInt(p.toString(), 10)]),
-                            cols[parseInt(p.toString(), 10)].ignoreAccent);
-                }
-            }
-        }
-        return predicate;
-    };
-
-    const getData: (args?: { requestType?: string; data?: T; index?: number }, query?: Query) => Promise<Object> = useCallback(async (
-        args: { requestType?: string; data?: T; index?: number } = { requestType: '' },
-        query?: Query
+    const getData: (args?: { requestType?: string; data?: T; index?: number, payload?: payload},
+        query?: Query) => Promise<Object> = useCallback(async (args: { requestType?: string; data?: T; index?: number,
+        payload?: payload } = { requestType: '' }, query?: Query
     ): Promise<Object> => {
         const currentQuery: Query = query || generateQuery().requiresCount();
         const primaryKeys: string[] = grid.getPrimaryKeyFieldNames();
@@ -289,8 +225,8 @@ export const useData: <T>(gridInstance?: Partial<IGrid<T>> & Partial<MutableGrid
                         deletedRecords: args.data,
                         changedRecords: []
                     };
-                    return (dataManager as DataManager)
-                        .saveChanges(changes, key, currentQuery.fromTable, currentQuery.requiresCount()) as Promise<Object>;
+                    return (dataManager as DataManager).saveChanges(changes, key, currentQuery.fromTable, currentQuery.requiresCount()
+                        , null, args.payload) as Promise<Object>;
                 } else {
                     // Single deletion
                     return (dataManager as DataManager)

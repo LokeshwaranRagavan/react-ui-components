@@ -67,7 +67,7 @@ export function getLegendOptions(chartLegend: ChartLegendProps, visibleSeriesCol
     legend.isRtlEnable = chart.enableRtl;
     legend.isReverse = !legend.isRtlEnable && chartLegend.reverse;
     for (const series of visibleSeriesCollection) {
-        if (series.name !== '') {
+        if (series.name !== '' && !(series.category === 'TrendLine' && visibleSeriesCollection[series.sourceIndex].name === '')) {
             seriesType = series.type as Required<ChartSeriesType>;
             dashArray = series.dashArray as Required<string>;
             fill = series.interior as Required<string>;
@@ -1140,7 +1140,7 @@ export function changeSeriesVisiblity(series: SeriesProperties, visibility: bool
     if (isSecondaryAxis(series.xAxis, chart.axes)) {
         series.xAxis.internalVisibility = series.xAxis.series.some((value: SeriesProperties) => (value.visible));
     }
-    if (isSecondaryAxis(series.yAxis, chart.axes)) {
+    if (isSecondaryAxis(series.yAxis, chart.axes) || (series.category === 'Pareto' && series.type === 'Line')) {
         series.yAxis.internalVisibility = series.yAxis.series.some((value: SeriesProperties) => (value.visible));
     }
 }

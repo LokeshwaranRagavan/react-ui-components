@@ -919,7 +919,7 @@ export const animateRect: (series: SeriesProperties, point: Points, progress?: n
     let elementWidth: number = +point.regions[0].width;
     let centerX: number;
     let centerY: number;
-    if (series.type === 'Candle' || series.type === 'Hilo' || series.type === 'HiloOpenClose' || series.type === 'RangeColumn') {
+    if (series.type === 'Candle' || series.type === 'Hilo' || series.type === 'HiloOpenClose' || series.type === 'RangeColumn' || series.type === 'Waterfall' ) {
         const rect: Rect = point.regions[0];
         const centerX: number = rect.x + rect.width / 2;
         const centerY: number = rect.y + rect.height / 2;
@@ -928,6 +928,7 @@ export const animateRect: (series: SeriesProperties, point: Points, progress?: n
             ? `translate(${centerX} ${centerY}) scale(${progress}, 1) translate(${-centerX} ${-centerY})`
             : `translate(${centerX} ${centerY}) scale(1, ${progress}) translate(${-centerX} ${-centerY})`;
     }
+
     if (!series.chart.requireInvertedAxis) {
         if (series?.type!.indexOf('Stacking') > -1) {
             centerX = x;

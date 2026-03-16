@@ -62,7 +62,7 @@ export const MorePopup: ForwardRefExoticComponent<RefAttributes<IMorePopup>
             return eventTemplate(event);
         }
         return (
-            <div className={`${CSS_CLASSES.SUBJECT} ${CSS_CLASSES.ELLIPSIS}`} title={event.subject}>
+            <div className={`${CSS_CLASSES.SUBJECT} ${CSS_CLASSES.ELLIPSIS}`}>
                 {event.subject || getString('addTitle')}
             </div>
         );
@@ -95,6 +95,7 @@ export const MorePopup: ForwardRefExoticComponent<RefAttributes<IMorePopup>
                             }
                         }}
                         data-id={`Appointment_${event.id}`}
+                        data-guid={event.guid}
                         role="button"
                         tabIndex={0}
                         key={`eventId-${event.id}`}

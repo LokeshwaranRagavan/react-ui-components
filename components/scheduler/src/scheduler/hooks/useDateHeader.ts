@@ -95,14 +95,14 @@ interface DateHeaderResult {
 export function useDateHeader(): DateHeaderResult {
 
     const { renderDates } = useSchedulerRenderDatesContext();
-    const { showWeekNumber, workDays } = useSchedulerPropsContext();
+    const { showWeekNumber, workDays, weekRule, firstDayOfWeek } = useSchedulerPropsContext();
     const { locale } = useProviderContext();
 
     const [isAllDayCollapsed, setIsAllDayCollapsed] = useState<boolean>(true);
     const [showAllDayToggle, setShowAllDayToggle] = useState<boolean>(false);
 
     const weekNumber: number | null = renderDates.length > 0 && showWeekNumber
-        ? DateService.getWeekNumber(renderDates[0])
+        ? DateService.getWeekNumber(renderDates[0], weekRule, firstDayOfWeek)
         : null;
 
     const handleMoreEventsChange: (hasMoreEvents: boolean) => void = useCallback((hasMoreEvents: boolean): void => {

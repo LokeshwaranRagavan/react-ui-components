@@ -86,14 +86,14 @@ export interface SplitButtonProps {
      *
      * @event onClose
      */
-    onClose?: (event?: React.MouseEvent) => void;
+    onClose?: (event?: React.SyntheticEvent) => void;
 
     /**
      * Event triggered while opening the Split Button popup.
      *
      * @event onOpen
      */
-    onOpen?: (event?: React.MouseEvent) => void;
+    onOpen?: (event?: React.SyntheticEvent) => void;
 
     /**
      * Event triggered while selecting an action item in Split Button popup.
@@ -101,8 +101,15 @@ export interface SplitButtonProps {
      * @event onSelect
      */
     onSelect?: (event: ButtonSelectEvent) => void;
-}
 
+    /**
+     * Specifies additional properties to apply to the trailing dropdown button element.
+     * User-provided props will override internal default values.
+     *
+     * @default -
+     */
+    trailingButtonProps?: Partial<IDropDownButton & React.ButtonHTMLAttributes<HTMLButtonElement>>;
+}
 
 /**
  * Represents the methods of the Split Button component.
@@ -125,7 +132,7 @@ export interface ISplitButton extends SplitButtonProps {
     toggle?(): void;
 }
 
-type ISplitButtonProps = ISplitButton & ButtonHTMLAttributes<HTMLButtonElement>;
+type ISplitButtonProps = ISplitButton & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onSelect'>;
 
 /**
  * The Split Button component provides a combination of a default button action and a Dropdown Button, enabling users to quickly access additional options or actions in a compact interface.
@@ -156,6 +163,7 @@ export const SplitButton: React.ForwardRefExoticComponent<ISplitButtonProps & Re
             onOpen,
             onClose,
             onSelect,
+            trailingButtonProps,
             ...domProps
         } = props;
 
@@ -196,7 +204,6 @@ export const SplitButton: React.ForwardRefExoticComponent<ISplitButtonProps & Re
             variant ? `sf-${String(variant).toLowerCase()}` : '',
             dir === 'rtl' ? 'sf-rtl' : ''
         ].filter(Boolean).join(' ');
-
         return (
             <div ref={wrapperRef} className={wrapperClassName}>
                 <Button
@@ -229,6 +236,7 @@ export const SplitButton: React.ForwardRefExoticComponent<ISplitButtonProps & Re
                     onOpen={onOpen}
                     onClose={onClose}
                     onSelect={onSelect}
+                    {...trailingButtonProps}
                 >
                 </DropDownButton>
             </div>
@@ -236,3 +244,4 @@ export const SplitButton: React.ForwardRefExoticComponent<ISplitButtonProps & Re
     });
 
 export default SplitButton;
+

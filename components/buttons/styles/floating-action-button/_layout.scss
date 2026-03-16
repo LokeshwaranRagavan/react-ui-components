@@ -45,6 +45,12 @@
     }
   }
 
+  .sf-fab {
+    @include fab-size-variant('la');
+    @include fab-size-variant('me');
+    @include fab-size-variant('sm');
+  }
+  
   // RTL support
   .sf-rtl {
     &.sf-fab.sf-btn {

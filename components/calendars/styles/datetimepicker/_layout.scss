@@ -1,0 +1,64 @@
+@use "sass:map";
+@use 'theme-variables' as *;
+
+@mixin rounded-logical($start, $end) {
+  border-start-start-radius: $start;
+  border-end-start-radius:   $start;
+  border-start-end-radius:   $end;
+  border-end-end-radius:     $end;
+}
+
+@include export-module('datetimepicker-layout') {
+    .sf-datetimepicker {
+        .sf-calendar {
+            border: none;
+        }
+        &.sf-popup {
+            background-color: $datetimepicker-bg-color;
+            border: $datetimepicker-border-color;
+            border-radius: $datetimepicker-border-radius;
+        }
+
+        .sf-timepicker-list.sf-ul {
+            border: none;
+            border-radius: 0;
+            border-block: $datetimepicker-border-color;
+            min-width: $datetimepicker-ul-width;
+            max-height: $datetimepicker-ul-height;
+        }
+    }
+
+    .sf-datetimepicker-tab {
+        padding: $datetimepicker-header-padding;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        .date {
+            @include rounded-logical($datetimepicker-button-group-radius, 0);
+        }
+
+        .time {
+            @include rounded-logical(0, $datetimepicker-button-group-radius);
+        }
+        .sf-btn-secondary {
+            border-color: $datetimepicker-button-group-outline;
+        }
+        .sf-btn-primary.sf-active {
+            box-shadow: none;
+        }
+    }
+
+    .sf-datetimepicker-footer {
+        padding: $datetimepicker-header-padding;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .sf-datetimepicker-toolbar {
+        color: $datetimepicker-dispaly-color;
+        font-weight: $datetimepicker-toolbar-font-weight;
+        padding: $datetimepicker-toolbar-padding;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+}

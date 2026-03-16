@@ -3,7 +3,7 @@ import { LabelIntersectMode } from '../../../base/enum';
 import { AxisTextStyle } from '../../../chart-axis/base';
 import { getMaxRotatedTextSize, getRotatedTextSize, getTitle, isBreakLabel, isZoomSet, measureText, useTextWrap, valueToCoefficient } from '../../../utils/helper';
 import { createDoubleRange } from './DoubleAxisRenderer';
-import { AxisModel, Chart, ColumnProps, RowProps, ChartSizeProps, TextStyleModel, VisibleLabel} from '../../../chart-area/chart-interfaces';
+import { AxisModel, Chart, ColumnProps, RowProps, ChartSizeProps, TextStyleModel, VisibleLabel, SeriesProperties } from '../../../chart-area/chart-interfaces';
 import { calculateCrossAxisLabelSize } from './CrossAxisHerlper';
 import { TextOverflow } from '../../../../common';
 
@@ -235,6 +235,19 @@ export function refreshAxis(chart: Chart): void {
             y: axis.isAxisOpposedPosition ? Infinity : -Infinity, width: 0, height: 0
         };
         axis.isStack100 = false;
+    }
+    const hasPareto: boolean = chart.visibleSeries?.some((seriesItem: SeriesProperties) =>
+        seriesItem.type === 'Pareto' || seriesItem.category === 'Pareto' || !!seriesItem.paretoOptions
+    );
+    if (hasPareto) {
+        const paretoAxes: AxisModel[] = chart.paretoAxes || [];
+        for (const axis of paretoAxes) {
+            axis.rect = {
+                x: axis.isAxisOpposedPosition ? -Infinity : Infinity,
+                y: axis.isAxisOpposedPosition ? Infinity : -Infinity, width: 0, height: 0
+            };
+            axis.isStack100 = false;
+        }
     }
 }
 

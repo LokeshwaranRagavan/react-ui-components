@@ -32,7 +32,6 @@ export const useCellInteraction: () => CellInteraction = (): CellInteraction => 
             const endTime: Date = new Date(date);
             if (!timeScale.enable || isAllDay) {
                 date.setHours(0, 0, 0, 0);
-                endTime.setDate(endTime.getDate() + 1);
                 endTime.setHours(0, 0, 0, 0);
                 isAllDay = true;
             } else {

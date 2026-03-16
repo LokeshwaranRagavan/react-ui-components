@@ -47,7 +47,7 @@ const CSS_FILTER_HEADER: string = 'sf-filter-row';
 const HeaderRowsBase: (props: Partial<IHeaderRowsBase> & RefAttributes<HeaderRowsRef>) => ReactElement =
     memo(forwardRef<HeaderRowsRef, Partial<IHeaderRowsBase>>(
         <T, >(props: Partial<IHeaderRowsBase>, ref: RefObject<HeaderRowsRef>) => {
-            const { columnsDirective, headerRowDepth } = useGridMutableProvider<T>();
+            const { columnsDirective, headerRowDepth, offsetX } = useGridMutableProvider<T>();
             const { filterSettings, rowClass } = useGridComputedProvider<T>();
             const { rowHeight, textWrapSettings } = useGridComputedProvider<T>();
 
@@ -78,7 +78,7 @@ const HeaderRowsBase: (props: Partial<IHeaderRowsBase> & RefAttributes<HeaderRow
                 headerSectionRef: headerSectionRef.current,
                 getHeaderRows,
                 getHeaderRowsObject
-            }), [getHeaderRows, getHeaderRowsObject]);
+            }), [getHeaderRows, getHeaderRowsObject, offsetX]);
 
             /**
              * Callback to store row element references directly in the row object
@@ -107,12 +107,12 @@ const HeaderRowsBase: (props: Partial<IHeaderRowsBase> & RefAttributes<HeaderRow
                 // Generate header rows based on headerRowDepth
                 for (let rowIndex: number = 0; rowIndex < headerRowDepth; rowIndex++) {
                     const options: IRow<ColumnProps<T>> = {};
-                    options.index = rowIndex;
+                    options.rowIndex = rowIndex;
                     const rowId: string = `grid-header-row-${rowIndex}-${Math.random().toString(36).substr(2, 5)}`;
                     // Store the options object for getRowsObject
                     rowOptions.push({ ...options });
                     const rowCustomClass: string = !isNullOrUndefined(rowClass) ? (typeof rowClass === 'function' ?
-                        rowClass({rowType: RowType.Header, rowIndex: options.index}) : rowClass) : '';
+                        rowClass({rowType: RowType.Header, rowIndex: options.rowIndex}) : rowClass) : '';
                     rows.push(
                         <RowBase<T>
                             ref={(element: RowRef<T>) => {

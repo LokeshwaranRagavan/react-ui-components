@@ -172,6 +172,7 @@ export interface CommonContext {
     normalizedDates?: Date[];
     selectedDate?: Date | null;
     multiSelect?: boolean;
+    range?:  [Date | null, Date | null] | undefined;
 }
 
 export interface CellState {
@@ -265,6 +266,15 @@ export const buildCellState: (
     let isSelected: boolean = false;
     if (kind === 'month') {
         isSelected = computeSelectedForMonth(date, ctx.normalizedDates, !!ctx.multiSelect);
+        if (!isSelected && ctx.range && Array.isArray(ctx.range) && cell.inRange) {
+            const [start, end] = ctx.range;
+            if (start instanceof Date && !isNaN(start.getTime())) {
+                isSelected = date.toDateString() === start.toDateString();
+            }
+            if (!isSelected && end instanceof Date && !isNaN(end.getTime())) {
+                isSelected = date.toDateString() === end.toDateString();
+            }
+        }
     } else if (kind === 'year') {
         isSelected = !!ctx.selectedDate && calendarSystem.isSameMonth(date, ctx.selectedDate);
     } else {

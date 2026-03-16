@@ -13,7 +13,6 @@
     white-space: nowrap;
     width: min-content;
     border-radius: $split-btn-border-radius;
-    box-shadow: none;
     gap: $split-btn-gap;
 
     .sf-btn-vertical+.sf-dropdown-btn {
@@ -22,11 +21,9 @@
 
     .sf-split-btn,
     .sf-dropdown-btn {
-      box-shadow: none;
 
       &:focus {
         outline-offset: $split-btn-focus-outline-offset;
-        box-shadow: none;
       }
 
       &:disabled {
@@ -42,27 +39,15 @@
     .sf-split-btn {
       text-transform: none;
       z-index: 1;
-
-      &:focus,
-      &:active {
-        box-shadow: $split-btn-active-box-shadow;
-        z-index: $split-btn-zindex;
-      }
     }
 
     .sf-dropdown-btn {
       transition: border-radius 0.25s ease-in;
     }
 
-    &.sf-standard {
-      box-shadow: none;
-    }
-
     &.sf-split-btn-sm {
 
       .sf-split-btn {
-        padding-inline: $split-btn-sm-padding;
-        font-size: $split-btn-sm-font-size;
         @include split-button-bottom-radius($split-btn-sm-border-radius, $split-btn-topleft-border-radius, $split-btn-topleft-border-radius, $split-btn-sm-border-radius);
 
       }
@@ -80,9 +65,6 @@
     &.sf-split-btn-me {
 
       .sf-split-btn {
-        padding-inline: $split-btn-padding;
-        padding-block: $split-btn-padding-block;
-        font-size: $split-btn-font-size;
         @include split-button-bottom-radius($split-btn-border-radius, $split-btn-topleft-border-radius, $split-btn-topleft-border-radius, $split-btn-border-radius);
       }
 
@@ -98,8 +80,6 @@
 
     &.sf-split-btn-la {
       .sf-split-btn {
-        padding-inline: $split-btn-la-padding;
-        font-size: $split-btn-la-font-size;
         @include split-button-bottom-radius($split-btn-la-border-radius, $split-btn-topleft-border-radius, $split-btn-topleft-border-radius, $split-btn-la-border-radius);
       }
 

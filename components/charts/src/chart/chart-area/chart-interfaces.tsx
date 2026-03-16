@@ -1,6 +1,6 @@
 import { JSX, ReactElement } from 'react';
-import { ChartBorderProps, ChartAreaProps, ChartComponentProps, ChartStackLabelsProps, ChartFontProps, ZoomEndEvent, MajorGridLines, MajorTickLines, ChartMarkerProps, MinorGridLines, MinorTickLines, TitleSettings, ChartTooltipProps, ChartSeriesProps, ChartZoomSettingsProps, ChartAxisProps, ChartStripLineProps, ChartTitleProps, ChartLegendProps, Column, Row, ChartDataLabelProps, ChartLocationProps, CornerRadius, ChartCrosshairProps, ChartCrosshairTooltipProps, ChartSelectionProps, ChartHighlightProps, ChartAnnotationProps, ChartErrorBarProps } from '../base/interfaces';
-import { ChartSeriesType, ChartMarkerShape, IntervalType, LegendShape, Orientation, StripLineSizeUnit, ZIndex, SeriesValueType } from '../base/enum';
+import { ChartBorderProps, ChartAreaProps, ChartComponentProps, ChartStackLabelsProps, ChartFontProps, ZoomEndEvent, MajorGridLines, MajorTickLines, ChartMarkerProps, MinorGridLines, MinorTickLines, TitleSettings, ChartTooltipProps, ChartSeriesProps, ChartZoomSettingsProps, ChartAxisProps, ChartStripLineProps, ChartTitleProps, ChartLegendProps, Column, Row, ChartDataLabelProps, ChartLocationProps, CornerRadius, ChartCrosshairProps, ChartCrosshairTooltipProps, ChartSelectionProps, ChartHighlightProps, ChartAnnotationProps, ChartErrorBarProps, ChartTrendlineProps, ChartParetoOptionsProps } from '../base/interfaces';
+import { ChartSeriesType, ChartMarkerShape, IntervalType, LegendShape, Orientation, StripLineSizeUnit, ZIndex, SeriesValueType, TrendlineTypes } from '../base/enum';
 import { BaseLegend } from '../base/Legend-base';
 import { Animation, TextAnchor } from '../../common';
 import { DataLabelRendererResults } from '../renderer/SeriesRenderer/DataLabelRender';
@@ -30,7 +30,11 @@ import StackingAreaSeriesRenderer from '../renderer/SeriesRenderer/StackingAreaS
 import RangeColumnSeriesRenderer from '../renderer/SeriesRenderer/RangeColumnSeriesRenderer';
 import SplineRangeAreaSeriesRenderer from '../renderer/SeriesRenderer/SplineRangeAreaSeriesRenderer';
 import MultiColoredLineSeriesRenderer from '../renderer/SeriesRenderer/MultiColoredLineSeriesRenderer';
+import ParetoSeriesRenderer from '../renderer/SeriesRenderer/ParetoSeriesRenderer';
 import { Theme, TitlePosition } from '../../common';
+import MultiColoredAreaSeriesRenderer from '../renderer/SeriesRenderer/MultiColoredAreaSeriesRenderer';
+import WaterfallSeriesRenderer from '../renderer/SeriesRenderer/WaterfallSeriesRenderer';
+import HistogramSeriesRenderer from '../renderer/SeriesRenderer/HistogramSeriesRenderer';
 
 /**
  * Represents a two-dimensional size with width and height.
@@ -535,6 +539,9 @@ export interface Chart {
 
     /** Index of the series currently displayed in the tooltip. */
     toolTipSeriesIndex: number;
+
+    /** Axes used specifically for rendering the Pareto line in the chart. */
+    paretoAxes: AxisModel[];
 
 }
 
@@ -1666,6 +1673,7 @@ export interface TextOption {
  * @extends Series
  */
 export interface SeriesProperties extends ChartSeriesProps {
+
     isPointRemoved: boolean;
     /**
      * Indicates whether a data point gets updated in the series.
@@ -1830,6 +1838,12 @@ export interface SeriesProperties extends ChartSeriesProps {
      */
     index: number;
 
+    /** Index of the source series for this trendline */
+    sourceIndex: number;
+
+    /** Index of the trendline within the source series */
+    trendIndex: number;
+
     /**
      * Primary color used for filling the series visualization elements..
      */
@@ -1944,6 +1958,35 @@ export interface SeriesProperties extends ChartSeriesProps {
      * Defines the error bar settings for the series to visualize measurement variability and uncertainty.
      */
     errorBar: ChartErrorBarProps;
+
+    /**
+     * Stores calculated statistical values for Histogram series.
+     * Used internally for bin calculation, tooltips, and normal distribution rendering.
+     *
+     * @private
+     */
+    histogramValues?: HistogramValues;
+
+    /**
+     * Options for customizing the Pareto line series, including its appearance and behavior in the chart.
+     */
+    paretoOptions: ChartParetoOptionsInternalProps;
+
+}
+
+/**
+ * Internal data structure that holds precomputed statistical values
+ * required for Histogram series rendering.
+ * @private
+ */
+export interface HistogramValues {
+    yValues: number[];
+    binWidth: number;
+    mean: number;
+    standardDeviation: number;
+    xMinimum: number;
+    xMaximum: number
+
 }
 
 /**
@@ -2255,6 +2298,26 @@ export interface SeriesModules {
      * The module represents the spline range area series type.
      */
     splineRangeAreaSeriesModule: typeof SplineRangeAreaSeriesRenderer;
+
+    /**
+     * The module represents the waterfall series type.
+     */
+    waterfallSeriesModule: typeof WaterfallSeriesRenderer;
+
+    /**
+     * The module represents the multi colored area series type.
+     */
+    multiColoredAreaSeriesModule: typeof MultiColoredAreaSeriesRenderer;
+
+    /**
+     * The module represents the histogram series type.
+     */
+    histogramSeriesModule: typeof HistogramSeriesRenderer;
+
+    /**
+     * The module represents the pareto series type.
+     */
+    paretoSeriesModule: typeof ParetoSeriesRenderer;
 }
 
 /**
@@ -3806,4 +3869,157 @@ export interface DataLabelContentProps {
      * Specifies whether the data label position can be adjusted.
      */
     location: LabelLocation;
+}
+
+/**
+ * Internal computed result for a single trendline containing rendering data,
+ * calculated points, visual properties, and metadata.
+ *
+ * @interface ChartTrendlineModel
+ * @extends {ChartTrendlineProps}
+ *
+ * @private
+ */
+export interface ChartTrendlineModel extends ChartTrendlineProps {
+    /** Calculated data points for the trendline including forecasted points */
+    points?: Points[];
+
+    /** Reference to the parent series for accessing original data */
+    targetSeries?: SeriesProperties;
+
+    /** Clipping rectangle defining the visible bounds for the trendline */
+    clipRect?: Rect;
+
+    /** Polynomial coefficients [a₀, a₁, ..., aₙ] for polynomial trendlines only */
+    polynomialSlopes?: number[];
+
+    /**
+     * Customizes the appearance of markers on the trendline.
+     */
+    marker?: ChartMarkerProps;
+}
+
+/**
+ * Represents a single trendline's signature properties for change detection.
+ *
+ * @interface TrendlineSignatureItem
+ *
+ * @private
+ */
+export interface TrendlineSignatureItem {
+    /** Index of the trendline within its parent series */
+    index: number;
+    /** Name of the trendline */
+    name: string | undefined;
+    /** Dash pattern for the trendline stroke */
+    dashArray: string | undefined;
+    /** Visibility state of the trendline */
+    visible: boolean | undefined;
+    /** Type of trendline algorithm */
+    type: TrendlineTypes | undefined;
+    /** Period for moving average trendlines */
+    period: number | undefined;
+    /** Order for polynomial trendlines (2-6) */
+    polynomialOrder: number | undefined;
+    /** Number of points to forecast backward */
+    backwardForecast: number | undefined;
+    /** Number of points to forecast forward */
+    forwardForecast: number | undefined;
+    /** Y-intercept value for certain trendline types */
+    intercept: number | undefined;
+    /** Fill color of the trendline */
+    fill: string | undefined;
+    /** Stroke width of the trendline */
+    width: number | undefined;
+    /** Shape to display in legend */
+    legendShape: LegendShape | undefined;
+    /** Whether to enable tooltip for the trendline */
+    enableTooltip: boolean | undefined;
+}
+
+/**
+ * Represents the complete signature of all trendlines for a single series.
+ * Used for change detection and optimization.
+ *
+ * @interface TrendlineSeriesSignature
+ *
+ * @private
+ */
+export interface TrendlineSeriesSignature {
+    /** Index of the parent series */
+    seriesIndex: number;
+    /** Total number of trendlines in the series */
+    trendlineCount: number;
+    /** Array of trendline signature items */
+    trendlines: (TrendlineSignatureItem | null)[];
+}
+
+/**
+ * Represents the slope and intercept values calculated for a trendline regression analysis.
+ *
+ * @interface SlopeInterceptProps
+ *
+ * @private
+ */
+export interface SlopeInterceptProps {
+    /**
+     * The slope value of the trendline regression equation.
+     * Represents the rate of change (rise over run) in the linear relationship.
+     *
+     * @type {number}
+     */
+    slope: number;
+
+    /**
+     * The intercept value of the trendline regression equation.
+     * Represents the y-value where the trendline crosses the y-axis.
+     *
+     * @type {number}
+     */
+    intercept: number;
+}
+
+/**
+ * Represents the marker configuration for the pareto chart.
+ *
+ * @private
+ */
+export interface ChartParetoOptionsInternalProps extends ChartParetoOptionsProps {
+    /**
+     * Marker configuration applied to the Pareto (cumulative) line.
+     */
+    marker?: ChartMarkerProps;
+}
+
+/**
+ * Represents the simplified, pre-processed Pareto options used inside the SeriesRenderer.
+ *
+ * @private
+ */
+export interface ProcessedParetoOptions {
+
+    /**
+     * Specifies the fill color applied to the Pareto line.
+     */
+    fill?: string;
+
+    /**
+     * Specifies the stroke width of the Pareto line.
+     */
+    width?: number;
+
+    /**
+     * Defines the dash pattern for the Pareto line stroke.
+     */
+    dashArray?: string;
+
+    /**
+     * Determines whether the dedicated secondary Pareto axis should be displayed.
+     */
+    showAxis?: boolean;
+
+    /**
+     * Marker configuration applied to the Pareto (cumulative) line.
+     */
+    marker?: ChartMarkerProps;
 }

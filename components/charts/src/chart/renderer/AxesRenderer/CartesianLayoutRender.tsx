@@ -382,7 +382,21 @@ function calculateAxisSize(rect: Rect, chart: Chart): void {
  */
 export function renderAxis(control: Chart): void {
     for (let i: number = 0; i < control.axisCollection.length; i++) {
+        let axisVisibility: boolean = true;
         const axis: AxisModel = control.axisCollection[i as number];
+        for (const series of axis.series) {
+            if (axis.name === series.yAxisName || axis.name === series.xAxisName) {
+                axisVisibility = series.visible;
+                if (series.category === 'Pareto' && !series.paretoOptions?.showAxis && series.type === 'Line') {
+                    axisVisibility = false;
+                }
+                if (!axisVisibility) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+        }
         drawAxis(axis, i, control);
     }
     drawPaneLines(control);

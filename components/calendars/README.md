@@ -93,7 +93,78 @@ export default function App() {
   );
 }
 ```
- 
+
+## React DateTimePicker
+
+The DateTimePicker component provides an integrated interface for selecting both date and time values. It combines a calendar for date selection with a time picker, supporting various formats, view modes, and validation options. Ideal for scheduling applications, appointment booking, and any use case requiring precise date-time input.
+
+**Key features**
+
+- **Combined Date and Time Selection:** Select date and time in a single component with tab-based panel switching between date and time pickers.
+
+- **Custom Date-Time Formats:** Display and parse date-time values using the format property with combined date and time format tokens (e.g., 'MM/dd/yyyy h:mm a').
+
+- **View Modes:** Navigate through Month, Year, and Decade views for flexible date selection, with multiple input format support via inputFormats.
+
+- **Range Constraints:** Set selectable date ranges using minDate and maxDate, and time ranges using minTime and maxTime for fine-grained control.
+
+- **Strict Mode Validation:** Enable strictMode to validate and auto-correct invalid date-time input to the nearest valid value within configured ranges.
+
+- **Time Step Control:** Configure the time list interval using the step property (in minutes).
+
+- **Popup Variants:** Choose between Inline (anchored to input), Dialog (centered overlay), or Auto (adapts to device).
+
+- **Custom Templates:** Customize calendar cells, headers, footers, and time list items using cellTemplate, headerTemplate, footerTemplate, and itemTemplate.
+
+**Usage**
+
+```tsx
+import { DateTimePicker } from '@syncfusion/react-calendars';
+
+export default function App() {
+  return (
+    <DateTimePicker defaultValue= {new Date(2026, 3, 10, 15, 45)} />
+  );
+}
+```
+
+## React DateRangePicker
+
+The DateRangePicker component enables selection of date ranges with preset shortcuts, range duration constraints, and comprehensive validation. It supports both inline and dialog modes, custom formatting, and is ideal for filtering, reporting, and date range-based queries.
+
+**Key features**
+
+- **Date Range Selection:** Select start and end dates with visual range preview on hover and validation to ensure valid ranges.
+
+- **Preset Ranges:** Define shortcut presets (e.g., "Last 7 days", "This month") via the presets property for quick selection.
+
+- **Duration Constraints:** Enforce minimum and maximum range spans using minRangeDays and maxRangeDays to restrict user selection.
+
+- **Custom Formatting:** Display and parse range values using the format property with configurable separator (default: ' - ').
+
+- **Dual Calendar View:** Inline mode displays side-by-side calendars for easier range selection; dialog mode shows single calendar.
+
+- **Range Validation:** Strict mode auto-corrects invalid ranges to the nearest valid duration within min/max constraints and date bounds.
+
+- **View Modes:** Navigate through Month, Year, and Decade views with multi-format input parsing support via inputFormats.
+
+- **Popup Variants:** Choose Inline, Dialog, or Auto mode for responsive behavior across desktop and mobile devices.
+
+- **Custom Templates:** Customize calendar cells, using cellTemplate.
+
+**Usage**
+
+```tsx
+import { DateRangePicker } from '@syncfusion/react-calendars';
+
+export default function App() {
+
+  return (
+    <DateRangePicker defaultValue={[new Date(2026, 2, 10), new Date(2026, 3, 20)]}/>
+  );
+}
+```
+
 <p align="center">
 Trusted by the world's leading companies
   <a href="https://www.syncfusion.com/">

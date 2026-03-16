@@ -1,5 +1,5 @@
 import { DataManager, Query } from '@syncfusion/react-data';
-import { PieEmptyPointMode, GroupModes, PieLegendShape, PieLabelPosition, ConnectorType, LegendAlignment } from './enum';
+import { PieEmptyPointMode, GroupModes, PieLegendShape, PieLabelPosition, ConnectorType, LegendAlignment, PieSelectionMode, PieSelectionPattern } from './enum';
 import { HorizontalAlignment } from '@syncfusion/react-base';
 import { TextOverflow, Theme, TitlePosition, FadeOutMode, LegendPosition } from '../../common/enum';
 import { FocusOutlineProps } from '../../common/interfaces';
@@ -544,6 +544,13 @@ export interface PieChartSeriesProps {
      * @private
      */
     children?: React.ReactNode;
+
+    /**
+     * When set to true, a different pattern is applied to each slice of the pie.
+     *
+     * @default false
+     */
+    applyPattern?: boolean;
 }
 
 /**
@@ -1468,6 +1475,11 @@ export interface PieChartPointRenderProps {
      *
      */
     yValue: number | Date | string | null;
+
+    /**
+     * Indicates the customizable pattern for each slice.
+     */
+    pattern: PieSelectionPattern;
 }
 
 /**
@@ -1648,6 +1660,27 @@ export interface PieChartTooltipProps {
      * @default null
      */
     template?: ((props: PieChartTooltipTemplateProps) => React.ReactNode);
+
+    /**
+     * Enables or disables the tooltip follow pointer
+     * behavior.
+     *
+     * When set to `true`, the tooltip moves along 
+     * with the mouse pointer, providing dynamic
+     * positioning and better visibility during
+     * interaction.
+     *
+     * If a fixed tooltip position is configured using
+     * `tooltip.location.x` and `tooltip.location.y`, the fixed
+     * positioning takes priority over `followPointer`. In this case,
+     * even if `followPointer` is enabled, the tooltip will remain
+     * at the specified fixed coordinates and will not move along
+     * with the cursor.
+     *
+     * @default true
+     */
+    followPointer?: boolean;
+
 }
 
 /**
@@ -1676,5 +1709,132 @@ export interface PieChartDataLabelFormatterProps {
      * The current text/value of the data label for the data point.
      */
     text: string;
+}
+
+/**
+ * Defines configuration options for customizing pie chart highlight behavior.
+ */
+export interface PieChartHighlightProps {
+
+    /**
+     * Specifies how data points or slices can be highlighted.
+     *
+     * Available options:
+     * - 'None': Disables highlighting.
+     * - 'Point': Highlights individual data points.
+     *
+     * @default 'None'
+     */
+    mode?: PieSelectionMode;
+
+    /**
+     * Specifies the color used to highlight a data point when hovered.
+     *
+     * @default ''
+     */
+    fill?: string;
+
+
+    /**
+     * Defines the visual pattern applied to highlighted slices in pie or donut.
+     *
+     * The available options are:
+     * * 'None': No highlight. pattern is applied.
+     * * 'Chessboard': Applies a chessboard pattern as the highlight. effect.
+     * * 'Dots': Applies a dot pattern as the highlight. effect.
+     * * 'DiagonalForward': Applies a forward diagonal line pattern as the highlight. effect.
+     * * 'Crosshatch': Applies a crosshatch pattern as the highlight. effect.
+     * * 'Pacman': Applies a Pacman pattern as the highlight. effect.
+     * * 'DiagonalBackward': Applies a backward diagonal line pattern as the highlight. effect.
+     * * 'Grid': Applies a grid pattern as the highlight. effect.
+     * * 'Turquoise': Applies a turquoise pattern as the highlight. effect.
+     * * 'Star': Applies a star pattern as the highlight. effect.
+     * * 'Triangle': Applies a triangle pattern as the highlight. effect.
+     * * 'Circle': Applies a circle pattern as the highlight. effect.
+     * * 'Tile': Applies a tile pattern as the highlight. effect.
+     * * 'HorizontalDash': Applies a horizontal dash pattern as the highlight. effect.
+     * * 'VerticalDash': Applies a vertical dash pattern as the highlight. effect.
+     * * 'Rectangle': Applies a rectangle pattern as the highlight. effect.
+     * * 'Box': Applies a box pattern as the highlight. effect.
+     * * 'HorizontalStripe': Applies a horizontal stripe pattern as the highlight. effect.
+     * * 'Bubble': Applies a bubble pattern as the highlight. effect.
+     *
+     * @default None
+     */
+    pattern?: PieSelectionPattern;
+}
+
+/**
+ * Defines configuration options for customizing pie chart selection behavior.
+ */
+export interface PieChartSelectionProps {
+
+    /**
+     * Specifies how data slices can be selected.
+     *
+     * Available options:
+     * - 'None': Disables selection.
+     * - 'Point': Allows selection of individual slices.
+     *
+     * @default None
+     */
+    mode?: PieSelectionMode;
+
+    /**
+     * Enables selection of multiple data points.
+     * > Note: The `mode` property must be set to `Point` for multi-selection to work.
+     *
+     * @default false
+     */
+    allowMultiSelection?: boolean;
+
+    /**
+     * Defines the indexes of points to be selected when the pie chart is initially rendered.
+     * > Note: The `mode` property must be set to `Point` for this feature to work.
+     *
+     * @default []
+     */
+    selectedDataIndexes?: PieChartDataIndexProps[];
+
+    /**
+     * Specifies the visual pattern applied to selected data points
+     * The available options are:
+     * * 'None': No selection pattern is applied.
+     * * 'Chessboard': Applies a chessboard pattern as the selection effect.
+     * * 'Dots': Applies a dot pattern as the selection effect.
+     * * 'DiagonalForward': Applies a forward diagonal line pattern as the selection effect.
+     * * 'Crosshatch': Applies a crosshatch pattern as the selection effect.
+     * * 'Pacman': Applies a Pacman pattern as the selection effect.
+     * * 'DiagonalBackward': Applies a backward diagonal line pattern as the selection effect.
+     * * 'Grid': Applies a grid pattern as the selection effect.
+     * * 'Turquoise': Applies a turquoise pattern as the selection effect.
+     * * 'Star': Applies a star pattern as the selection effect.
+     * * 'Triangle': Applies a triangle pattern as the selection effect.
+     * * 'Circle': Applies a circle pattern as the selection effect.
+     * * 'Tile': Applies a tile pattern as the selection effect.
+     * * 'HorizontalDash': Applies a horizontal dash pattern as the selection effect.
+     * * 'VerticalDash': Applies a vertical dash pattern as the selection effect.
+     * * 'Rectangle': Applies a rectangle pattern as the selection effect.
+     * * 'Box': Applies a box pattern as the selection effect.
+     * * 'HorizontalStripe': Applies a horizontal stripe pattern as the selection effect.
+     * * 'Bubble': Applies a bubble pattern as the selection effect.
+     *
+     * @default None
+     */
+    pattern?: PieSelectionPattern;
+}
+
+/**
+ * Represents the index information for a data point in a pie chart.
+ * Used to identify a specific point for selection.
+ */
+export interface PieChartDataIndexProps {
+
+    /**
+     * Index of the data point within the series.
+     *
+     * @default 0
+     */
+    pointIndex?: number;
 }
 

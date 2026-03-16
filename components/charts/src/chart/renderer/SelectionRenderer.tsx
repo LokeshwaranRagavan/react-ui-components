@@ -2,7 +2,7 @@ import { JSX, RefObject, useContext, useEffect, useLayoutEffect } from 'react';
 import { BaseSelection, ChartSelectionProps, ChartIndexesProps } from '../base/interfaces';
 import { useLayout } from '../layout/LayoutContext';
 import { registerChartEventHandler } from '../hooks/useClipRect';
-import { Chart, SeriesProperties } from '../chart-area/chart-interfaces';
+import { Chart, ChartTrendlineModel, SeriesProperties } from '../chart-area/chart-interfaces';
 import { AnimationOptions, Animation, extend, isNullOrUndefined, IAnimation } from '@syncfusion/react-base';
 import { indexFinder, withInBounds } from '../utils/helper';
 import { SelectionMode, SelectionPattern } from '../base/enum';
@@ -211,16 +211,29 @@ export const calculateSelectedElements: (chart: Chart, chartSelection: BaseSelec
     if (isNullOrUndefined(targetElement)) {
         return;
     }
+
     chartSelection.isLegendSelection = (targetElement as HTMLElement).id.indexOf('_legend_shape') > -1
             || (targetElement as HTMLElement).id.indexOf('_legend_text') > -1 || (targetElement as HTMLElement).id.indexOf('_legend_g_') > -1;
     if (((targetElement as HTMLElement).id && (targetElement as HTMLElement).id.indexOf('_Series_') > -1 && (targetElement as HTMLElement).id.indexOf('_Text_') === -1 &&
             (chartSelection.mode !== 'None' || chartSelection.isTooltipHighlight)) || (chartSelection.isLegendSelection && (chartSelection.isLegendHighlight || !chartSelection.isLegendToggle))) {
-        performSelection(chart, chartSelection, legendRef, seriesRef, indexFinder((targetElement as HTMLElement).id),
+        let indexInfo: ChartIndexesProps = indexFinder((targetElement as HTMLElement).id);
+        if ((chartSelection.isLegendSelection || (targetElement as HTMLElement).id.includes('Trackball')) && chart.visibleSeries[indexInfo.seriesIndex as number].category === 'TrendLine') {
+            indexInfo = {
+                seriesIndex: chart.visibleSeries[indexInfo.seriesIndex as number].sourceIndex, pointIndex: undefined
+                , trendlineIndex: chart.visibleSeries[indexInfo.seriesIndex as number].trendIndex
+            };
+        }
+        performSelection(chart, chartSelection, legendRef, seriesRef, indexInfo,
                          targetElement as HTMLElement, pointClick);
     }
     else if (targetElement && withInBounds(chart.mouseX, chart.mouseY, chart.clipRect) &&
     chartSelection.isTooltipHighlight && !isNullOrUndefined(chart.toolTipSeriesIndex)) {
-        performSelection(chart, chartSelection, legendRef, seriesRef, { seriesIndex: chart.toolTipSeriesIndex, pointIndex: undefined },
+        const tooltipSeries: SeriesProperties = chart.visibleSeries[chart.toolTipSeriesIndex];
+        const indexInfo: ChartIndexesProps = tooltipSeries.category === 'TrendLine' ? {
+            seriesIndex: tooltipSeries.sourceIndex
+            , pointIndex: undefined, trendlineIndex: tooltipSeries.trendIndex
+        } : { seriesIndex: chart.toolTipSeriesIndex, pointIndex: undefined };
+        performSelection(chart, chartSelection, legendRef, seriesRef, indexInfo,
                          targetElement as HTMLElement, pointClick);
     }
     else if (chartSelection.previousSelectedElements && chartSelection.previousSelectedElements.length > 0) {
@@ -263,14 +276,16 @@ export const performSelection: (chart: Chart, chartSelection: BaseSelection, leg
 
 ): void => {
     if (chartSelection.isLegendSelection && !isNullOrUndefined(index?.seriesIndex) &&
-    !chart.visibleSeries[index.seriesIndex as number].visible) {
+        (Number.isNaN(index.trendlineIndex as number) ? !chart.visibleSeries[index.seriesIndex as number].visible
+            : !((chart.visibleSeries[index.seriesIndex as number].trendlines?.[index.trendlineIndex as number] as ChartTrendlineModel
+            ).targetSeries?.visible))) {
         return;
     }
-    const selectionMode: SelectionMode = chartSelection.isLegendSelection || chartSelection.isTooltipHighlight ? 'Series' : chartSelection.mode as SelectionMode;
+    const selectionMode: SelectionMode = chartSelection.isLegendSelection || chartSelection.isTooltipHighlight || !Number.isNaN(index.trendlineIndex) ? 'Series' : chartSelection.mode as SelectionMode;
     let pointElements: Element[];
     switch (selectionMode) {
     case 'Series':
-        pointElements = getSeriesElements(seriesRef, legendRef, index.seriesIndex!, chart);
+        pointElements = getSeriesElements(seriesRef, legendRef, index.seriesIndex!, chart, index.trendlineIndex!);
         selection(chartSelection, chart, pointElements, index);
         blurEffect(chart, chart.visibleSeries, chartSelection, legendRef, seriesRef);
         break;
@@ -374,20 +389,68 @@ export const blurEffect: (chart: Chart, visibleSeries: SeriesProperties[],
             const seriesGroup: SVGGElement | undefined = children.find((c: Element) => c.id === `${chartId}SeriesGroup${seriesIndex}`) as SVGGElement | undefined;
             // There can be multiple symbol groups with the same id; collect all of them
             const symbolGroups: SVGGElement[] = children.filter((c: Element) => c.id === (chart.visibleSeries[seriesIndex as number]?.type === 'Scatter' || chart.visibleSeries[seriesIndex as number]?.type === 'Bubble' ? `${chartId}_Series_${seriesIndex}_SymbolGroup` : `${chartId}SymbolGroup${seriesIndex}`)) as SVGGElement[];
-
             // Data labels can be under a separate container
             const dataLabelRoot: SVGGElement | undefined = children.find((c: Element) => c.id === 'containerDataLabelCollection') as SVGGElement | undefined;
             const dlChildren: Element[] = dataLabelRoot ? Array.from(dataLabelRoot.children) : children;
             const shapeGroup: SVGGElement | undefined = dlChildren.find((c: Element) => c.id === `containerShapeGroup${seriesIndex}`) as SVGGElement | undefined;
             const textGroup: SVGGElement | undefined = dlChildren.find((c: Element) => c.id === `containerTextGroup${seriesIndex}`) as SVGGElement | undefined;
 
+            let trendlineGroups: SVGGElement[] = [];
+            let trendlinePathElement: HTMLElement | null = null;
+
+            if (series.category === 'TrendLine') {
+                const sourceIndex: number = series.sourceIndex as number;
+                const trendIndex: number = series.trendIndex as number;
+
+                const trendlineCollection: SVGGElement | undefined =
+                    children.find((c: Element) => c.id === `${chartId}TrendlineCollection`) as SVGGElement | undefined;
+
+                if (trendlineCollection) {
+                    const trendlineSeriesGroupId: string = `${chartId}TrendlineSeriesGroup${sourceIndex}`;
+                    const trendlineSeriesGroup: SVGGElement | undefined = Array.from(trendlineCollection.children)
+                        .find((el: Element) => el.id === trendlineSeriesGroupId) as SVGGElement | undefined;
+
+                    if (trendlineSeriesGroup) {
+                        const trendlinePathId: string = `${chartId}_Series_${sourceIndex}_Trendline_${trendIndex}`;
+                        trendlinePathElement = Array.from(trendlineSeriesGroup.children)
+                            .find((el: Element) => el.id === trendlinePathId) as HTMLElement | null;
+
+                        const trendlineMarkerGroupId: string = `${chartId}TrendlineSymbolGroup${trendIndex}`;
+                        const trendlineMarkerGroup: SVGGElement | undefined = Array.from(trendlineSeriesGroup.children)
+                            .find((el: Element) => el.id === trendlineMarkerGroupId) as SVGGElement | undefined;
+
+                        const trendlineDataLabelCollectionId: string = `${chartId}Trendline_${trendIndex}_DataLabelCollection`;
+                        const trendlineDataLabelCollection: SVGGElement | undefined = Array.from(trendlineSeriesGroup.children)
+                            .find((el: Element) => el.id === trendlineDataLabelCollectionId) as SVGGElement | undefined;
+
+                        let trendlineShapeGroup: SVGGElement | undefined;
+                        let trendlineTextGroup: SVGGElement | undefined;
+
+                        if (trendlineDataLabelCollection) {
+                            trendlineShapeGroup = Array.from(trendlineDataLabelCollection.children)
+                                .find((el: Element) => el.id === `${chartId}TrendlineShapeGroup${trendIndex}`) as SVGGElement | undefined;
+
+                            trendlineTextGroup = Array.from(trendlineDataLabelCollection.children)
+                                .find((el: Element) => el.id === `${chartId}TrendlineTextGroup${trendIndex}`) as SVGGElement | undefined;
+                        }
+
+                        trendlineGroups = [
+                            ...(trendlineMarkerGroup ? [trendlineMarkerGroup] : []),
+                            ...(trendlineShapeGroup ? [trendlineShapeGroup] : []),
+                            ...(trendlineTextGroup ? [trendlineTextGroup] : [])
+                        ];
+                    }
+                }
+            }
             // Build a flat list including all symbol groups and the single shape/text groups if present
-            const groups: SVGGElement[] = [
-                ...(seriesGroup ? [seriesGroup] : []),
-                ...symbolGroups,
-                ...(shapeGroup ? [shapeGroup] : []),
-                ...(textGroup ? [textGroup] : [])
-            ];
+            const groups: SVGGElement[] = series.category === 'TrendLine'
+                ? trendlineGroups
+                : [
+                    ...(seriesGroup ? [seriesGroup] : []),
+                    ...symbolGroups,
+                    ...(shapeGroup ? [shapeGroup] : []),
+                    ...(textGroup ? [textGroup] : [])
+                ];
 
             for (const g of groups) {
                 if (!g) { continue; }
@@ -424,6 +487,43 @@ export const blurEffect: (chart: Chart, visibleSeries: SeriesProperties[],
                     if (!isSelected && (chartSelection.pattern !== 'None' || (chartSelection.name === 'Highlight' && chartSelection.fill))) {
                         (pointElement as HTMLElement).style.fill = '';
                     }
+                }
+            }
+            if (series.category === 'TrendLine' && trendlinePathElement) {
+                const el: HTMLElement = trendlinePathElement;
+
+                const isSelected: boolean = el.getAttribute('data-selected') === 'true' ||
+                    el.getAttribute(attributes) === 'true';
+                const isActive: boolean = isSelected ||
+                    (chartSelection.isAdd && !((chartSelection.allowMultiSelection || chartSelection.mode === 'Point') &&
+                        (chartSelection.chartSelectedDataIndexes?.length as number > 0))) as boolean;
+
+                if (isActive && !isSelected && el.style.opacity === '0.3') {
+                    highlightAnimation(chart, chartSelection, el, seriesIndex,
+                                       chartSelection.isTooltipHighlight ? chart.tooltipModule.fadeOutDuration as number : 700, 0.3);
+                } else {
+                    stopElementAnimation(el);
+                    if (isActive) {
+                        el.style.opacity = '';
+                    } else if (!isSelected) {
+                        el.style.opacity = '0.3';
+                    }
+                }
+
+                // Stroke-width animation for trendline path (treat like non-rect series main path)
+                const tlPathId: string = `${chartId}_Series_${series.sourceIndex}_Trendline_${series.trendIndex}`;
+                if (el.id === tlPathId) {
+                    if (isActive && !isSelected) {
+                        highlightAnimation(chart, chartSelection, el, seriesIndex, 700, 0.3, true);
+                    } else {
+                        const strokeWidth: number = isActive ? (series.width ? series.width + 1 : 3) :
+                            (series.width ? series.width : 1);
+                        el.setAttribute('stroke-width', strokeWidth.toString());
+                    }
+                }
+
+                if (!isSelected && (chartSelection.pattern !== 'None' || (chartSelection.name === 'Highlight' && chartSelection.fill))) {
+                    el.style.fill = '';
                 }
             }
         });
@@ -617,6 +717,15 @@ function addOrRemoveIndex(indexes: ChartIndexesProps[], index: ChartIndexesProps
  * @private
  */
 function toEquals(first: ChartIndexesProps, second: ChartIndexesProps, checkSeriesOnly: boolean, chartSelection: BaseSelection): boolean {
+    const hasFirstTrendline: boolean = !Number.isNaN(first.trendlineIndex as number);
+    const hasSecondTrendline: boolean = !Number.isNaN(second.trendlineIndex as number);
+
+    if (hasFirstTrendline || hasSecondTrendline) {
+        if (hasFirstTrendline && hasSecondTrendline) {
+            return first.trendlineIndex === second.trendlineIndex;
+        }
+        return false;
+    }
     return (
         (first.seriesIndex === second.seriesIndex || (chartSelection.mode === 'Cluster' && !checkSeriesOnly)) &&
         (checkSeriesOnly || first.pointIndex === second.pointIndex)
@@ -631,6 +740,7 @@ function toEquals(first: ChartIndexesProps, second: ChartIndexesProps, checkSeri
  * @param {RefObject<SVGGElement | null>} legendRef - A reference to the chart's legend element.
  * @param {number} seriesIndex - The index of the series whose elements are to be retrieved.
  * @param {Chart} chart - The chart instance.
+ * @param {number} trendlineIndex - Index of the trendline.
  * @returns {SVGElement[]} An array of SVG elements belonging to the specified series.
  * @private
  */
@@ -638,7 +748,8 @@ function getSeriesElements(
     seriesRef: React.RefObject<SVGGElement | null>,
     legendRef: RefObject<SVGGElement | null>,
     seriesIndex: number,
-    chart: Chart
+    chart: Chart,
+    trendlineIndex: number
 ): SVGElement[] {
     if (!seriesRef.current) { return []; }
 
@@ -668,44 +779,107 @@ function getSeriesElements(
 
     const collected: SVGElement[] = [];
 
-    // 1) Collect series path/area elements
-    if (seriesGroup) {
-        for (const element of Array.from(seriesGroup.children)) {
-            const tag: string = element.tagName.toLowerCase();
-            if (tag === 'defs') { continue; }
-            if (startsWith(element, pathPrefix)) { collected.push(element as SVGElement); }
-        }
-    } else {
-        // Fallback: search directly under root for path element
-        const directPath: Element| undefined = children.find((child: Element) => startsWith(child, pathPrefix));
-        if (directPath) { collected.push(directPath as SVGElement); }
-    }
+    const trendlineCollection: Element | undefined = children.find((c: Element) => checkById(c, `${chartId}TrendlineCollection`));
 
-    // 2) Collect marker symbols for the series
-    if (symbolGroups) {
-        for (const element of Array.from((symbolGroups as SVGGElement).children)) {
-            const tag: string = element.tagName.toLowerCase();
-            if (tag === 'defs') { continue; }
-            if (startsWith(element, pointPrefix)) { collected.push(element as SVGElement); }
-        }
-    }
+    if (Number.isFinite(trendlineIndex) && trendlineCollection) {
+        const trendlineRoot: SVGGElement = trendlineCollection as SVGGElement;
+        const seriesTrendlineGroupId: string = `${chartId}TrendlineSeriesGroup${seriesIndex}`;
+        const seriesTrendlineGroup: SVGGElement | undefined = Array.from(trendlineRoot.children)
+            .find((el: Element) => checkById(el, seriesTrendlineGroupId)) as SVGGElement | undefined;
 
-    // 3) Collect data label shapes (TextShape) and text
-    if (shapeGroup) {
-        for (const element of Array.from(shapeGroup.children)) {
-            if (startsWith(element, pointPrefix) && element.id.includes('_TextShape_')) { collected.push(element as SVGElement); }
+        if (seriesTrendlineGroup) {
+            const trendlinePathId: string = `${chartId}_Series_${seriesIndex}_Trendline_${trendlineIndex}`;
+            const trendlinePathEl: Element | undefined = Array.from(seriesTrendlineGroup.children)
+                .find((el: Element) => checkById(el, trendlinePathId));
+            if (trendlinePathEl) {
+                collected.push(trendlinePathEl as SVGElement);
+            }
+
+            const trendlineMarkerGroupId: string = `${chartId}TrendlineSymbolGroup${trendlineIndex}`;
+            const trendlineMarkerGroup: SVGGElement | undefined = Array.from(seriesTrendlineGroup.children)
+                .find((el: Element) => checkById(el, trendlineMarkerGroupId)) as SVGGElement | undefined;
+            if (trendlineMarkerGroup) {
+                for (const node of Array.from(trendlineMarkerGroup.children)) {
+                    if (node && node.tagName.toLowerCase() !== 'defs') {
+                        collected.push(node as SVGElement);
+                    }
+                }
+            }
+
+            const dataLabelCollectionId: string = `${chartId}Trendline_${trendlineIndex}_DataLabelCollection`;
+            const dataLabelCollection: SVGGElement | undefined = Array.from(seriesTrendlineGroup.children)
+                .find((el: Element) => checkById(el, dataLabelCollectionId)) as SVGGElement | undefined;
+
+            if (dataLabelCollection) {
+                const trendlineShapeGroupId: string = `${chartId}TrendlineShapeGroup${trendlineIndex}`;
+                const trendlineShapeGroup: SVGGElement | undefined = Array.from(dataLabelCollection.children)
+                    .find((el: Element) => checkById(el, trendlineShapeGroupId)) as SVGGElement | undefined;
+                if (trendlineShapeGroup) {
+                    for (const node of Array.from(trendlineShapeGroup.children)) {
+                        if (node && node.tagName.toLowerCase() !== 'defs') {
+                            collected.push(node as SVGElement);
+                        }
+                    }
+                }
+                const trendlineTextGroupId: string = `${chartId}TrendlineTextGroup${trendlineIndex}`;
+                const trendlineTextGroup: SVGGElement | undefined = Array.from(dataLabelCollection.children)
+                    .find((el: Element) => checkById(el, trendlineTextGroupId)) as SVGGElement | undefined;
+                if (trendlineTextGroup) {
+                    for (const node of Array.from(trendlineTextGroup.children)) {
+                        if (node && node.tagName.toLowerCase() !== 'defs') {
+                            collected.push(node as SVGElement);
+                        }
+                    }
+                }
+            }
         }
     }
-    if (textGroup) {
-        for (const element of Array.from(textGroup.children)) {
-            if (startsWith(element, pointPrefix) && element.id.includes('_Text_')) { collected.push(element as SVGElement); }
+    else {
+
+        // 1) Collect series path/area elements
+        if (seriesGroup) {
+            for (const element of Array.from(seriesGroup.children)) {
+                const tag: string = element.tagName.toLowerCase();
+                if (tag === 'defs') { continue; }
+                if (startsWith(element, pathPrefix)) { collected.push(element as SVGElement); }
+            }
+        } else {
+            // Fallback: search directly under root for path element
+            const directPath: Element | undefined = children.find((child: Element) => startsWith(child, pathPrefix));
+            if (directPath) { collected.push(directPath as SVGElement); }
+        }
+
+        // 2) Collect marker symbols for the series
+        if (symbolGroups) {
+            for (const element of Array.from((symbolGroups as SVGGElement).children)) {
+                const tag: string = element.tagName.toLowerCase();
+                if (tag === 'defs') { continue; }
+                if (startsWith(element, pointPrefix)) { collected.push(element as SVGElement); }
+            }
+        }
+
+        // 3) Collect data label shapes (TextShape) and text
+        if (shapeGroup) {
+            for (const element of Array.from(shapeGroup.children)) {
+                if (startsWith(element, pointPrefix) && element.id.includes('_TextShape_')) { collected.push(element as SVGElement); }
+            }
+        }
+        if (textGroup) {
+            for (const element of Array.from(textGroup.children)) {
+                if (startsWith(element, pointPrefix) && element.id.includes('_Text_')) { collected.push(element as SVGElement); }
+            }
         }
     }
     if (legendRef.current) {
+        const effectiveSeriesIndex: number =
+            Number.isFinite(trendlineIndex) &&
+                chart.visibleSeries[seriesIndex as number]?.trendlines?.[trendlineIndex as number]?.targetSeries?.index !== undefined
+                ? (chart.visibleSeries[seriesIndex as number]!.trendlines![trendlineIndex as number]!.targetSeries!.index as number)
+                : seriesIndex;
         const legendRoot: SVGGElement = legendRef.current;
         const legendTranslateGroup: Element = legendRoot?.children[0];
         if (legendTranslateGroup) {
-            const legendItemGroup: Element = legendTranslateGroup.children.item(seriesIndex) as Element;
+            const legendItemGroup: Element = legendTranslateGroup.children.item(effectiveSeriesIndex) as Element;
             const legendShape: Element = legendItemGroup?.children.item(0) as Element;
             void ((legendShape) && (
                 collected.push(legendShape as SVGElement)

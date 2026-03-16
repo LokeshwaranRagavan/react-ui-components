@@ -3,9 +3,7 @@
 
 @include export-module('floating-action-button-theme') {
   .sf-fab.sf-btn {
-    box-shadow: $fab-box-shadow;
-
-    &:hover:not(:focus), &:active, &.sf-active, &:disabled, &:focus {
+    &:hover:not(:focus), &:active, &.sf-active, &:disabled {
       box-shadow: $fab-box-shadow;
     }
   }

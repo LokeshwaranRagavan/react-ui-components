@@ -28,7 +28,9 @@ export interface MonthViewProps {
     showDaysOutsideCurrentMonth?: boolean;
     animate?: boolean;
     disablePastDays: boolean;
+    range?: [Date | null, Date | null];
     disableFutureDays: boolean;
+    onCellHover?: (date: Date) => void;
 }
 
 interface WeekHeaderProps {
@@ -77,6 +79,7 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
         firstDayOfWeek,
         weekNumber,
         weekRule,
+        range,
         weekDaysFormat,
         disabled,
         multiSelect,
@@ -91,7 +94,8 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
         showDaysOutsideCurrentMonth = true,
         animate = false,
         disablePastDays,
-        disableFutureDays
+        disableFutureDays,
+        onCellHover
     } = props;
 
     const shortNames: string[] = calendarSystem.getWeekDayNames(
@@ -99,6 +103,25 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
         firstDayOfWeek,
         weekDaysFormat as string
     );
+
+    const isInRange: (date: Date) => boolean = React.useCallback((date: Date): boolean => {
+        if (!range || !Array.isArray(range)) {
+            return false;
+        }
+        const [start, end] = range;
+        if (!(start instanceof Date) || isNaN(start.getTime())) {
+            return false;
+        }
+        if (!(end instanceof Date) || isNaN(end.getTime())) {
+            return false;
+        }
+        const dateTime: number = date.getTime();
+        const startTime: number = start.getTime();
+        const endTime: number = end.getTime();
+        const actualStart: number = Math.min(startTime, endTime);
+        const actualEnd: number = Math.max(startTime, endTime);
+        return dateTime >= actualStart && dateTime <= actualEnd;
+    }, [range?.[0]?.getTime(), range?.[1]?.getTime()]);
 
     const year: number = currentDate.getFullYear();
     const month: number = currentDate.getMonth();
@@ -120,6 +143,7 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
             >
                 {matrix.map((week: CalendarCellData[], wIdx: number) => {
                     const tds: React.ReactNode[] = [];
+
                     if (weekNumber) {
                         const offset: number = weekRule === WeekRule.FirstDay ? 6 : weekRule === WeekRule.FirstFourDayWeek ? 3 : 0;
                         const base: Date = week[0].date;
@@ -144,7 +168,14 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
                             customWeekNumberCell ? (
                                 customWeekNumberCell
                             ) : (
-                                <CalendarCell key={`week-${wIdx}`} className="sf-week-number" style={{ cursor: 'default' }} role={'gridcell'} aria-hidden="true" {...weekNumberProps}>
+                                <CalendarCell
+                                    key={`week-${wIdx}`}
+                                    className="sf-week-number"
+                                    style={{ cursor: 'default' }}
+                                    role={'gridcell'}
+                                    aria-hidden="true"
+                                    {...weekNumberProps}
+                                >
                                     <span>{calendarSystem.getWeekNumber(refDate)}</span>
                                 </CalendarCell>
                             )
@@ -176,17 +207,27 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
                                 disabled,
                                 focusedDate,
                                 normalizedDates,
-                                multiSelect
+                                multiSelect,
+                                range
                             },
                             calendarSystem
                         );
 
                         const isdateDisabled: boolean = isDateDisabledByRule(date, disablePastDays, disableFutureDays, CalendarView.Month);
+                        const isRangeStart: boolean | undefined = range && Array.isArray(range) && range[0] instanceof Date &&
+                            date.getTime() === range[0].getTime();
+                        const isInSelectedRange: boolean = isInRange(date);
+                        let rangeClass: string = '';
+                        if (isInSelectedRange && !isRangeStart) {
+                            rangeClass += ' sf-in-range';
+                        }
+
+                        const finalClassName: string = (state.className + rangeClass).trim();
 
                         const baseProps: CalendarCellProps = {
                             id: `${date.valueOf()}`,
                             role: 'gridcell',
-                            className: state.className,
+                            className: finalClassName,
                             isDisabled: !!state.ariaDisabled || isdateDisabled,
                             isOutOfRange: state.isOtherRange,
                             isToday: state.isToday,
@@ -221,7 +262,16 @@ export const MonthView: React.FC<MonthViewProps> = (props: MonthViewProps): Reac
                             custom ? (
                                 custom
                             ) : (
-                                <CalendarCell key={baseProps.id} {...baseProps} ref={setCellRef}>
+                                <CalendarCell
+                                    key={baseProps.id}
+                                    {...baseProps}
+                                    ref={setCellRef}
+                                    onMouseEnter={() => {
+                                        if (!disabled && !baseProps.isDisabled) {
+                                            onCellHover?.(new Date(date));
+                                        }
+                                    }}
+                                >
                                     <span
                                         className="sf-day"
                                         aria-disabled={!!state.ariaDisabled || isdateDisabled || state.isOtherRange}

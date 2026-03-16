@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DropDownListProps } from '../types';
+import { compareItemData } from '../../common/utils';
+import { T } from '../types';
 
 /**
  * Specifies the properties used by the `useDropDownListState` hook to manage the state and behavior of the DropDownList component.
@@ -22,15 +23,11 @@ interface UseDropDownListStateProps {
  */
 interface DropDownListState {
     isPopupOpen: boolean;
-    ariaExpanded: boolean;
-    dropdownValue: number | string | boolean | object | null;
+    dropdownValue: (number | string | boolean | { [key: string]: unknown })[] | null;
     textValue: string;
     isSpanFocused: boolean;
     isLoading: boolean;
-    activeIndex: number | null;
-    itemData: string | number | boolean | { [key: string]: unknown } | null;
-    previousItemData: string | number | boolean | { [key: string]: unknown } | null;
-    changeEvent: React.MouseEvent<Element> | React.KeyboardEvent<Element> | null;
+    itemData: (string | number | boolean | { [key: string]: unknown })[] | null;
 }
 
 /**
@@ -40,17 +37,11 @@ interface DropDownListState {
  */
 interface DropDownListActions {
     setIsPopupOpen: (v: boolean) => void;
-    setAriaExpanded: (v: boolean) => void;
-    setDropdownValue: (v: number | string | boolean | object | null) => void;
+    setDropdownValue: (v: (number | string | boolean | { [key: string]: unknown })[] | null) => void;
     setTextValue: (v: string) => void;
     setIsSpanFocused: (v: boolean) => void;
     setIsLoading: (v: boolean) => void;
-    setActiveIndex: (v: number | null) => void;
-    setItemData: (v:  string | number | boolean | { [key: string]: unknown } | null) => void;
-    setPreviousItemData: (v: string | number | boolean | { [key: string]: unknown } | null) => void;
-    setChangeEvent: (v: React.MouseEvent<Element> | React.KeyboardEvent<Element> | null) => void;
-    openPopup: () => void;
-    closePopup: () => void;
+    setItemData: (v: (string | number | boolean | { [key: string]: unknown })[] | null) => void;
 }
 
 type UseDropDownListStateReturn = [DropDownListState, DropDownListActions];
@@ -66,25 +57,20 @@ export const useDropDownListState: (props?: UseDropDownListStateProps) => UseDro
     } = props;
 
     const [isPopupOpen, setIsPopupOpen] = useState<boolean>(!!open);
-    const [ariaExpanded, setAriaExpanded] = useState<boolean>(false);
     const [textValue, setTextValue] = useState<string>('');
     const [isSpanFocused, setIsSpanFocused] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(!!loading);
-    const [activeIndex, setActiveIndex] = useState<number | null>(null);
-    const [itemData, setItemData] = useState< string | number | boolean | { [key: string]: unknown } | null>(null);
-    const [previousItemData, setPreviousItemData] =
-        useState<string | number | boolean | { [key: string]: unknown } | null>(null);
-    const [changeEvent, setChangeEvent] = useState<React.MouseEvent<Element> | React.KeyboardEvent<Element> | null>(null);
+    const [itemData, setItemData] = useState<T[] | null>(null);
 
     const isOpenControlled: boolean = useMemo(() => open !== undefined, [open]);
     const isValueControlled: boolean = useMemo(() => value !== undefined && !!onChange, [value, onChange]);
-    const initialValue: number | string | boolean | object | null = useMemo(() => {
-        if (isValueControlled) { return value as number | string | boolean | object | null; }
-        if (value !== undefined) { return value; }
-        if (defaultValue !== undefined) { return defaultValue; }
+    const initialValue: T[] | null = useMemo(() => {
+        if (isValueControlled) { return [value] as T[] | null; }
+        if (value !== undefined) { return [value] as T[] | null; }
+        if (defaultValue !== undefined) { return [defaultValue] as T[] | null; }
         return null;
     }, [isValueControlled, value, defaultValue]);
-    const [dropdownValue, setDropdownValue] = useState<number | string | boolean | object | null>(initialValue);
+    const [dropdownValue, setDropdownValue] = useState<T[] | null>(initialValue);
 
     useEffect(() => {
         if (isOpenControlled) {
@@ -98,54 +84,36 @@ export const useDropDownListState: (props?: UseDropDownListStateProps) => UseDro
 
     useEffect(() => {
         if (isValueControlled) {
-            setDropdownValue(value as number | string | boolean | object | null);
+            setDropdownValue(value as (number | string | boolean | { [key: string]: unknown })[] | null);
         }
     }, [isValueControlled, value]);
 
-    const openPopup: () => void = useCallback(() => {
-        if (!isOpenControlled) {
-            setIsPopupOpen(true);
-        }
-        setAriaExpanded(true);
-    }, [isOpenControlled]);
-
-    const closePopup: () => void = useCallback(() => {
-        if (!isOpenControlled) {
-            setIsPopupOpen(false);
-        }
-        setAriaExpanded(false);
-    }, [isOpenControlled]);
-
     const state: DropDownListState = {
         isPopupOpen,
-        ariaExpanded,
-        dropdownValue,
+        dropdownValue: dropdownValue as { [key: string]: unknown }[],
         textValue,
         isSpanFocused,
         isLoading,
-        activeIndex,
-        itemData,
-        previousItemData,
-        changeEvent
+        itemData: itemData as { [key: string]: unknown }[]
     };
 
     const actions: DropDownListActions = {
         setIsPopupOpen: (v: boolean) => setIsPopupOpen(v),
-        setAriaExpanded: (v: boolean) => setAriaExpanded(v),
-        setDropdownValue: (v: number | string | boolean | object | null) => setDropdownValue(v),
+        setDropdownValue: (v: (number | string | boolean | { [key: string]: unknown })[] | null) => setDropdownValue((prev: T[] | null) => {
+            if (compareItemData(prev, v)) {
+                return prev;
+            }
+            return v;
+        }),
         setTextValue: (v: string) => setTextValue(v),
         setIsSpanFocused: (v: boolean) => setIsSpanFocused(v),
         setIsLoading: (v: boolean) => setIsLoading(v),
-        setActiveIndex: (v: number | null) => setActiveIndex(v),
-        setItemData: (v:  string | number | boolean | {
-            [key: string]: unknown;
-        } | null) => setItemData(v),
-        setPreviousItemData: (v: string | number | boolean | {
-            [key: string]: unknown;
-        } | null) => setPreviousItemData(v),
-        setChangeEvent: (v: React.MouseEvent<Element> | React.KeyboardEvent<Element> | null) => setChangeEvent(v),
-        openPopup,
-        closePopup
+        setItemData: (v: (string | number | boolean | { [key: string]: unknown })[] | null) => setItemData((prev: T[] | null) => {
+            if (compareItemData(prev, v)) {
+                return prev;
+            }
+            return v;
+        })
     };
 
     return [state, actions];

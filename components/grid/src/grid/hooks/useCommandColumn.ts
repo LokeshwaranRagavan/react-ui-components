@@ -1,5 +1,5 @@
-import { RefObject, useRef } from 'react';
-import { ColumnProps, InlineEditFormRef, IRow, UseCommandColumnResult } from '../types';
+import { RefObject, useMemo, useRef } from 'react';
+import { ColumnProps, EditState, InlineEditFormRef, IRow, UseCommandColumnResult } from '../types';
 
 /**
  * `useCommandColumn` is a custom hook that provides state management and refs for command column operations.
@@ -7,6 +7,7 @@ import { ColumnProps, InlineEditFormRef, IRow, UseCommandColumnResult } from '..
  * This hook is essential for handling grid row editing and command item interactions.
  *
  * @private
+ * @param {boolean} isCommandColumnEnabled - Detect command column enabing based on useColumn preparation itself.
  * @returns {UseCommandColumnResult} Object containing refs for managing command column state.
  *
  * @example
@@ -15,14 +16,18 @@ import { ColumnProps, InlineEditFormRef, IRow, UseCommandColumnResult } from '..
  * // Use these refs to manage editing state across command column operations
  * ```
  */
-export const useCommandColumn: () => UseCommandColumnResult = (): UseCommandColumnResult => {
+export const useCommandColumn: <T>(isCommandColumnEnabled?: boolean) => UseCommandColumnResult<T> =
+<T>(isCommandColumnEnabled?: boolean): UseCommandColumnResult<T> => {
 
     /**
      * Reference to track if any editable command column row
      *
      * @type {RefObject<boolean>}
      */
-    const commandEdit: RefObject<boolean> = useRef(false);
+    const commandEdit: RefObject<boolean> = useRef(isCommandColumnEnabled || false);
+    useMemo(() => {
+        commandEdit.current = isCommandColumnEnabled;
+    }, [isCommandColumnEnabled]);
 
     /**
      * Reference object mapping row UIDs to their individual edit state (true if row is being edited)
@@ -31,6 +36,11 @@ export const useCommandColumn: () => UseCommandColumnResult = (): UseCommandColu
      * @type {RefObject<{ [key: string]: boolean; }>}
      */
     const commandEditRef: RefObject<{ [key: string]: boolean; }> = useRef({});
+    /**
+     * Reference object mapping row UIDs to their individual edit state object
+     * Allows tracking which specific rows with its updated data in edit mode
+     */
+    const commandEditStateRef: RefObject<{ [key: string]: EditState<T>; }> = useRef({}); // if we remove this ref variable, if any state change action performed in grid multiple row edit with same data
 
     /**
      * Reference array containing newly added rows that are in edit mode
@@ -59,6 +69,7 @@ export const useCommandColumn: () => UseCommandColumnResult = (): UseCommandColu
     return {
         commandEdit,
         commandEditRef,
+        commandEditStateRef,
         commandAddRef,
         commandEditInlineFormRef,
         commandAddInlineFormRef

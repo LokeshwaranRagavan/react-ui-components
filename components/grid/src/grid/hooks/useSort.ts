@@ -56,11 +56,21 @@ export const useSort: (gridRef?: RefObject<GridRef>, sortSetting?: SortSettings,
      */
     const handleGridClick: (event: React.MouseEvent) => void  = useCallback((event: React.MouseEvent): void => {
         if (!gridRef.current?.sortSettings?.enabled) { return; }
-        const target: Element = closest(event.target as Element, '.sf-grid-header-row .sf-cell');
-        if (target && !(event.target as Element).classList.contains('sf-grptogglebtn')) {
-            const colObj: ColumnProps = gridRef.current.columns.find((col: ColumnProps) => col.uid === target.querySelector('.sf-grid-header-cell').getAttribute('data-mappinguid'));
-            if (colObj.type !== 'checkbox') {
-                initiateSort(target, event, colObj);
+        if ((event.target as Element).closest('.sf-excel-filter')) {
+            if (closest(event.target as Element, '.sf-excel-ascending') || closest(event.target as Element, '.sf-excel-descending')) {
+                const colUid: string = (closest(event.target as Element, '.sf-filter-popup')).getAttribute('data-uid');
+                const direction: string = isNullOrUndefined(closest(event.target as Element, '.sf-excel-descending')) ?
+                    'Ascending' : 'Descending';
+                const column: ColumnProps = gridRef.current.columns.find((col: ColumnProps) => col.uid === colUid );
+                sortByColumn(column.field, direction, false);
+            }
+        } else {
+            const target: Element = closest(event.target as Element, '.sf-grid-header-row .sf-cell');
+            if (target && !(event.target as Element).classList.contains('sf-grptogglebtn')) {
+                const colObj: ColumnProps = gridRef.current.columns.find((col: ColumnProps) => col.uid === target.querySelector('.sf-grid-header-cell').getAttribute('data-mappinguid'));
+                if (colObj && colObj?.type !== 'checkbox') {
+                    initiateSort(target, event, colObj);
+                }
             }
         }
     }, [gridRef, sortSetting]);

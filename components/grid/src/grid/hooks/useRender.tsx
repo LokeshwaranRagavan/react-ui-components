@@ -13,16 +13,15 @@ import {
     useRef
 } from 'react';
 import {
-    IValueFormatter,
     PendingState, MutableGridSetter, UseRenderResult
 } from '../types/interfaces';
 import {
     IGrid,
     IGridBase,
     GridRef } from '../types/grid.interfaces';
-import { ColumnProps, IColumnBase, PrepareColumns } from '../types/column.interfaces';
+import { ColumnProps, PrepareColumns, IColumnBase } from '../types/column.interfaces';
 import { AggregateRowProps, AggregateColumnProps } from '../types/aggregate.interfaces';
-import { DateFormatOptions, extend, formatUnit, isNullOrUndefined, NumberFormatOptions } from '@syncfusion/react-base';
+import { formatUnit, isNullOrUndefined } from '@syncfusion/react-base';
 import { DataManager, DataResult, ReturnType } from '@syncfusion/react-data';
 import { Column, ColumnBase } from '../components';
 import {
@@ -31,8 +30,8 @@ import {
 } from '../contexts';
 import { defaultColumnProps } from '../hooks';
 import { Columns, RenderBase, Aggregates } from '../views';
-import { addLastRowBorder, compareSelectedProperties, getObject, setFormatter } from '../utils';
-import { ActionType, ColumnType, FilterEvent, PageEvent, SearchEvent, SortEvent } from '../types';
+import { compareSelectedProperties, parseUnit, updateUIColumnType } from '../utils';
+import { ActionType, ColumnType, FilterEvent, PageEvent, ScrollMode, SearchEvent, ServiceLocator, SortEvent } from '../types';
 
 /**
  * CSS class names used in the component
@@ -51,13 +50,14 @@ const CSS_CLASS_NAMES: Record<string, string> = {
 export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T> => {
     const grid: Partial<GridRef<T>> & Partial<MutableGridSetter<T>> = useGridComputedProvider<T>();
     const { setCurrentViewData, setInitialLoad, setTotalRecordsCount, aggregates, pageSettings,
-        height, contentPanelRef, contentTableRef, sortSettings } = grid;
-    const { currentViewData, currentPage, gridAction, uiColumns, isInitialLoad,
-        setResponseData, dataModule, totalRecordsCount, selectionModule } = useGridMutableProvider<T>();
+        sortSettings, scrollModule } = grid;
+    const { currentViewData, currentPage, gridAction, isInitialLoad, virtualSettings, scrollMode, uiColumns, setResponseData,
+        dataModule, totalRecordsCount, selectionModule, setVirtualCachedViewData } =
+        useGridMutableProvider<T>();
 
-    const [isLayoutRendered, setIsLayoutRendered] = useState<boolean>(false);
     const [isContentBusy, setIsContentBusy] = useState<boolean>(true);
-    const isColTypeDef: RefObject<boolean> = useRef(false);
+    const [isLayoutRendered, setIsLayoutRendered] = useState<boolean>(false);
+    const isColTypeDef: RefObject<boolean> = useRef<boolean>(false);
 
     /**
      * Get data operations from the grid's dataModule
@@ -69,74 +69,33 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
      * Compute content styles based on grid height
      */
     const contentStyles: CSSProperties = useMemo<CSSProperties>(() => ({
-        height: formatUnit(grid.height as string | number),
-        overflowY: grid.height === 'auto' ? 'auto' : 'scroll'
-    }), [grid.height]);
+        height: formatUnit(grid.height as string | number), // required inline element styles for responsive UI state update
+        overflowY: grid.height === 'auto' ? (!virtualSettings.enableRow ? 'hidden' : 'auto') : 'scroll'
+    }), [grid.height, virtualSettings.enableRow]);
+
+    useMemo(() => {
+        if (scrollMode === ScrollMode.Virtual && !isNullOrUndefined(scrollModule?.isDataOperationPreventVirtualCache.current)) {
+            scrollModule.isDataOperationPreventVirtualCache.current = true;
+        }
+    }, [grid.filterSettings?.columns, grid.filterSettings?.columns.length, grid.sortSettings?.columns,
+        grid.sortSettings?.columns.length, grid.searchSettings?.value, scrollMode]);
 
     const updateColumnTypes: (data: Object) => void = useCallback((data: Object) => {
-        let value: string | number | boolean | Object;
-        (uiColumns ?? grid.columns).map((newColumn: Partial<IColumnBase<T>>) => {
-            if (!isNullOrUndefined(newColumn.getCommandItems)) {
-                newColumn.type = ColumnType.Command;
+        (uiColumns.current ?? grid.columns).map((newColumn: Partial<IColumnBase<T>>, index: number) => {
+            if (!uiColumns.current) {
+                uiColumns.current = [];
             }
-            if (isNullOrUndefined(newColumn.field)) {
-                return newColumn;
-            }
-            // update column type, format, parser, and other first dataSource based properties here
-            value = getObject(newColumn.field, data);
-            if (!isNullOrUndefined(value)) {
-                isColTypeDef.current = true;
-                if (!newColumn.type) {
-                    newColumn.type = value instanceof Date && value.getDay ? (value.getHours() > 0 || value.getMinutes() > 0 ||
-                        value.getSeconds() > 0 || value.getMilliseconds() > 0 ? 'datetime' : 'date') : typeof (value);
-                }
-            } else {
-                newColumn.type = newColumn.type || null;
-            }
-            const valueFormatter: IValueFormatter = grid.serviceLocator?.getService<IValueFormatter>('valueFormatter');
-            if (newColumn.format && ((newColumn.format as DateFormatOptions).skeleton
-                || ((newColumn.format as DateFormatOptions).format &&
-                    typeof (newColumn.format as DateFormatOptions).format === 'string'))) {
-                // Store the formatter and parser functions directly on the new object
-                newColumn.formatFn = valueFormatter.getFormatFunction(extend({}, newColumn.format as DateFormatOptions));
-                newColumn.parseFn = valueFormatter.getParserFunction(newColumn.format as DateFormatOptions);
-            }
-            if (newColumn.sortComparer) {
-                let a: Function = newColumn.sortComparer;
-                newColumn.sortComparer = (x: number | string, y: number | string, xObj?: Object, yObj?: Object) => {
-                    if (typeof a === 'string') {
-                        a = getObject(a, window) as Function;
-                    }
-                    if (newColumn.sortDirection === 'Descending') {
-                        const z: number | string = x as number | string;
-                        x = y;
-                        y = z;
-                        const obj: Object = xObj;
-                        xObj = yObj;
-                        yObj = obj;
-                    }
-                    return a(x, y, xObj, yObj, newColumn.sortDirection);
-                };
-            }
-            if (typeof (newColumn.format) === 'string') {
-                setFormatter(grid.serviceLocator, newColumn);
-            } else if (!newColumn.format && newColumn.type === 'number') {
-                newColumn.parseFn = valueFormatter.getParserFunction({ format: 'n2' } as NumberFormatOptions);
-            }
-            if (newColumn.type === 'dateonly' && !newColumn.format) {
-                newColumn.format = 'yMd';
-                setFormatter(grid.serviceLocator, newColumn);
-            }
+            uiColumns.current[index as number] = updateUIColumnType(data, newColumn, grid.serviceLocator, isColTypeDef) as ColumnProps<T>;
             return newColumn;
         });
-    }, [grid.columns, uiColumns]);
+    }, [grid.columns, uiColumns.current]);
 
     /**
      * Handle successful data retrieval
      */
     const dataManagerSuccess: (response: Response | ReturnType) => void = useCallback((response: Response | ReturnType): void => {
         const data: ReturnType = response as ReturnType;
-        if (!data?.result?.length && data.count && grid.pageSettings?.enabled
+        if (!data?.result?.length && data.count && (grid.pageSettings?.enabled || scrollMode === ScrollMode.Virtual)
             && gridAction.requestType !== ActionType.Paging) {
             if (Object.keys(gridAction).length) {
                 delete gridAction.cancel;
@@ -151,7 +110,7 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
             grid.goToPage(Math.ceil(data.count / grid.pageSettings.pageSize));
             return;
         }
-        if (grid.pageSettings?.enabled) {
+        if (grid.pageSettings?.enabled || scrollMode === ScrollMode.Virtual) {
             grid.pagerModule?.goToPage(currentPage);
         }
         setTotalRecordsCount(data.count);
@@ -163,17 +122,75 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
         if (!grid.selectionSettings?.persistSelection) {
             grid.clearSelection();
         }
-        setCurrentViewData(data.result as T[]);
+
+        /**
+         * Data manager success handler:
+         * Updates virtual cache and current view data based on active pages.
+         */
+        if (scrollMode === ScrollMode.Virtual && scrollModule?.virtualRowInfo?.currentPages.length > 1) {
+            const activePages: number[] = scrollModule.virtualRowInfo.currentPages; // e.g., [2, 3]
+            const pageSize: number = pageSettings.pageSize;
+
+            setVirtualCachedViewData((prevMap: Map<number, T>) => {
+                const newMap: Map<number, T> = new Map<number, T>();
+                const newViewData: T[] = [];
+
+                if (!scrollModule?.isDataOperationPreventVirtualCache.current) {
+                    // Retain data for active pages and build newViewData
+                    for (const page of activePages) {
+                        const startKey: number = (page - 1) * pageSize;
+                        const endKey: number = startKey + pageSize;
+                        for (let key: number = startKey; key < endKey; key++) {
+                            if (prevMap.has(key)) {
+                                const item: T = prevMap.get(key)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+                                newMap.set(key, item);
+                                newViewData.push(item);
+                            }
+                        }
+                    }
+                }
+
+                // Add new data for current page
+                const startKey: number = (pageSettings.currentPage - 1) * pageSize;
+                for (let i: number = 0; i < data.result.length; i++) {
+                    const item: T = data.result[i as number] as T;
+                    newMap.set(startKey + i, item);
+                    newViewData.push(item);
+                }
+
+                // Update currentViewData in the same loop
+                setCurrentViewData(newViewData);
+
+                return newMap;
+            });
+
+        } else {
+            if (scrollMode === ScrollMode.Virtual) {
+                // Single page virtual mode: reset everything only if cache not enabled
+                setVirtualCachedViewData((prevMap: Map<number, T>) => {
+                    const newMap: Map<number, T> = !virtualSettings.enableCache ||
+                        scrollModule?.isDataOperationPreventVirtualCache.current ? new Map<number, T>() : prevMap;
+                    const startKey: number = (pageSettings.currentPage - 1) * pageSettings.pageSize;
+                    for (let i: number = 0; i < data.result.length; i++) {
+                        newMap.set(startKey + i, data.result[i as number] as T);
+                    }
+                    return newMap;
+                });
+            }
+            setCurrentViewData(data.result as T[]);
+        }
         if (!isColTypeDef.current && data.result.length > 0) {
             updateColumnTypes(data.result[0]);
         }
         setIsLayoutRendered(true);
-    }, [grid.onDataLoadStart, setCurrentViewData, gridAction]);
+    }, [grid.onDataLoadStart, setCurrentViewData, gridAction, virtualSettings, scrollModule?.isDataOperationPreventVirtualCache,
+        scrollMode]);
 
     /**
      * Handle data retrieval failure
      */
     const dataManagerFailure: (error: Error) => void = useCallback((error: Error): void => {
+        grid?.element?.setAttribute?.('aria-busy', 'false'); // To prevent react bad state update error dom manipulate along with state update which will reflect only through ref like useEffect.
         setIsContentBusy(false);
         grid.onError?.(error);
     }, [grid.onError]);
@@ -182,6 +199,7 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
      * Show the loading spinner
      */
     const showSpinner: () => void = useCallback(() => {
+        grid?.element?.setAttribute?.('aria-busy', 'true'); // To prevent react bad state update error dom manipulate along with state update which will reflect only through ref like useEffect.
         setIsContentBusy(true);
     }, []);
 
@@ -189,6 +207,7 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
      * Hide the loading spinner
      */
     const hideSpinner: () => void = useCallback(() => {
+        grid?.element?.setAttribute?.('aria-busy', 'false'); // To prevent react bad state update error dom manipulate along with state update which will reflect only through ref like useEffect.
         setIsContentBusy(false);
     }, []);
 
@@ -196,6 +215,7 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
      * Refresh data from the data manager
      */
     const refreshDataManager: () => void = useCallback((): void => {
+        grid?.element?.setAttribute?.('aria-busy', 'true'); // To prevent react bad state update error dom manipulate along with state update which will reflect only through ref like useEffect.
         setIsContentBusy(true);
         showSpinner();
         if (dataModule.dataState.current.isPending) {
@@ -219,20 +239,15 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
     }, [dataManager, grid.query, grid.columns, currentPage, aggregates, pageSettings?.enabled,
         grid.filterSettings, grid.sortSettings,  grid.searchSettings, pageSettings.pageSize]);
 
-    useMemo(() => {
-        updateColumnTypes(grid?.getCurrentViewRecords?.()?.[0]);
-    }, [uiColumns]);
-
     // Handle layout rendered state
     useEffect(() => {
         if (isLayoutRendered) {
-            selectionModule?.updateHeaderSelectionState?.();
+            if (scrollMode === ScrollMode.Auto) {
+                selectionModule?.updateHeaderSelectionState?.();
+            }
             hideSpinner();
             if (grid.onDataLoad) {
                 grid.onDataLoad();
-            }
-            if (height !== 'auto' && (contentPanelRef?.firstElementChild as HTMLElement)?.offsetHeight > contentTableRef?.scrollHeight) {
-                addLastRowBorder(contentTableRef, grid.editSettings);
             }
             if (isInitialLoad) {
                 grid?.onGridRenderComplete?.();
@@ -272,7 +287,7 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
                         totalRecordsCount: totalRecordsCount
                     };
                     grid.onPageChange?.(eventArgs);
-                } else if (gridAction.requestType === 'Refresh') {
+                } else if (gridAction.requestType === 'Refresh' && gridAction.name === 'onActionComplete') {
                     gridAction.type = 'refreshed';
                     grid.onRefresh?.();
                 }
@@ -280,18 +295,13 @@ export const useRender: <T>() => UseRenderResult<T> = <T, >(): UseRenderResult<T
             }
             const actionCompleteEvent: CustomEvent = new CustomEvent('actionComplete');
             grid.element.dispatchEvent(actionCompleteEvent);
+            const virtualScrollActionCompleteEvent: CustomEvent = new CustomEvent('virtualScrollSequencialRequest');
+            grid.element.dispatchEvent(virtualScrollActionCompleteEvent);
+            grid?.element?.setAttribute?.('aria-busy', 'false'); // To prevent react bad state update error dom manipulate along with state update which will reflect only through ref like useEffect.
             setIsContentBusy(false);
             setInitialLoad(false);
         }
     }, [isLayoutRendered, currentViewData]);
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            setIsContentBusy(false);
-            setIsLayoutRendered(null); // Reset state on unmount
-        };
-    }, []);
 
     // Memoize APIs to prevent unnecessary re-renders
     const publicRenderAPI: Partial<IGrid<T>> = useMemo(() => ({ ...grid }), [grid]);
@@ -360,7 +370,7 @@ function getUIColumnCompareKeys(): ColumnCompareKeys {
     return [
         'textAlign', 'headerTextAlign', 'disableHtmlEncode', 'clipMode', 'customAttributes', 'format', 'displayAsCheckBox', 'allowEdit',
         'templateSettings', 'edit', 'width', 'visible', 'headerText', 'template', 'headerTemplate', 'editTemplate',
-        'valueAccessor', 'headerCheckbox'
+        'valueAccessor', 'headerCheckbox', 'type', 'autoHeight'
     ];
 }
 
@@ -379,37 +389,53 @@ function getAggregateColumnCompareKeys(): AggregateColumnCompareKeys {
 /**
  * Prepare columns from children or column definitions
  *
- * @param {Object[]} children - Child elements or column definitions
+ * @param {ServiceLocator} serviceLocator - ServiceLocator for column formatting and parsing property updates.
+ * @param {Object[]} children - Child react elements or column definitions
  * @param {number} parentDepth - Current depth in the column hierarchy
  * @param {string} parentIndex - Index path for uniqueness
  * @param {ColumnProps[]} prevColumns - previous columns which is used to compare old and new and detect whether customer changed state is related to column or not.
+ * @param {ColumnProps[]} typeDetectedUIColumns - After getting data type updated ui columns.
+ * @param {IGridBase} gridProps - The grid configured properties.
+ * @param {boolean} isAutoHeightEnabled - Flag to indicate if auto height is enabled for any column, used for optimization to avoid unnecessary checks.
  * @returns {Object} Object containing columns, depth, children, and column group elements
  */
 const prepareColumns: <T>(
+    serviceLocator: ServiceLocator,
     children: ReactNode | (ColumnProps<T> | ReactElement)[],
     parentDepth?: number,
     parentIndex?: string,
-    prevColumns?: ColumnProps<T>[]
+    prevColumns?: ColumnProps<T>[],
+    typeDetectedUIColumns?: ColumnProps<T>[],
+    gridProps?: Partial<IGridBase<T>>,
+    isAutoHeightEnabled?: boolean
 ) =>
 PrepareColumns<T>
 = <T, >(
+    serviceLocator: ServiceLocator,
     children: ReactNode | (ColumnProps<T> | ReactElement)[],
     parentDepth: number = 0,
     parentIndex: string = '',
-    prevColumns?: ColumnProps<T>[]
+    prevColumns?: ColumnProps<T>[],
+    typeDetectedUIColumns?: ColumnProps<T>[],
+    gridProps?: IGridBase<T>,
+    isAutoHeightEnabled: boolean = false
 ): PrepareColumns<T> => {
+    let totalVirtualColumnWidth: number = 0;
+    const columnOffsets: { [key: number]: number } = {};
     let maxDepth: number = parentDepth;
+    let isCommandEditEnabled: boolean = false;
     let isColumnChanged: boolean = false; // currently used/handled always column state changed manner even unrelated state change props.children changed.
     let isUIColumnpropertiesChanged: boolean = false;
     let isCheckBoxColumn: boolean = false;
     const columns: ColumnProps<T>[] = [];
+    const visibleColumns: ColumnProps<T>[] = [];
     const adjustedChildren: ReactNode[] = [];
     const colGroup: JSX.Element[] = [];
     const childArray: ReactElement[] = Array.isArray(children)
         ? children as ReactElement[]
         : Children.toArray(children) as ReactElement[];
 
-    for (let i: number = 0; i < childArray.length; i++) {
+    for (let i: number = 0, columnIndex: number = 0; i < childArray.length; i++) {
         const child: ReactElement = childArray[i as number];
         const currentIndex: string = parentIndex ? `${parentIndex}-${i}` : `${i}`;
 
@@ -419,7 +445,8 @@ PrepareColumns<T>
             child.type === Columns ||
             child.type === Column
         )) {
-            const columnProps: ColumnProps<T> = defaultColumnProps<T>(child.props as ColumnProps<T>);
+            const columnProps: ColumnProps<T> = defaultColumnProps<T>(child.props as ColumnProps<T>, serviceLocator, gridProps,
+                                                                      typeDetectedUIColumns?.[columnIndex as number]);
             // Generate a unique key for the column
             const columnKey: string = generateUniqueKey(columnProps, currentIndex);
 
@@ -427,11 +454,23 @@ PrepareColumns<T>
                 // Check for and process nested columns
                 if ((child.props as { children: ReactNode })?.children) {
                     const childContents: PrepareColumns<T> = prepareColumns<T>(
+                        serviceLocator,
                         (child.props as { children: ReactElement })?.children,
                         parentDepth + 1,
                         currentIndex,
-                        prevColumns
+                        prevColumns,
+                        typeDetectedUIColumns,
+                        gridProps,
+                        isAutoHeightEnabled
                     );
+                    totalVirtualColumnWidth += childContents.totalVirtualColumnWidth;
+                    const keys: string[] = Object.keys(childContents.columnOffsets);
+                    for (let offsetIndex: number = 0; offsetIndex < keys.length; offsetIndex++) {
+                        visibleColumns.push(childContents.visibleColumns[offsetIndex as number]);
+                        columnOffsets[visibleColumns.length as number] = childContents.columnOffsets[keys[offsetIndex as number] as string];
+                    }
+                    isCommandEditEnabled = childContents.isCommandEditEnabled;
+                    isAutoHeightEnabled = isAutoHeightEnabled || childContents.isAutoHeightEnabled;
                     isColumnChanged = childContents.isColumnChanged;
                     isUIColumnpropertiesChanged = childContents.isUIColumnpropertiesChanged;
                     isCheckBoxColumn = childContents.isCheckBoxColumn;
@@ -439,46 +478,51 @@ PrepareColumns<T>
                     colGroup.push(...childContents.colGroup); // Gather col elements from child columns
                     maxDepth = Math.max(maxDepth, childContents.depth);
                 } else {
-                    if (prevColumns?.[i as number]?.field === columnProps.field) {
+                    if (prevColumns?.[columnIndex as number]?.field === columnProps.field) {
                         // Only compare specific properties that should trigger a change
                         const hasChanged: boolean = isColumnChanged || !compareSelectedProperties(
-                            prevColumns?.[i as number],
+                            prevColumns?.[columnIndex as number],
                             columnProps,
                             getDataColumnCompareKeys()
                         );
                         // Update isColumnChanged if any changes detected
                         isColumnChanged = isColumnChanged || hasChanged;
                         const hasUIChanged: boolean = isColumnChanged || !compareSelectedProperties(
-                            prevColumns?.[i as number],
+                            prevColumns?.[columnIndex as number],
                             columnProps,
                             getUIColumnCompareKeys()
                         );
                         isUIColumnpropertiesChanged = isUIColumnpropertiesChanged || hasUIChanged;
                     }
+                    // columnProps.index = columns.length;
                     columns.push(columnProps);
                     if (columnProps.type === ColumnType.Checkbox) {
                         isCheckBoxColumn = true;
                     }
-
-                    // Only create col elements for leaf columns
-                    colGroup.push(
-                        <col
-                            key={`col-${columnKey}-${Math.random().toString(36).substr(2, 9)}`}
-                            style={{
-                                width: columnProps.width,
-                                display: columnProps.visible || isNullOrUndefined(columnProps.visible)
-                                    ? CSS_CLASS_NAMES.VISIBLE
-                                    : CSS_CLASS_NAMES.HIDDEN
-                            }}
-                        />
-                    );
+                    if (columnProps.visible) {
+                        isCommandEditEnabled = !isNullOrUndefined(columnProps.getCommandItems);
+                        isAutoHeightEnabled = isAutoHeightEnabled || columnProps.autoHeight;
+                        totalVirtualColumnWidth += parseUnit(columnProps.width) ?? 150;
+                        visibleColumns.push(columnProps);
+                        columnOffsets[visibleColumns.length as number] = totalVirtualColumnWidth;
+                        // Only create col elements for leaf columns
+                        colGroup.push(
+                            <col
+                                key={`col-${columnKey}-${Math.random().toString(36).substr(2, 9)}`}
+                                style={{
+                                    width: columnProps.width,
+                                    display: CSS_CLASS_NAMES.VISIBLE
+                                }}
+                            />
+                        );
+                        adjustedChildren.push(
+                            <ColumnBase<T> key={`col-base-${columnKey}`} {...columnProps}>
+                                {(child.props as { children: ReactElement })?.children}
+                            </ColumnBase>
+                        );
+                    }
                 }
-
-                adjustedChildren.push(
-                    <ColumnBase<T> key={`col-base-${columnKey}`} {...columnProps}>
-                        {(child.props as { children: ReactElement })?.children}
-                    </ColumnBase>
-                );
+                columnIndex++;
             } else if (child.type === RenderBase || child.type === Columns) {
                 const {
                     columns: childColumns,
@@ -487,13 +531,30 @@ PrepareColumns<T>
                     children,
                     isColumnChanged: isChildrenColumnsChanged,
                     isUIColumnpropertiesChanged: isChildrenColumnsUIChanged,
-                    isCheckBoxColumn: isChildCheckboxColumn
+                    isCheckBoxColumn: isChildCheckboxColumn,
+                    totalVirtualColumnWidth: totalColumnWidth,
+                    columnOffsets: childColumnOffsets,
+                    visibleColumns: childVisibleColumns,
+                    isCommandEditEnabled: isChildCommandEditEnabled,
+                    isAutoHeightEnabled: isChildAutoHeightEnabled
                 } = prepareColumns<T>(
+                    serviceLocator,
                     (child.props as { children: ReactElement })?.children,
                     parentDepth,
                     currentIndex,
-                    prevColumns
+                    prevColumns,
+                    typeDetectedUIColumns,
+                    gridProps,
+                    isAutoHeightEnabled
                 );
+                isCommandEditEnabled = isChildCommandEditEnabled;
+                isAutoHeightEnabled = isAutoHeightEnabled || isChildAutoHeightEnabled;
+                totalVirtualColumnWidth += totalColumnWidth;
+                const keys: string[] = Object.keys(childColumnOffsets);
+                for (let offsetIndex: number = 0; offsetIndex < keys.length; offsetIndex++) {
+                    visibleColumns.push(childVisibleColumns[offsetIndex as number]);
+                    columnOffsets[visibleColumns.length as number] = childColumnOffsets[keys[offsetIndex as number] as string];
+                }
                 isColumnChanged = isChildrenColumnsChanged;
                 isUIColumnpropertiesChanged = isChildrenColumnsUIChanged;
                 isCheckBoxColumn = isChildCheckboxColumn;
@@ -505,20 +566,21 @@ PrepareColumns<T>
                 maxDepth = Math.max(maxDepth, depth);
             }
         } else if (isColumnObject(child)) {
-            const columnObject: ColumnProps<T> = defaultColumnProps<T>(child as ColumnProps<T>);
+            const columnObject: ColumnProps<T> =
+                defaultColumnProps<T>(child as ColumnProps<T>, serviceLocator, gridProps, typeDetectedUIColumns?.[i as number]);
             const columnKey: string = generateUniqueKey(columnObject, currentIndex, 'obj-');
 
-            if (prevColumns?.[i as number]?.field === columnObject.field) {
+            if (prevColumns?.[columnIndex as number]?.field === columnObject.field) {
                 // Only compare specific properties that should trigger a change
                 const hasChanged: boolean = isColumnChanged || !compareSelectedProperties(
-                    prevColumns?.[i as number],
+                    prevColumns?.[columnIndex as number],
                     columnObject,
                     getDataColumnCompareKeys()
                 );
                 // Update isColumnChanged if any changes detected
                 isColumnChanged = isColumnChanged || hasChanged;
                 const hasUIChanged: boolean = isColumnChanged || !compareSelectedProperties(
-                    prevColumns?.[i as number],
+                    prevColumns?.[columnIndex as number],
                     columnObject,
                     getUIColumnCompareKeys()
                 );
@@ -528,20 +590,26 @@ PrepareColumns<T>
             if (columnObject.type === ColumnType.Checkbox) {
                 isCheckBoxColumn = true;
             }
-            adjustedChildren.push(<ColumnBase<T> key={columnKey} {...columnObject} />);
+            if (columnObject.visible) {
+                isCommandEditEnabled = !isNullOrUndefined(columnObject.getCommandItems);
+                isAutoHeightEnabled = isAutoHeightEnabled || columnObject.autoHeight;
+                totalVirtualColumnWidth += parseUnit(columnObject.width) ?? 150;
+                visibleColumns.push(columnObject);
+                columnOffsets[visibleColumns.length as number] = totalVirtualColumnWidth;
+                adjustedChildren.push(<ColumnBase<T> key={columnKey} {...columnObject} />);
 
-            // Generate col element for object definitions
-            colGroup.push(
-                <col
-                    key={`col-${columnKey}-${Math.random().toString(36).substr(2, 9)}`}
-                    style={{
-                        width: columnObject.width,
-                        display: columnObject.visible || isNullOrUndefined(columnObject.visible)
-                            ? CSS_CLASS_NAMES.VISIBLE
-                            : CSS_CLASS_NAMES.HIDDEN
-                    }}
-                />
-            );
+                // Generate col element for object definitions
+                colGroup.push(
+                    <col
+                        key={`col-${columnKey}-${Math.random().toString(36).substr(2, 9)}`}
+                        style={{
+                            width: columnObject.width,
+                            display: CSS_CLASS_NAMES.VISIBLE
+                        }}
+                    />
+                );
+            }
+            columnIndex++;
         }
     }
 
@@ -556,7 +624,12 @@ PrepareColumns<T>
         colGroup,
         isColumnChanged,
         isUIColumnpropertiesChanged,
-        isCheckBoxColumn
+        isCheckBoxColumn,
+        totalVirtualColumnWidth,
+        columnOffsets,
+        visibleColumns,
+        isCommandEditEnabled,
+        isAutoHeightEnabled
     };
 };
 
@@ -580,49 +653,63 @@ function isColumnObject(child: ColumnProps | ReactNode): child is ColumnProps {
     return !isValidReactElement(child as ReactElement) &&
         typeof child === 'object' &&
         child !== null &&
-        'field' in child;
+        ('field' in child || (child as ColumnProps)?.type === ColumnType.Checkbox ||
+        !isNullOrUndefined((child as ColumnProps)?.getCommandItems));
 }
 
 /**
  * Custom hook to process columns from props
  *
  * @param {Partial<IGridBase>} props - Grid properties
+ * @param {ServiceLocator} serviceLocator - ServiceLocator for column formatting and parsing property updates.
  * @param {RefObject<GridRef>} gridRef - Grid reference object properties
  * @param {RefObject<PendingState>} dataState - Data state object properties
  * @param {RefObject<boolean>} isInitialBeforePaint - UI column properties changes not trigger event purpose boolean
+ * @param {Object[]} currentViewData - Updated Current view data
+ * @param {ColumnProps[]} typeDetectedUIColumns - After getting data type updated ui columns.
  * @returns {Partial<IGridBase>} Updated grid properties with processed columns
  */
-export const useColumns: <T>(props: Partial<IGridBase<T>>, gridRef: RefObject<GridRef<T>>, dataState?: RefObject<PendingState>,
-    isInitialBeforePaint?: RefObject<boolean>) =>
-Partial<IGridBase<T>> & { uiColumns: ColumnProps<T>[], isCheckBoxColumn: boolean } =
-    <T, >(props: Partial<IGridBase<T>>, gridRef: RefObject<GridRef<T>>, dataState?: RefObject<PendingState>,
-        isInitialBeforePaint?: RefObject<boolean>): Partial<IGridBase<T>> & { uiColumns: ColumnProps<T>[], isCheckBoxColumn: boolean } => {
+export const useColumns: <T>(props: Partial<IGridBase<T>>, serviceLocator: ServiceLocator, gridRef: RefObject<GridRef<T>>,
+    dataState?: RefObject<PendingState>, isInitialBeforePaint?: RefObject<boolean>, currentViewData?: T[],
+    typeDetectedUIColumns?: ColumnProps<T>[]) =>
+Partial<Omit<IGridBase<T>, 'uiColumns'>> & { uiColumns: ColumnProps<T>[], isCheckBoxColumn: boolean, totalVirtualColumnWidth: number,
+    columnOffsets: {[key: number]: number}, visibleColumns: ColumnProps<T>[], isCommandEditEnabled: boolean,
+    isAutoHeightEnabled: boolean } =
+    <T, >(props: Partial<IGridBase<T>>, serviceLocator: ServiceLocator, gridRef: RefObject<GridRef<T>>, dataState?: RefObject<PendingState>,
+        isInitialBeforePaint?: RefObject<boolean>, currentViewData?: T[], typeDetectedUIColumns?: ColumnProps<T>[]):
+    Partial<Omit<IGridBase<T>, 'uiColumns'>> & { uiColumns: ColumnProps<T>[], isCheckBoxColumn: boolean,
+        totalVirtualColumnWidth: number, columnOffsets: {[key: number]: number},
+        visibleColumns: ColumnProps<T>[], isCommandEditEnabled: boolean, isAutoHeightEnabled: boolean } => {
         const prevPrepareColumns: RefObject<PrepareColumns<T>> = useRef({} as PrepareColumns<T>);
         const isNoColumnRemoteData: boolean = useMemo(() => {
-            return !props.columns && !props.children && props.dataSource instanceof DataManager && props.dataSource.dataSource.url
-                && Array.isArray(gridRef.current?.currentViewData) && gridRef.current?.currentViewData?.length > 0;
-        }, [props.children, props.columns, props.dataSource, gridRef.current?.currentViewData]);
-        const { children, depth: headerRowDepth, columns, colGroup, uiColumns, isCheckBoxColumn } = useMemo(() => {
+            return !props.columns && !prevPrepareColumns.current?.columns?.length && props.dataSource instanceof DataManager
+                && props.dataSource.dataSource.url && Array.isArray(currentViewData) && currentViewData?.length > 0;
+        }, [props.children, props.columns, props.dataSource, currentViewData]);
+        let isDataSourceChanged: boolean = false;
+        useMemo(() => isDataSourceChanged = true, [props.dataSource]);
+        const { children, depth: headerRowDepth, columns, colGroup, uiColumns, totalVirtualColumnWidth, columnOffsets, isCheckBoxColumn,
+            visibleColumns, isCommandEditEnabled, isAutoHeightEnabled } = useMemo(() => {
             if (dataState.current.isPending && prevPrepareColumns.current.columns) {
                 return prevPrepareColumns.current;
             }
             const result: PrepareColumns<T> = prepareColumns<T>(
+                serviceLocator,
                 props.columns as ColumnProps<T>[] ??
-                props.children ??
-                ((Array.isArray(props.dataSource) && (props.dataSource as Object[]).length > 0)
-                    ? Object.keys((props.dataSource as Object[])[0])
-                        .map((key: string) => ({
-                            field: key,
-                            headerText: key
-                        }))
-                    : ((Array.isArray(gridRef.current?.currentViewData) && gridRef.current?.currentViewData?.length > 0)
-                        ? Object.keys(gridRef.current?.currentViewData[0])
+                    (!isNoColumnRemoteData ? props.children : null) ??
+                    ((Array.isArray(props.dataSource) && (props.dataSource as Object[]).length > 0)
+                        ? Object.keys((props.dataSource as Object[])[0])
                             .map((key: string) => ({
                                 field: key,
                                 headerText: key
                             }))
-                        : undefined)
-                ), null, null, gridRef.current?.columns as ColumnProps<T>[]
+                        : ((Array.isArray(currentViewData) && currentViewData?.length > 0)
+                            ? Object.keys(currentViewData[0])
+                                .map((key: string) => ({
+                                    field: key,
+                                    headerText: key
+                                }))
+                            : undefined)
+                    ), null, null, gridRef.current?.columns as ColumnProps<T>[], typeDetectedUIColumns, props
             );
             if (!result.isColumnChanged && gridRef.current?.columns) {
                 if (result.isUIColumnpropertiesChanged || prevPrepareColumns.current?.columns?.length !== result.columns?.length) {
@@ -631,9 +718,15 @@ Partial<IGridBase<T>> & { uiColumns: ColumnProps<T>[], isCheckBoxColumn: boolean
                         ...prevPrepareColumns.current,
                         uiColumns: result.columns,
                         children: result.children,
-                        colGroup: result.colGroup
+                        colGroup: result.colGroup,
+                        isCheckBoxColumn: result.isCheckBoxColumn,
+                        visibleColumns: result.visibleColumns,
+                        totalVirtualColumnWidth: result.totalVirtualColumnWidth,
+                        columnOffsets: result.columnOffsets,
+                        isCommandEditEnabled: result.isCommandEditEnabled,
+                        isAutoHeightEnabled: result.isAutoHeightEnabled
                     };
-                } else {
+                } else if (!isDataSourceChanged) {
                     return prevPrepareColumns.current;
                 }
             }
@@ -644,10 +737,15 @@ Partial<IGridBase<T>> & { uiColumns: ColumnProps<T>[], isCheckBoxColumn: boolean
         return useMemo(() => ({
             columns,
             uiColumns,
+            visibleColumns,
             headerRowDepth,
             children,
             colElements: colGroup,
-            isCheckBoxColumn
+            isCheckBoxColumn,
+            totalVirtualColumnWidth,
+            columnOffsets,
+            isCommandEditEnabled,
+            isAutoHeightEnabled
         }), [columns, uiColumns, headerRowDepth]);
     };
 
@@ -723,7 +821,7 @@ export const useAggregates: <T>(props: Partial<IGridBase<T>>, gridRef?: RefObjec
             if (isAggregateColumnsChanged) {
                 return aggregates;
             } else {
-                return gridRef.current?.aggregates;
+                return gridRef.current?.aggregates ?? aggregates;
             }
         }, [isAggregateColumnsChanged]);
     };

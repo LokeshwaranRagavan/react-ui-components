@@ -366,7 +366,8 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
     function getTooltipText(data: PointData, isLast: boolean): string {
         // Get format
         let format: string | undefined = props.format || data.series.tooltipFormat;
-        const textX: string = '${point.x}';
+        const textX: string =
+            data.series.type === 'Histogram' ? '${point.minimum}' + ' - ' + '${point.maximum}' : '${point.x}';
         if (!format) {
             switch (data.series.type) {
             case 'RangeArea':
@@ -483,7 +484,6 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
                         continue;
                     }
                     const pointData: PointData | null = getClosestX(chart, series, commonXvalues);
-
                     if (pointData && pointData.point && series.clipRect && pointData.point.symbolLocations &&
                         pointData.point.symbolLocations[0]) {
                         const symbolX: number = series.clipRect.x + pointData.point.symbolLocations[0].x;
@@ -606,6 +606,8 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
         case 'SplineRangeArea':
         case 'RangeColumn':
             return getRangeArea(data, location);
+        case 'Waterfall':
+            return getWaterfallRegion(data, location);
         default:
             return location;
         }
@@ -639,6 +641,8 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
         return location;
     }
 
+
+
     /**
      * Determines the shape of the tooltip marker based on the series type.
      *
@@ -660,9 +664,19 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
      * @returns {void} This function does not return a value.[/SUFFIX]
      */
     function renderGroupedTooltip(chart: Chart): void {
+        // shared tooltip + single series → normal tooltip
+        const visibleSeries: SeriesProperties[] = chart.visibleSeries.filter(
+            (s: SeriesProperties) => s.visible && s.enableTooltip
+        );
+
+        if (visibleSeries.length === 1) {
+            renderSeriesTooltip();
+            return;
+        }
         // Clear current points and prepare for new data
         setCurrentPoints([]);
         const dataCollection: PointData[] = [];
+        // const collection: PointData[] = [];
         let lastData: PointData | null = null;
         let tempData: PointData | null = null;
         let closestXValue: number = Number.MAX_VALUE;
@@ -881,9 +895,8 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
             areaBounds={areaBounds}
             isFixed={(props.location && (props.location.x !== undefined || props.location.y !== undefined))}
             controlName="Chart"
-            enableAnimation={props.enableAnimation}
+            enableAnimation={chartCrosshair.enable ? false : props.enableAnimation}
             textStyle={tooltipData.textStyle}
-            crosshair = {chartCrosshair.enable}
             // isTextWrap={true}
             duration={props.duration}
             opacity={props.opacity}
@@ -891,7 +904,7 @@ export const TooltipRenderer: React.FC<ChartTooltipProps> = (props: ChartTooltip
             border={props.border}
             inverted={chart.requireInvertedAxis && currentPoints?.[0]?.series?.isRectSeries}
             theme={chart?.theme}
-            enableRTL={chart?.enableRtl}
+            enableRTL={chart?.locale === 'ar' ? false : chart?.enableRtl}
             markerSize={7}
         />
     );
@@ -921,3 +934,30 @@ export function applyTooltipContentCallback(
     }
     return text;
 }
+
+/**
+ * Renders tooltip for waterfall series
+ *
+ * @param {PointData} data - The data object containing point and series information.
+ * @param {ChartLocationProps} location - Determines the location of tooltip should indicates the data point.
+ * @returns {{x: number, y: number} | null} The calculated symbol location or null if not available.
+ * @private
+ */
+export function getWaterfallRegion(
+    data: PointData,
+    location: ChartLocationProps
+): { x: number; y: number } {
+    const point: Points = data.point;
+    if (!point.regions || !point.regions[0]) {
+        return location;
+    }
+    const isNegative: boolean = (point.yValue as number) < 0;
+    if (!data.series.chart.requireInvertedAxis) {
+        location.y = isNegative ? location.y - point.regions[0].height : location.y;
+    } else {
+        location.x = isNegative ? location.x + (data.series.chart.enableRtl ? -point.regions[0].width : point.regions[0].width)
+            : location.x;
+    }
+    return location;
+}
+

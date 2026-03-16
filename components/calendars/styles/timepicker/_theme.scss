@@ -5,6 +5,7 @@
     border: $timepicker-list-border;
     border-radius: $timepicker-popup-border-radius;
     box-shadow: $timepicker-popup-shadow;
+    overflow: hidden;
   }
 
   .sf-timepicker-list {
@@ -14,24 +15,17 @@
   .sf-timepicker-item {
     border: $timepicker-list-default-border-style;
     color: $timepicker-list-default-font-color;
-
-    &:hover,
+    &:hover {
+      background: $timepicker-list-hover-bg-color;
+    }
+    
     &:focus,
     &.sf-focus {
-      background: $timepicker-list-hover-bg-color;
-      border: $timepicker-list-hover-border-color;
-      color: $timepicker-list-hover-font-color;
+      background: $timepicker-list-focus-bg-color;
     }
     
     &.sf-active {
-      background: $timepicker-list-active-bg-color;
-      color: $timepicker-list-active-font-color;
-    }
-    
-    &.sf-active.sf-focus,
-    &.sf-active:hover {
-      background: $timepicker-list-active-hover-bg-color;
-      color: $timepicker-list-active-hover-font-color;
+      background: $timepicker-list-selected-bg-color;
     }
   }
 }

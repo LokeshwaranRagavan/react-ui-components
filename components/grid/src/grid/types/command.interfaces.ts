@@ -4,7 +4,7 @@ import { CommandItemType } from './enum';
 import { ColumnProps } from './column.interfaces';
 import { IRow } from './interfaces';
 import { RefObject } from 'react';
-import { InlineEditFormRef } from './edit.interfaces';
+import { EditState, InlineEditFormRef } from './edit.interfaces';
 
 /**
  * Defines the properties for configuring individual command items (buttons) in a command column.
@@ -117,7 +117,7 @@ export interface ICommandColumnBase {
  *
  * @private
  */
-export interface UseCommandColumnResult {
+export interface UseCommandColumnResult<T = unknown> {
     /**
      * Reference tracking whether any command column row is currently in edit mode.
      * Boolean flag indicating the overall edit state of the command column.
@@ -138,6 +138,11 @@ export interface UseCommandColumnResult {
      */
     commandEditRef: RefObject<{ [key: string]: boolean; }>;
 
+    /**
+     * Reference object mapping row UIDs to their individual edit state object
+     * Allows tracking which specific rows with its updated data in edit mode
+     */
+    commandEditStateRef: RefObject<{ [key: string]: EditState<T>; }>;
     /**
      * Reference array containing newly added rows that are in edit mode.
      * Tracks rows created with the add new row feature but not yet saved to the grid.

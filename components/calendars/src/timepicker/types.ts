@@ -1,11 +1,10 @@
-import { LabelMode, Size, Variant } from '@syncfusion/react-base';
-import { PickerVariant } from '../datepicker/types';
+import { InputBaseProps, PickerVariant } from '../datepicker/types';
 
 /**
  * Interface for TimePicker component props.
  *
  */
-export interface TimePickerProps {
+export interface TimePickerProps extends InputBaseProps {
     /**
      * Specifies the selected time value of the component.
      *
@@ -49,77 +48,6 @@ export interface TimePickerProps {
     step?: number;
 
     /**
-     * Specifies the placeholder text to be displayed in the input element.
-     *
-     * @default -
-     */
-    placeholder?: string;
-
-    /**
-     * Specifies the visual style variant of the component.
-     *
-     * @default Variant.Standard
-     */
-    variant?: Variant;
-
-    /**
-     * Specifies the size style of the Timepicker. Options include 'Small', 'Medium' and 'Large'.
-     *
-     * @default Size.Medium
-     */
-    size?: Size;
-
-    /**
-     * Specifies whether the TimePicker component is in read-only mode.
-     *
-     * @default false
-     */
-    readOnly?: boolean;
-
-    /**
-     * Specifies whether the TimePicker component is disabled.
-     *
-     * @default false
-     */
-    disabled?: boolean;
-
-    /**
-     * Specifies whether to show the clear button in the TimePicker.
-     *
-     * @default true
-     */
-    clearButton?: boolean;
-
-    /**
-     * Specifies the z-index value of the TimePicker popup element.
-     *
-     * @default 1000
-     */
-    zIndex?: number;
-
-    /**
-     * Specifies whether the TimePicker should act as a strict time selector.
-     * When enabled, the component allows selection of valid time values only.
-     *
-     * @default false
-     */
-    strictMode?: boolean;
-
-    /**
-     * Specifies whether the TimePicker popup is open or not.
-     *
-     * @default false
-     */
-    open?: boolean;
-
-    /**
-     * Specifies whether the TimePicker allows users to edit the time value.
-     *
-     * @default true
-     */
-    editable?: boolean;
-
-    /**
      * Specifies whether the TimePicker should display in full screen mode on mobile devices.
      *
      * @default false
@@ -135,48 +63,6 @@ export interface TimePickerProps {
      * @default PickerVariant.Auto
      */
     pickerVariant?: PickerVariant;
-
-    /**
-     * Specifies whether the TimePicker popup should open when the input is focused.
-     *
-     * @default false
-     */
-    openOnFocus?: boolean;
-
-    /**
-     * Specifies whether the component value is valid.
-     *
-     * @default true
-     */
-    valid?: boolean;
-
-    /**
-     * Specifies the validation message to display when the component is valid.
-     *
-     * @default -
-     */
-    validMessage?: string;
-
-    /**
-     * Specifies whether to apply validation styles.
-     *
-     * @default false
-     */
-    validityStyles?: boolean;
-
-    /**
-     * Specifies whether the component is required.
-     *
-     * @default false
-     */
-    required?: boolean;
-
-    /**
-     * Specifies the behavior of the floating label.
-     *
-     * @default 'Auto'
-     */
-    labelMode?: LabelMode;
 
     /**
      * Provides a template for displaying content within the dropdown items.

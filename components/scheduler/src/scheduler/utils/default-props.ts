@@ -16,7 +16,11 @@ export const defaultSchedulerProps: Partial<SchedulerProps> = {
             location: 'Location',
             description: 'Description',
             isReadonly: 'IsReadonly',
-            isBlock: 'IsBlock'
+            isBlock: 'IsBlock',
+            recurrenceRule: 'RecurrenceRule',
+            recurrenceID: 'RecurrenceID',
+            recurrenceException: 'RecurrenceException',
+            guid: 'Guid'
         },
         spannedEventPlacement: 'AllDayRow',
         enableIndicator: false,
@@ -37,9 +41,11 @@ export const defaultSchedulerProps: Partial<SchedulerProps> = {
     eventOverlap: true,
     keyboardNavigation: true,
     showQuickInfoPopup: true,
-    showHeaderBar: true,
+    header: true,
     rowAutoHeight: false,
     readOnly: false,
     eventDrag: true,
-    eventResize: true
+    eventResize: true,
+    enableRecurrenceValidation: true,
+    weekRule: 'FirstDay'
 };

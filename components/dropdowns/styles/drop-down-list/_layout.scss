@@ -27,6 +27,12 @@
       }
     }
 
+    &.sf-dropdown-resizable .sf-medium {
+      padding-bottom: $ddl-resize-icon-padding;
+    }
+  }
+
+  .sf-dropdown {
     .sf-icon-rotate {
       @include rotate(180deg);
     }

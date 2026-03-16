@@ -1,6 +1,6 @@
 # React Lists Components
 
-The Syncfusion React List package is a feature-rich UI components, including ListView, for dynamic list interactions in React apps.
+The Syncfusion React Lists package provides a feature-rich ListView component for dynamic list interactions in React apps.
 
 ## Setup
 
@@ -12,25 +12,50 @@ npm install @syncfusion/react-lists
 
 ## React ListView
 
-The ListView component is designed to display a list of items with rich functionality and customization options. It provides a flexible and interactive way to present data in a list format with support for grouping, selection, templates, and virtualization.
+The React ListView component is designed to display a list of items with rich functionality and customization options. It provides a flexible and interactive way to present data in a list format with support for grouping, templates, and virtualization.
 
 **Key features**
 
 - **Data Binding:** Seamlessly bind data from various sources including arrays, JSON objects, and remote data through DataManager for dynamic list population.
 
-- **Grouping Support:** Organize list items into logical groups with customizable group headers, making it easier to navigate through large datasets.
+- **Query:** Use DataManager Query to fetch specific data from dataSource using where and select keywords for advanced filtering and data retrieval.
 
-- **Template Customization:** Create highly personalized list items using custom templates for headers, items, and groups to match your application's design requirements.
+- **Sorting:** Sort list items in ascending, descending, or preserve original sequence with SortOrder options. Sorting applies to both items and group headers when grouping is enabled.
 
-- **Selection Management:** Enable single or multiple item selection with built-in checkbox support positioned on left or right side of list items.
+- **Customization:** Create highly personalized list items using custom templates including:
+  - **Header Template:** Custom content rendered at the top of the list
+  - **Item Template:** Personalized rendering for each list item
+  - **Group Template:** Custom rendering for group header sections
+  - **Footer Template:** Custom content rendered at the bottom of the list
+
+- **Field Mapping:** Configure flexible field mapping to match your data structure. Default fields include id, text, url, disabled, icon, visible, tooltip, htmlAttributes, imageUrl, and groupBy properties.
 
 - **Virtualization:** Enhance performance with virtual scrolling for large datasets, rendering only visible items to maintain optimal application speed.
 
-- **Sorting Capabilities:** Sort list items in ascending, descending, or custom order to improve data organization and user experience.
+- **Disabled State:** Disable user interactions with the ListView, preventing clicks and key presses from triggering actions.
 
-- **Interactive Actions:** Support for item operations like add, remove, enable/disable, show/hide with comprehensive event handling for user interactions.
+**Usage**
 
-- **RTL Support:** Full right-to-left language support for international applications with proper text direction and layout adjustments.
+```tsx
+import { ListView } from '@syncfusion/react-lists';
+    
+export default function App() {
+  const listDatas: { [key: string]: string }[] = [
+    { id: '1', text: 'Artwork' }, 
+    { id: '2', text: 'Abstract' }, 
+    { id: '3', text: 'Modern Painting' }, 
+    { id: '4', text: 'Ceramics' }, 
+    { id: '5', text: 'Animation Art' }, 
+    { id: '6', text: 'Oil Painting' }
+  ];
+
+  return (
+    <div className="component-section">
+      <ListView dataSource={listDatas} fields={{ id: 'id', text: 'text' }}></ListView>
+    </div>
+  );
+}
+```
 
 <p align="center">
 Trusted by the world's leading companies

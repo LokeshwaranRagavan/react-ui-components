@@ -1,0 +1,14 @@
+@use '../../../base/styles/themes/variables' as *;
+$daterangepicker-background-color: rgba($content-bg-color) !default;
+$daterangepicker-box-shadow: rgba($shadow-md) !default;
+$daterangepicker-border-color: 1px solid rgba($border-light) !default;
+$daterangepicker-border-radius: $radius-8 !default;
+$daterangepicker-count-color: rgba($content-text-color-alt1) !default;
+$daterangepicker-font-weight: rgba($font-weight-medium) !default;
+$daterangepicker-line-height: $letter-spacing-wide !default;
+$daterangepicker-count-font-weight: rgba($font-weight-normal) !default;
+$daterangepicker-header-padding: $spacing-16 !default;
+$daterangepicker-dialog-header-gap: $spacing-12 !default;
+$daterangepicker-label-gap: $spacing-12 !default;
+$daterangepicker-footer-padding: $spacing-12 $spacing-12 !default;
+$daterangepicker-toolbar-font-weight: $font-weight-medium !default;

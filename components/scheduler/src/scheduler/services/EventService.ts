@@ -1,5 +1,4 @@
-import { CSSProperties, RefObject } from 'react';
-import { IScheduler } from '../index';
+import { CSSProperties } from 'react';
 import { EventFields, EventModel, TimeScaleProps } from '../types/scheduler-types';
 import { ProcessedEventsData } from '../types/internal-interface';
 import { DateService, MS_PER_DAY } from './DateService';
@@ -79,11 +78,11 @@ export class EventService {
     /**
      * Maps raw event data to EventModel objects based on field mappings
      *
-     * @param {Record<string, unknown>[]} events - Raw event data to process
+     * @param {Record<string, any>[]} events - Raw event data to process
      * @param {Record<string, string>} [fields] - Field mapping configuration
      * @returns {EventModel[]} Array of EventModel objects with mapped properties
      */
-    static mapEventData(events: Record<string, unknown>[], fields?: EventFields): EventModel[] {
+    static mapEventData(events: Record<string, any>[], fields?: EventFields): EventModel[] {
         if (!events || events.length === 0) {
             return [];
         }
@@ -98,10 +97,13 @@ export class EventService {
             location: 'Location',
             description: 'Description',
             isReadonly: 'IsReadonly',
-            isBlock: 'IsBlock'
+            isBlock: 'IsBlock',
+            recurrenceRule: 'RecurrenceRule',
+            recurrenceID: 'RecurrenceID',
+            recurrenceException: 'RecurrenceException'
         };
 
-        return events.map((eventData: Record<string, unknown>): EventModel => {
+        return events.map((eventData: Record<string, any>): EventModel => {
             const mappedEvent: Partial<EventModel> = {};
             if (fieldMappings.id && Object.prototype.hasOwnProperty.call(eventData, fieldMappings.id)) {
                 mappedEvent.id = eventData[fieldMappings.id] as string | number;
@@ -140,13 +142,22 @@ export class EventService {
             if (fieldMappings.isBlock && Object.prototype.hasOwnProperty.call(eventData, fieldMappings.isBlock)) {
                 mappedEvent.isBlock = eventData[fieldMappings.isBlock] as boolean;
             }
+            if (fieldMappings.recurrenceRule && Object.prototype.hasOwnProperty.call(eventData, fieldMappings.recurrenceRule)) {
+                mappedEvent.recurrenceRule = eventData[fieldMappings.recurrenceRule] as string;
+            }
+            if (fieldMappings.recurrenceID && Object.prototype.hasOwnProperty.call(eventData, fieldMappings.recurrenceID)) {
+                mappedEvent.recurrenceID = eventData[fieldMappings.recurrenceID] as string | number;
+            }
+            if (fieldMappings.recurrenceException && Object.prototype.hasOwnProperty.call(eventData, fieldMappings.recurrenceException)) {
+                mappedEvent.recurrenceException = eventData[fieldMappings.recurrenceException] as string;
+            }
 
             // Preserve any additional fields from the original event that are not mapped
             const mappedSourceKeys: Set<string> = new Set(Object.values(fieldMappings));
-            const preservedExtras: Record<string, unknown> = Object.fromEntries(
-                Object.entries(eventData).filter(([key]: [string, unknown]) => !mappedSourceKeys.has(key))
+            const preservedExtras: Record<string, any> = Object.fromEntries(
+                Object.entries(eventData).filter(([key]: [string, any]) => !mappedSourceKeys.has(key))
             );
-            Object.assign(mappedEvent as Record<string, unknown>, preservedExtras);
+            Object.assign(mappedEvent as Record<string, any>, preservedExtras);
 
             mappedEvent.guid = EventService.generateEventGuid();
             return mappedEvent as EventModel;
@@ -726,7 +737,7 @@ export class EventService {
     /**
      * Calculates pixel position and size for a cloned month event using DOM measurements.
      *
-     * @param {RefObject<IScheduler>} schedulerRef - Reference to the Scheduler instance.
+     * @param {HTMLDivElement} schedulerRef - Reference to the Scheduler instance.
      * @param {ProcessedEventsData} eventInfo - Event metadata including rowIndex/columnIndex and dates.
      * @param {number} cellWidth - Width of a single date cell in pixels.
      * @param {boolean} isAllDaySource - Indicates all day row events.
@@ -736,7 +747,7 @@ export class EventService {
      * @returns {CSSProperties} Inline style object containing top, left, and width (in pixels).
      */
     static cloneEventPosition(
-        schedulerRef: RefObject<IScheduler>,
+        schedulerRef: HTMLDivElement,
         eventInfo: ProcessedEventsData,
         cellWidth: number,
         isAllDaySource: boolean,
@@ -753,13 +764,13 @@ export class EventService {
         let topPx: number;
         let heightPx: number;
         if (isAllDaySource) {
-            const alldayRow: HTMLElement = schedulerRef.current?.element.querySelector(`.${CSS_CLASSES.ALL_DAY_ROW}`);
+            const alldayRow: HTMLElement = schedulerRef?.querySelector(`.${CSS_CLASSES.ALL_DAY_ROW}`);
             const alldayCells: NodeListOf<HTMLElement> = alldayRow.querySelectorAll<HTMLElement>(`.${CSS_CLASSES.ALL_DAY_CELL}`);
             targetCell = alldayCells.item(eventInfo.columnIndex);
             topPx = alldayRow.offsetTop;
         }
         else {
-            targetCell = getCellFromIndex(schedulerRef.current?.element, eventInfo.rowIndex, eventInfo.columnIndex);
+            targetCell = getCellFromIndex(schedulerRef, eventInfo.rowIndex, eventInfo.columnIndex);
             if (isMonthView) {
                 topPx = (targetCell.querySelector(`.${CSS_CLASSES.APPOINTMENT_WRAPPER}`) as HTMLElement).offsetTop;
             } else {
@@ -826,7 +837,7 @@ export class EventService {
     }
 
     static processCloneEvent(
-        schedulerRef: RefObject<IScheduler>,
+        schedulerRef: HTMLDivElement,
         renderDates: Date[],
         event: EventModel,
         showWeekend: boolean,
@@ -851,7 +862,7 @@ export class EventService {
     }
 
     static processTimeSlotCloneEvent(
-        schedulerRef: RefObject<IScheduler>,
+        schedulerRef: HTMLDivElement,
         renderDates: Date[],
         event: EventModel,
         timeScale: TimeScaleProps,
@@ -864,7 +875,7 @@ export class EventService {
         segments.forEach((segment: ProcessedEventsData) => {
             const topPx: string = PositioningService.calculateTopPosition(segment.startDate, timeScale, startHour);
             const heightPx: string = PositioningService.calculateHeight(segment, timeScale, startHour, endHour);
-            const targetCell: HTMLElement = getCellFromIndex(schedulerRef.current?.element, 0, segment.columnIndex); // first index '0'
+            const targetCell: HTMLElement = getCellFromIndex(schedulerRef, 0, segment.columnIndex); // first index '0'
             segment.eventStyle = {
                 top: topPx,
                 height: heightPx,

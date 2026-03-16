@@ -121,8 +121,7 @@ export const MarkerRenderer: {
         const index: number | string = series.index as number;
         let options: Object = {};
         let symbolGroup: Object = {};
-        const transform: string = 'translate(' + series.clipRect?.x + ',' + (series.clipRect?.y) + ')';
-
+        const transform: string = series.category === 'TrendLine' ? '' : 'translate(' + series.clipRect?.x + ',' + (series.clipRect?.y) + ')';
         void (marker.visible && (
             ((markerHeight: number, markerWidth: number) => {
                 options = createRectOption(
@@ -203,8 +202,11 @@ export const MarkerRenderer: {
             markerShape: marker.shape as ChartMarkerShape
         };
         argsData.border = setBorderColor(point, { width: argsData.border.width, color: argsData.border.color });
+        // Force marker border to use user-defined color always
+        if (series.type === 'Waterfall' && series.marker?.visible) {
+            argsData.border.color = series.marker.border?.color ?? argsData.border.color; // fallback
+        }
         void (!series.isRectSeries && (point.color = argsData.fill));
-
         const markerFill: string = argsData.fill;
         const markerBorder: ChartBorderProps = { color: argsData.border.color, width: argsData.border.width };
         const markerWidth: number = argsData.markerWidth as number;
@@ -527,7 +529,7 @@ export const renderMarkerJSX: (
                     !currentSeries?.skipMarkerAnimation;
 
                 return (
-                    <g key={markerLoopIndex} id={markerData.symbolGroup?.id}
+                    <g key={markerLoopIndex} id={currentSeries?.category === 'TrendLine' ? `${chartElementId}TrendlineSymbolGroup${currentSeries.trendIndex}` : markerData.symbolGroup?.id}
                         transform={markerData.symbolGroup?.transform}
                         clipPath={clipPathUrl}
                         style={{
@@ -536,9 +538,9 @@ export const renderMarkerJSX: (
                                 : undefined
                         }}>
                         <defs>
-                            <clipPath id={markerData.options?.id}>
+                            <clipPath id={currentSeries?.category === 'TrendLine' ? `${chartElementId}TrendlineSymbolGroup${currentSeries.trendIndex}` : markerData.symbolGroup?.id}>
                                 <rect
-                                    id={markerData.options?.id + '_Rect'}
+                                    id={currentSeries?.category === 'TrendLine' ? `${chartElementId}TrendlineSymbolGroup${currentSeries.trendIndex}` : markerData.symbolGroup?.id + '_Rect'}
                                     opacity={markerData.options?.opacity}
                                     fill={markerData.options?.fill}
                                     stroke={markerData.options?.stroke}
@@ -561,6 +563,8 @@ export const renderMarkerJSX: (
                                 (lastMarkerOption?.shape as string);
                             let extractedSeriesIndex: number = markerLoopIndex; // fallback to loop index
                             let pointIndex: number = markerIndex; // fallback to marker index
+                            const isTrendLine: boolean = currentSeries?.category === 'TrendLine';
+                            const trendLineID: string = `${chartElementId}_Series_${currentSeries?.sourceIndex}_Trendline_${currentSeries?.trendIndex}_Symbol${pointIndex}`;
                             if (option.id) {
                                 const match: RegExpMatchArray = option.id.match(/_Series_(\d+)_Point_(\d+)_/) as RegExpMatchArray;
                                 if (match) {
@@ -723,7 +727,7 @@ export const renderMarkerJSX: (
                                 return (
                                     <ellipse
                                         key={markerIndex}
-                                        id={option.id}
+                                        id={isTrendLine ? trendLineID : option.id}
                                         fillOpacity={animatedOpacity}
                                         fill={option.fill}
                                         stroke={option.stroke as string}
@@ -742,7 +746,7 @@ export const renderMarkerJSX: (
                                 return (
                                     <image
                                         key={markerIndex}
-                                        id={option.id}
+                                        id={isTrendLine ? trendLineID : option.id}
                                         opacity={option.opacity}
                                         href={option.href as string}
                                         height={option.height as number}
@@ -771,7 +775,7 @@ export const renderMarkerJSX: (
                                 return (
                                     <path
                                         key={markerIndex}
-                                        id={option.id}
+                                        id={isTrendLine ? trendLineID : option.id}
                                         fillOpacity={animatedOpacity}
                                         fill={option.fill}
                                         stroke={option.stroke as string}
@@ -793,5 +797,3 @@ export const renderMarkerJSX: (
 };
 
 export default MarkerRenderer;
-
-

@@ -104,7 +104,7 @@ export function callChartEventHandlers(
     eventType: EventType,
     e: MouseEvent | TouchEvent | WheelEvent,
     chart: Chart,
-    ...args: (ChartEventArg | ChartLocationArg | ChartTargetArg)[]
+    ...args: (ChartEventArg | ChartLocationArg | ChartTargetArg|  boolean)[]
 ): void {
     const chartId: string = chart?.element?.id;
 
@@ -114,6 +114,7 @@ export function callChartEventHandlers(
             handler(e, chart, ...args);
         }
     }
+
 
     // // Also call default handlers for backward compatibility
     // if (chartId !== 'default' && chartEventHandlers['default'] &&

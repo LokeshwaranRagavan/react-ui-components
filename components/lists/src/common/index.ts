@@ -3,7 +3,7 @@
  */
 export * from './listItem';
 export * from './listItems';
-export * from './virtualizedList';
+export * from './virtualScroller';
 export * from './utils';
 export * from './useListItem';
 export * from './useListItemSelection';

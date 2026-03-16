@@ -6,7 +6,7 @@ import { useGridComputedProvider, useGridMutableProvider } from '../../contexts'
 import { EditCell, handleFieldBlurFn, handleFieldChangeFn, internalDataFn, ValidationTooltips } from '../index';
 import { ColumnProps, InlineEditFormRef, EditCellRef, IValueFormatter, ValueType, UseEditResult } from '../../types';
 import { IL10n, isNullOrUndefined, Variant } from '@syncfusion/react-base';
-import { Form, FormField, FormState, FormValueType, IFormValidator, INumericTextBox, ITextBox, ValidationRules } from '@syncfusion/react-inputs';
+import { Form, FormField, FormState, FormValueType, IFormValidator, INumericTextBox, ITextBox } from '@syncfusion/react-inputs';
 import { getObject } from '../../utils';
 import { IDatePicker } from '@syncfusion/react-calendars';
 import { IDropDownList } from '@syncfusion/react-dropdowns';
@@ -41,7 +41,7 @@ export const PopupEditForm: <T>(props: RefAttributes<InlineEditFormRef<T>>) => R
         const popupRef: React.RefObject<IDialog> = useRef<IDialog>(null);
         const focusableInputRef: React.RefObject<HTMLElement> = useRef<HTMLElement>(null);
 
-        const formValidationRules: ValidationRules = useFormValidationRules(columns);
+        const { rules: formValidationRules } = useFormValidationRules(columns);
 
         const [internalData, setInternalData] = useState<T>(internalDataFn(isAddOperation, editData, columns as ColumnProps<T>[]));
 
@@ -173,11 +173,11 @@ export const PopupEditForm: <T>(props: RefAttributes<InlineEditFormRef<T>>) => R
         }, []);
 
         /**
-         * Get current form data
+         * Get current form internal parsed data
          */
         const getCurrentData: () => T = useCallback(() => {
-            return formState?.values as T;
-        }, [formState]);
+            return internalData as T;
+        }, [internalData]);
 
         /**
          * Creates popup template element from editSettings when custom template mode is enabled.

@@ -1,6 +1,6 @@
-import { useCallback, RefObject, useEffect, useState } from 'react';
+import { useCallback, RefObject, useEffect, useState, Dispatch, SetStateAction } from 'react';
 import { FilterEvent, FilterSettings, FilterPredicates, filterModule, FilterProperties, IFilterOperator, CustomOperators } from '../types/filter.interfaces';
-import { ActionType, IValueFormatter, ValueType } from '../types';
+import { ActionType, IValueFormatter, ScrollMode, ValueType, VirtualSettings } from '../types';
 import { GridRef } from '../types/grid.interfaces';
 import { IColumnBase, ColumnProps } from '../types/column.interfaces';
 import { closest, extend, IL10n, isNullOrUndefined, matches} from '@syncfusion/react-base';
@@ -16,14 +16,21 @@ import { ServiceLocator } from '../types/interfaces';
  * @param {FilterSettings} filterSetting - Reference to the filter settings
  * @param {Function} setGridAction - Function to update grid actions
  * @param {ServiceLocator} serviceLocator - Defines the service locator
+ * @param {Function} setCurrentPage - State Dispatch Function to update grid currentPage
+ * @param {Function} virtualSettings - virtualization settings
+ * @param {Function} scrollMode - scroll mode setting
  * @returns {filterModule} An object containing various filter-related state and API
  */
 export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSettings,
     setGridAction?: (action: Object) => void,
-    serviceLocator?: ServiceLocator) => filterModule = (gridRef?: RefObject<GridRef>,
-                                                        filterSetting?: FilterSettings,
-                                                        setGridAction?: (action: Object) => void,
-                                                        serviceLocator?: ServiceLocator) => {
+    serviceLocator?: ServiceLocator, setCurrentPage?: Dispatch<SetStateAction<number>>, virtualSettings?: VirtualSettings,
+    scrollMode?: ScrollMode) => filterModule = (gridRef?: RefObject<GridRef>,
+                                                filterSetting?: FilterSettings,
+                                                setGridAction?: (action: Object) => void,
+                                                serviceLocator?: ServiceLocator,
+                                                setCurrentPage?: Dispatch<SetStateAction<number>>,
+                                                virtualSettings?: VirtualSettings,
+                                                scrollMode?: ScrollMode) => {
     const formatter: IValueFormatter = serviceLocator?.getService<IValueFormatter>('valueFormatter');
     const localization: IL10n = serviceLocator?.getService<IL10n>('localization');
     const [filterSettings, setFilterSettings] = useState<FilterSettings>(filterSetting);
@@ -123,11 +130,28 @@ export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSet
         ]
     };
 
+    const resetVirtualCacheViewCurrentPage: () => void = () => {
+        if (gridRef.current?.contentScrollRef && scrollMode === ScrollMode.Virtual && virtualSettings.enableRow &&
+            virtualSettings.enableCache) {
+            setCurrentPage(1); // To maintain scroll position, additional handling of scrollTop, rowHeight, and row ranges is required. so followed our competitors and ej2 behavior.
+        }
+    };
+
+    const filterHandler: (fColl?: FilterPredicates[], action?: string, field?: string) => void = async(
+        fColl?: FilterPredicates[], action?: string,  field?: string): Promise<void> => {
+        if (action === 'filter') {
+            setFilterSettings((prev: FilterSettings) => ({ ...prev, columns: fColl }));
+        } else {
+            removeFilteredColsByField(field);
+        }
+    };
+
     /**
      * update filterSettings properties filterModule
      */
     useEffect(() => {
         setFilterSettings(filterSetting);
+        resetVirtualCacheViewCurrentPage();
     }, [filterSetting]);
 
     /**
@@ -296,6 +320,7 @@ export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSet
                                 args.type = 'actionComplete';
                                 setGridAction(args);
                             }
+                            resetVirtualCacheViewCurrentPage();
                         }
                     }
                 }
@@ -658,6 +683,7 @@ export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSet
             });
             args.type = 'actionComplete';
             setGridAction(args);
+            resetVirtualCacheViewCurrentPage();
         }
         refreshFilterSettings();
         updateFilterMsg();
@@ -786,6 +812,7 @@ export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSet
                     requestType: 'Refresh', name: 'onActionComplete'
                 });
             }
+            resetVirtualCacheViewCurrentPage();
             getFilterProperties.refresh = true;
             return;
         }
@@ -822,6 +849,7 @@ export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSet
                     requestType: 'Refresh', name: 'onActionComplete'
                 });
             }
+            resetVirtualCacheViewCurrentPage();
         }
         getFilterProperties.filterStatusMsg = '';
         refreshFilterSettings();
@@ -833,6 +861,7 @@ export const useFilter: (gridRef?: RefObject<GridRef>, filterSetting?: FilterSet
         clearFilter,
         removeFilteredColsByField,
         keyUpHandler,
+        filterHandler,
         mouseDownHandler,
         filterSettings,
         setFilterSettings,

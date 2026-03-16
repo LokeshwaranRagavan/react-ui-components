@@ -292,11 +292,11 @@ export interface TooltipProps {
      * Specifies a callback function that determines the target elements on which the Tooltip should be displayed.
      * This can be used for showing Tooltip with multiple targets.
      *
-     * @param {HTMLElement} args - The target element for which the Tooltip is being evaluated.
-     * @returns {boolean} True to display the Tooltip, false to prevent it from showing.
+     * @param {HTMLElement} eventTarget - The element that triggered the event.
+     * @returns {HTMLElement | null} The resolved anchor element to attach tooltip, or null to prevent it.
      * @event onFilterTarget
      */
-    onFilterTarget?: (event: HTMLElement) => boolean;
+    onFilterTarget?: (eventTarget: HTMLElement) => HTMLElement | null;
 }
 
 export interface ITooltip extends TooltipProps {
@@ -312,7 +312,7 @@ export interface ITooltip extends TooltipProps {
      * Shows the Tooltip on the specified target with specific animation settings.
      *
      * @param {HTMLElement} element - Target element where the Tooltip is to be displayed. (Optional)
-     * @param {TooltipAnimationSettings} animationSettings - Sets the specific animation, while showing the Tooltip on the screen. (Optional)
+     * @param {TooltipAnimationProps} animationSettings - Sets the specific animation, while showing the Tooltip on the screen. (Optional)
      * @public
      * @returns {void}
      */
@@ -321,7 +321,7 @@ export interface ITooltip extends TooltipProps {
     /**
      * Hides the Tooltip with specific animation effect.
      *
-     * @param {TooltipAnimationSettings} animationSettings - Sets the specific animation when hiding Tooltip from the screen. (Optional)
+     * @param {TooltipAnimationProps} animationSettings - Sets the specific animation when hiding Tooltip from the screen. (Optional)
      * @public
      * @returns {void}
      */
@@ -415,6 +415,7 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
     const containerElement: React.RefObject<HTMLElement | null>  = useRef<HTMLElement | null>(typeof document !== 'undefined' ? document.body : null);
     const initialOpenState: React.RefObject<boolean| undefined> = useRef(open);
     const scrolled: React.RefObject<boolean> = useRef<boolean>(false);
+    const isPopupOpenedRef: React.RefObject<boolean> = useRef<boolean>(false);
     if (Browser.isDevice) {
         touchModule.current = Touch(rootElemRef as RefObject<HTMLElement>);
     }
@@ -609,10 +610,6 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
     }, []);
 
     const renderPopup: (target: HTMLElement) => void  = (target: HTMLElement) => {
-        if (followCursor && originalData.current?.event) {
-            onMouseMove(originalData.current?.event as MouseEvent);
-            return;
-        }
         const elePos: OffsetPosition = getTooltipPosition(target);
         setElePos(elePos);
     };
@@ -696,16 +693,20 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
     };
 
     const openPopupHandler: () => void = () => {
+        isPopupOpenedRef.current = true;
         if (!followCursor) {
             reposition(targetRef.current as HTMLElement);
         }
     };
 
     const closePopupHandler: () => void = () => {
+        isPopupOpenedRef.current = false;
         clear();
         const currentTooltipEle: RefObject<HTMLElement> = React.createRef<HTMLElement>() as RefObject<HTMLElement>;
         currentTooltipEle.current = tooltipEle.current?.element as HTMLElement;
-        AnimationInstance.stop(currentTooltipEle.current);
+        if (currentTooltipEle.current) {
+            AnimationInstance.stop(currentTooltipEle.current);
+        }
         scrolled.current = false;
         setIsHidden(true);
     };
@@ -914,12 +915,27 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
         timers.current.autoClose = setTimeout(close, TOUCHEND_HIDE_DELAY);
     };
 
+    const resolveAnchorTarget: (eventTarget: HTMLElement) => HTMLElement | null = (eventTarget: HTMLElement): HTMLElement | null => {
+        if (!onFilterTarget) {
+            return null;
+        }
+        const resolvedAnchor: HTMLElement | null = onFilterTarget(eventTarget);
+        return resolvedAnchor;
+    };
+
     const targetClick: (e: Event) => void = (e: Event) => {
+        let resolvedAnchor: HTMLElement | null = null;
         let target: HTMLElement | undefined;
-        if (props.target?.current) {
+        if (onFilterTarget) {
+            resolvedAnchor = resolveAnchorTarget(e.target as HTMLElement);
+            if (!resolvedAnchor) {
+                return;
+            }
+            target = resolvedAnchor;
+        } else if (props.target?.current) {
             target = props.target.current.contains(e.target as Node) ? props.target.current : undefined;
         } else {
-            target = onFilterTarget ? e.target as HTMLElement : rootElemRef.current as HTMLElement;
+            target = rootElemRef.current as HTMLElement;
         }
         if (isNullOrUndefined(target)) {
             return;
@@ -937,9 +953,11 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
     const targetHover: (e: TouchEventArgs | MouseEventArgs | Event) => void = (e: TouchEventArgs | MouseEventArgs | Event) => {
         let target: HTMLElement | undefined;
         if (onFilterTarget) {
-            const isTarget: boolean = onFilterTarget?.(e.target as HTMLElement);
-            if (!isTarget) {return; }
-            target = e.target as HTMLElement;
+            const resolvedAnchor: HTMLElement | null = resolveAnchorTarget(e.target as HTMLElement);
+            if (!resolvedAnchor) {
+                return;
+            }
+            target = resolvedAnchor;
         } else {
             if (props.target?.current) {
                 target = props.target.current.contains(e.target as Node) ? props.target.current : undefined;
@@ -1034,6 +1052,10 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
             addDescribedBy(target, TooltipStyle?.id as string);
             if (arrow) {
                 setTipClass(position);
+            }
+            if (followCursor && originalData.current?.event) {
+                onMouseMove(originalData.current?.event as MouseEvent);
+                return;
             }
             renderPopup(target);
             adjustArrow(target, position, tooltipPosition.current.x as string, tooltipPosition.current.y as string);
@@ -1268,7 +1290,6 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
         if (target) { restoreElement(target); }
         if (isHidden) {
             setArrowInnerTipStyle({ top: '', left: '' });
-            tooltipEle.current = null;
         }
     };
 
@@ -1283,8 +1304,31 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
         hideTooltip(animation.close as TooltipAnimationProps, e, targetRef.current as HTMLElement);
     };
 
+    const closeIfNotShown: (e: MouseEvent) => boolean = (e: MouseEvent): boolean => {
+        if (timers.current.show) {
+            clearTimeout(timers.current.show);
+            timers.current.show = null;
+        }
+        if (!isPopupOpenedRef.current && tooltipEle.current?.element && tooltipEle.current.element.getBoundingClientRect().height === 0) {
+            onClose?.(e);
+            if (isNullOrUndefined(open)) {
+                setIsPopupOpen(false);
+                closePopupHandler();
+            }
+            return true;
+        }
+        return false;
+    };
+
     const onMouseOut: (e: MouseEvent) => void = (e: MouseEvent) => {
         const enteredElement: EventTarget = e.relatedTarget as EventTarget;
+        if (onFilterTarget && targetRef.current && enteredElement) {
+            const nextAnchor: HTMLElement | null = resolveAnchorTarget(enteredElement as HTMLElement);
+            if (nextAnchor === targetRef.current) {
+                return;
+            }
+        }
+
         if (enteredElement ) {
             const checkForTooltipElement: Element = closest(
                 enteredElement as HTMLElement,
@@ -1295,12 +1339,14 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
                 }
                 checkForTooltipElement.addEventListener('mouseleave', tooltipElementMouseOut as EventListener);
             } else {
+                if (closeIfNotShown(e)) { return; }
                 hideTooltip(animation.close as TooltipAnimationProps, e, targetRef.current as HTMLElement);
                 if (closeDelay === 0 && ((animation.close as TooltipAnimationProps).effect === 'None')) {
                     clear();
                 }
             }
         } else {
+            if (closeIfNotShown(e)) { return; }
             hideTooltip(animation.close as TooltipAnimationProps, e, targetRef.current as HTMLElement);
             clear();
         }
@@ -1308,7 +1354,14 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
 
     const tooltipElementMouseOut: (e: MouseEvent) => void = (e: MouseEvent) => {
         tooltipEle.current?.element?.removeEventListener('mouseleave', tooltipElementMouseOut as EventListener);
-        if (!e.relatedTarget  ||  closest(e.relatedTarget as HTMLElement, '.sf-tooltip') as Element !== rootElemRef.current) {
+        const relatedTarget: HTMLElement = e.relatedTarget as HTMLElement;
+        if (onFilterTarget && targetRef.current && relatedTarget) {
+            const nextAnchor: HTMLElement | null = resolveAnchorTarget(relatedTarget);
+            if (nextAnchor === targetRef.current) {
+                return;
+            }
+        }
+        if (!relatedTarget || (targetRef.current && !targetRef.current.contains(relatedTarget))) {
             hideTooltip(animation.close as TooltipAnimationProps, e, targetRef.current as HTMLElement);
             clear();
         }
@@ -1379,7 +1432,7 @@ forwardRef<ITooltip, TooltipProps>((props: TooltipComponentProps, ref: React.Ref
     };
 
     const scrollHandler: (e: Event) => void = (e: Event) => {
-        if (tooltipEle.current && tooltipEle.current.element && !sticky && !followCursor && !scrolled.current) {
+        if (tooltipEle.current && tooltipEle.current.element && !followCursor && !scrolled.current) {
             if (!(closest(e.target as HTMLElement, `.${TOOLTIP_WRAP}.${POPUP_LIB}.${POPUP_ROOT}`))) {
                 setIsPopupOpen((prev: boolean) => {
                     if (!prev) {

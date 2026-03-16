@@ -1357,7 +1357,7 @@ forwardRef<TooltipRefHandle, TooltipProps>((props: TooltipProps, ref: React.Forw
                         opacity: state.tooltipOpacity,
                         left: state.tooltipPosition.x + 'px',
                         top: state.tooltipPosition.y + 'px',
-                        transition: mergedProps.crosshair ? '' : (mergedProps.enableAnimation && !state.isInitialAppearance && state.tooltipOpacity === 1)
+                        transition: (mergedProps.enableAnimation && !state.isInitialAppearance && state.tooltipOpacity === 1)
                             ? 'top 300ms ease-out, left 300ms ease-out, opacity 300ms ease-out'
                             : 'opacity 300ms ease-out'
                     }}
@@ -1382,7 +1382,7 @@ forwardRef<TooltipRefHandle, TooltipProps>((props: TooltipProps, ref: React.Forw
                     className="e-tooltip"
                     style={{
                         opacity: state.tooltipOpacity,
-                        transition: mergedProps.crosshair ? '' : (mergedProps.enableAnimation && !state.isInitialAppearance && state.tooltipOpacity === 1)
+                        transition: (mergedProps.enableAnimation && !state.isInitialAppearance && state.tooltipOpacity === 1)
                             ? 'transform 300ms ease-out, opacity 300ms ease-out'
                             : 'opacity 300ms ease-out'
                     }}

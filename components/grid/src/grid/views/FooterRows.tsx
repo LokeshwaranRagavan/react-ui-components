@@ -9,7 +9,6 @@ import {
     memo,
     RefObject,
     JSX,
-    useEffect,
     ReactElement
 } from 'react';
 import {
@@ -90,10 +89,8 @@ const FooterRowsBase: (props: Partial<IFooterRowsBase> & RefAttributes<FooterRow
              */
             const storeRowRef: (index: number, element: HTMLTableRowElement, cellRef: ICell<ColumnProps<T>>[]) => void =
                 useCallback((index: number, element: HTMLTableRowElement, cellRef: ICell<ColumnProps<T>>[]) => {
-                    if (rowsObjectRef.current[index as number]) {
-                        rowsObjectRef.current[index as number].element = element;
-                        rowsObjectRef.current[index as number].cells = cellRef;
-                    }
+                    rowsObjectRef.current[index as number].element = element;
+                    rowsObjectRef.current[index as number].cells = cellRef;
                 }, []);
 
             const getData: () => AggregateRowProps[] = (): AggregateRowProps[] => {
@@ -178,7 +175,7 @@ const FooterRowsBase: (props: Partial<IFooterRowsBase> & RefAttributes<FooterRow
                     const options: IRow<ColumnProps<T>> = {};
                     options.uid = getUid('grid-row');
                     options.data = data[parseInt(rowIndex.toString(), 10)] as T;
-                    options.index = rowIndex;
+                    options.rowIndex = rowIndex;
                     options.isAggregateRow = true;
 
                     const rowId: string = `grid-summary-row-${rowIndex}-${Math.random().toString(36).substr(2, 5)}`;
@@ -210,12 +207,6 @@ const FooterRowsBase: (props: Partial<IFooterRowsBase> & RefAttributes<FooterRow
                 rowsObjectRef.current = rowOptions;
                 return rows;
             }, [columnsDirective, rowHeight, responseData, tableScrollerPadding]);
-
-            useEffect(() => {
-                return () => {
-                    rowsObjectRef.current = [];
-                };
-            }, []);
 
             return (
                 <tfoot

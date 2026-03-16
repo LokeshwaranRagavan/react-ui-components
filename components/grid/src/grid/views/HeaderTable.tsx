@@ -7,7 +7,9 @@ import {
     useMemo,
     memo,
     JSX,
-    RefObject
+    RefObject,
+    useState,
+    useLayoutEffect
 } from 'react';
 import { HeaderRowsBase } from './index';
 import {
@@ -19,6 +21,7 @@ import {
     useGridComputedProvider,
     useGridMutableProvider
 } from '../contexts';
+import { parseUnit } from '../utils';
 
 /**
  * HeaderTableBase component renders the table structure for grid headers
@@ -36,25 +39,57 @@ const HeaderTableBase: ForwardRefExoticComponent<Partial<IHeaderTableBase> & Ref
     memo(forwardRef<HeaderTableRef, Partial<IHeaderTableBase>>(
         (props: Partial<IHeaderTableBase>, ref: RefObject<HeaderTableRef>) => {
             // Access grid context providers
-            const { colElements: ColElements } = useGridMutableProvider();
-            const { id } = useGridComputedProvider();
+            const { colElements: ColElements, offsetX, virtualSettings } = useGridMutableProvider();
+            const { id, scrollModule } = useGridComputedProvider();
 
             // Refs for DOM elements and child components
             const headerTableRef: RefObject<HTMLTableElement> = useRef<HTMLTableElement>(null);
             const rowSectionRef: RefObject<HeaderRowsRef> = useRef<HeaderRowsRef>(null);
+            const [forceRerender, setForceRerender] = useState<Object>({});
+            const totalWidth: RefObject<number> = useRef(0);
 
             /**
              * Memoized colgroup element to prevent unnecessary re-renders
              * Contains column definitions for the table
              */
-            const colGroupContent: JSX.Element = useMemo<JSX.Element>(() => (
-                <colgroup
-                    key={`${id}-colgroup`}
-                    id={`${id}-colgroup`}
-                >
-                    {ColElements.length ? ColElements : null}
-                </colgroup>
-            ), [ColElements, id]);
+            const colGroupContent: JSX.Element = useMemo(() => {
+                let visibleCols: JSX.Element[] = [];
+
+                if (ColElements.length) {
+                    if (!virtualSettings.enableColumn) {
+                        visibleCols = ColElements;
+                    } else {
+                        const startIndex: number = scrollModule?.virtualColumnInfo?.startIndex ?? 0;
+                        const endIndex: number = scrollModule?.virtualColumnInfo?.endIndex ?? ColElements.length;
+                        totalWidth.current = 0;
+                        for (let i: number = startIndex; i < endIndex; i++) {
+                            const col: JSX.Element = ColElements[i as number];
+                            visibleCols.push(col);
+
+                            // Optional: If you ever need cumulative width, you can calculate here
+                            const styleWidth: number = col?.props?.style?.width;
+                            totalWidth.current += parseUnit(styleWidth);
+                        }
+                    }
+                }
+
+                return (
+                    <colgroup
+                        key={`content-${id}-colgroup`}
+                        id={`content-${id}-colgroup`}
+                    >
+                        {visibleCols.length > 0 ? visibleCols : null}
+                    </colgroup>
+                );
+            }, [
+                ColElements,
+                id,
+                offsetX,
+                virtualSettings.enableColumn,
+                scrollModule?.virtualColumnInfo?.startIndex,
+                scrollModule?.virtualColumnInfo?.endIndex,
+                forceRerender, totalWidth.current
+            ]);
 
             /**
              * Expose internal elements and methods through the forwarded ref
@@ -62,8 +97,13 @@ const HeaderTableBase: ForwardRefExoticComponent<Partial<IHeaderTableBase> & Ref
             useImperativeHandle(ref, () => ({
                 headerTableRef: headerTableRef.current,
                 getHeaderTable: () => headerTableRef.current,
+                columnClientWidth: totalWidth.current,
                 ...(rowSectionRef.current)
-            }), [headerTableRef.current, rowSectionRef.current]);
+            }), [headerTableRef.current, rowSectionRef.current, totalWidth.current]);
+
+            useLayoutEffect(() => {
+                setForceRerender({});
+            }, [offsetX]);
 
             /**
              * Memoized header rows component to prevent unnecessary re-renders

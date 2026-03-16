@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, RefObject, SetStateAction, Dispatch } from 'react';
-import { ActionType, EditEndAction, IRow, UseCommandColumnResult, ValueType } from '../types';
+import { ActionType, AutoSelectMode, EditEndAction, IRow, UseCommandColumnResult, ValueType, VirtualSettings } from '../types';
 import { GridRef, RowInfo } from '../types/grid.interfaces';
-import { EditSettings, EditState, UseEditResult, UseConfirmDialogResult, SaveEvent, DeleteEvent, FormCancelEvent, FormRenderEvent, RowAddEvent, RowEditEvent, InlineEditFormRef } from '../types/edit.interfaces';
+import { EditSettings, EditState, UseEditResult, UseConfirmDialogResult, SaveEvent, DeleteEvent, FormCancelEvent, FormRenderEvent, RowAddEvent, RowEditEvent, InlineEditFormRef, payload } from '../types/edit.interfaces';
 import { ColumnProps } from '../types/column.interfaces';
 import { UseDataResult } from '../types/interfaces';
 import { useConfirmDialog } from './useEditDialog';
@@ -11,6 +11,7 @@ import { FocusedCellInfo, FocusStrategyResult } from '../types/focus.interfaces'
 import { DataManager, DataResult, DataUtil, ReturnType } from '@syncfusion/react-data';
 import { FormState, IFormValidator } from '@syncfusion/react-inputs';
 import { selectionModule } from '../types/selection.interfaces';
+import { buildDeletepayload, getCurrentPageSelectedItems } from '../utils';
 
 /**
  * Edit hook for managing inline editing functionality in React Grid
@@ -28,6 +29,7 @@ import { selectionModule } from '../types/selection.interfaces';
  * @param {Dispatch<SetStateAction<number>>} setCurrentPage - Function to set grid currentpage
  * @param {Dispatch<SetStateAction<Object>>} setResponseData - Function to set aggregate updated data
  * @param {UseCommandColumnResult} commandColumnModule - Reference to the command column module
+ * @param {VirtualSettings} virtualSettings - virtual settings
  * @returns {Object} Edit state and methods
  */
 export const useEdit: <T>(
@@ -42,7 +44,8 @@ export const useEdit: <T>(
     setGridAction: Dispatch<SetStateAction<Object>>,
     setCurrentPage: Dispatch<SetStateAction<number>>,
     setResponseData: Dispatch<SetStateAction<Object>>,
-    commandColumnModule: UseCommandColumnResult
+    commandColumnModule: UseCommandColumnResult<T>,
+    virtualSettings: VirtualSettings
 ) => UseEditResult<T> = <T>(
     _gridRef: RefObject<GridRef<T>>,
     serviceLocator: ServiceLocator,
@@ -55,12 +58,14 @@ export const useEdit: <T>(
     setGridAction: Dispatch<SetStateAction<Object>>,
     setCurrentPage: Dispatch<SetStateAction<number>>,
     setResponseData: Dispatch<SetStateAction<Object>>,
-    commandColumnModule: UseCommandColumnResult
+    commandColumnModule: UseCommandColumnResult<T>,
+    virtualSettings: VirtualSettings
 ) => {
     // Use currentViewData (processed array) for display
     const viewData: T[] = currentViewData;
 
-    const { commandEdit, commandEditRef, commandAddRef, commandEditInlineFormRef, commandAddInlineFormRef } = commandColumnModule;
+    const { commandEdit, commandEditRef, commandAddRef, commandEditInlineFormRef, commandAddInlineFormRef, commandEditStateRef } =
+        commandColumnModule;
     const dialogHook: UseConfirmDialogResult = useConfirmDialog(serviceLocator);
     const localization: IL10n = serviceLocator?.getService<IL10n>('localization');
     const { confirmOnDelete } = dialogHook;
@@ -84,6 +89,16 @@ export const useEdit: <T>(
         isShowAddNewRowDisabled: false,
         rowObject: {}
     });
+
+    // Selection delete dialog state
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
+    const [pendingDeleteData, setPendingDeleteData] = useState<{
+        recordsToDelete: T[];
+        deleteIndexes: number[];
+        fieldName?: string;
+        data?: T | T[];
+        currentPageSelectedRecords?: T[]; // Cache current page records to avoid re-iteration
+    } | null>(null);
 
     /**
      * Default edit settings with fallbacks
@@ -153,8 +168,8 @@ export const useEdit: <T>(
         let hasValidSelection: boolean = false;
 
         if (rowElement) {
-            const rowIndexAttr: string | null = rowElement.getAttribute('aria-rowindex');
-            rowIndex = rowIndexAttr ? (parseInt(rowIndexAttr, 10) - 1) : -1;
+            const rowIndexAttr: string | null = rowElement.getAttribute('data-uid');
+            rowIndex = rowIndexAttr ? _gridRef?.current.getRowObjectFromUID(rowIndexAttr).rowIndex : -1;
             hasValidSelection = rowIndex >= 0;
         } else {
             const gridRef: GridRef | null = _gridRef?.current;
@@ -241,7 +256,10 @@ export const useEdit: <T>(
             ...updateState
         }));
         if (commandEdit.current) {
-            commandEditRef.current[`${gridRef.getRowsObject()[parseInt(rowIndex.toString(), 10)].uid}`] = true;
+            const rowUid: string = getPrimaryKeyField() ?
+                ('grid-row-' + startArgs.data[getPrimaryKeyField()]) : gridRef.getRowsObject()[parseInt(rowIndex.toString(), 10)].uid;
+            commandEditRef.current[`${rowUid}`] = true;
+            commandEditStateRef.current[`${rowUid}`] = { ...editState, ...updateState };
         }
         const editGridElement: HTMLDivElement | null | undefined = _gridRef?.current?.element;
         const editStateEvent: CustomEvent = new CustomEvent('editStateChanged', {
@@ -262,7 +280,7 @@ export const useEdit: <T>(
                     ...(defaultEditSettings.mode === 'PopupTemplate' ? {} as FormRenderEvent
                         : {
                             formRef: defaultEditSettings.mode === 'Popup' ? popupEditFormRef.current?.formRef : commandEdit.current
-                                ? commandEditInlineFormRef.current[`${gridRef.getRowsObject()[parseInt(rowIndex.toString(), 10)].uid}`].current.formRef
+                                ? commandEditInlineFormRef.current[`${gridRef.getRowsObject()[parseInt(rowIndex.toString(), 10)]?.uid}`].current.formRef
                                 : gridRef?.editInlineRowFormRef.current?.formRef as RefObject<IFormValidator>
                         }),
                     data: actionCompleteArgs.data,
@@ -282,7 +300,8 @@ export const useEdit: <T>(
         editState.editData,
         editState.originalData,
         editState.showAddNewRowData,
-        focusModule
+        focusModule,
+        getPrimaryKeyField
     ]);
 
     /**
@@ -291,11 +310,11 @@ export const useEdit: <T>(
      */
     const getCurrentEditData: (commandID?: string) => T = useCallback((commandID?: string) => {
         if (commandEdit.current && commandID) {
-            return commandEditInlineFormRef.current[`${commandID}`] ? commandEditInlineFormRef.current[`${commandID}`].current?.formState?.values as T
-                : commandAddInlineFormRef.current[`${commandID}`].current?.formState?.values as T;
+            return commandEditInlineFormRef.current[`${commandID}`] ? commandEditInlineFormRef.current[`${commandID}`].current?.getCurrentData?.() as T
+                : commandAddInlineFormRef.current[`${commandID}`].current?.getCurrentData?.() as T;
         }
-        return (editState.originalData ? _gridRef.current?.editInlineRowFormRef?.current?.formState?.values as T :
-            _gridRef.current?.addInlineRowFormRef?.current?.formState?.values as T) || editDataRef.current;
+        return (editState.originalData ? _gridRef.current?.editInlineRowFormRef?.current?.getCurrentData?.() as T :
+            _gridRef.current?.addInlineRowFormRef?.current?.getCurrentData?.() as T) || editDataRef.current;
     }, [
         editState.editData,
         _gridRef.current?.editInlineRowFormRef?.current,
@@ -316,10 +335,12 @@ export const useEdit: <T>(
     ]);
 
     const getCurrentFormState: () => FormState = useCallback(() => {
-        return (editState.originalData ? _gridRef.current?.editInlineRowFormRef?.current?.formState :
-            _gridRef.current?.addInlineRowFormRef?.current?.formState);
+        return (editState.originalData ? { ..._gridRef.current?.editInlineRowFormRef?.current?.formState,
+            errors: editState?.validationErrors } : {..._gridRef.current?.addInlineRowFormRef?.current?.formState,
+            errors: editState?.validationErrors });
     }, [
         editState.editData,
+        editState?.validationErrors && Object.keys(editState?.validationErrors)?.length,
         _gridRef.current?.editInlineRowFormRef?.current,
         _gridRef.current?.addInlineRowFormRef?.current
     ]);
@@ -377,7 +398,7 @@ export const useEdit: <T>(
                 requestType: 'save',
                 type: 'actionBegin',
                 data: currentEditData,
-                rowIndex: isCommandEdit ? isCommandAdd ? defaultEditSettings.newRowPosition === 'Top' ? 0 : viewData.length : rowObj.index : editState.editRowIndex,
+                rowIndex: isCommandEdit ? isCommandAdd ? defaultEditSettings.newRowPosition === 'Top' ? 0 : viewData.length : rowObj.rowIndex : editState.editRowIndex,
                 action: isAddOperation ? ActionType.Add : ActionType.Edit,
                 previousData: isCommandEdit ? rowObj.data : editState.originalData
             };
@@ -536,7 +557,7 @@ export const useEdit: <T>(
                 }
                 requestAnimationFrame(() => {
                     const tr: HTMLTableRowElement = gridRef.contentTableRef?.rows?.[gridRef.contentTableRef?.rows?.length - 1];
-                    if (gridRef.height !== 'auto' && !isAddOperation && (editState.editRowIndex + 1).toString() === tr.getAttribute('aria-rowindex') &&
+                    if (gridRef.height !== 'auto' && !isAddOperation && (editState.editRowIndex + 1).toString() === tr.getAttribute('data-rowindex') &&
                         (gridRef.contentPanelRef?.firstElementChild as HTMLElement)?.offsetHeight > gridRef.contentTableRef?.scrollHeight) {
                         addClass([].slice.call(tr.getElementsByClassName('sf-cell')), 'sf-last-cell');
                     }
@@ -611,6 +632,7 @@ export const useEdit: <T>(
                     delete commandAddInlineFormRef.current[`${commandID}`];
                 } else {
                     delete commandEditRef.current[`${commandID}`];
+                    delete commandEditStateRef.current[`${commandID}`];
                     delete commandEditInlineFormRef.current[`${commandID}`];
                 }
             }
@@ -633,13 +655,15 @@ export const useEdit: <T>(
                     {
                         rowIndex: notKeyBoardAllowedClickRowInfo.current.rowIndex,
                         colIndex: notKeyBoardAllowedClickRowInfo.current?.columnIndex,
-                        isHeader: false
+                        isHeader: false,
+                        virtualAriaColIndex: notKeyBoardAllowedClickRowInfo.current.ariaColIndex,
+                        virtualAriaRowIndex: notKeyBoardAllowedClickRowInfo.current.ariaRowIndex
                     } : _gridRef.current.focusModule.getFocusedCell();
                 // First ensure grid has focus
                 gridRef?.focusModule?.setGridFocus(true);
 
                 // Select the appropriate row
-                const rowIndexToSelect: number = isCommandEdit ? rowObj.index
+                const rowIndexToSelect: number = isCommandEdit ? rowObj.rowIndex
                     : lastFocusedCellinfo?.rowIndex > -1 && endAction === 'Click' ? lastFocusedCellinfo?.rowIndex : savedRowIndex;
                 if (selectionModule?.selectedRowIndexes.indexOf(rowIndexToSelect) === -1 || customBindingEdit) {
                     selectionModule?.selectRow(rowIndexToSelect);
@@ -652,7 +676,7 @@ export const useEdit: <T>(
                     (defaultEditSettings.showAddNewRow && defaultEditSettings.newRowPosition === 'Top' ?
                         savedRowIndex + 1 : savedRowIndex);
                 requestAnimationFrame(() => {
-                    gridRef?.focusModule?.navigateToCell(isCommandEdit ? rowObj.index : endAction === 'Click' ? targetRowIndex : savedRowIndex, lastFocusedCellinfo?.colIndex !== -1 && endAction === 'Click' ?
+                    gridRef?.focusModule?.navigateToCell(isCommandEdit ? rowObj.rowIndex : endAction === 'Click' ? targetRowIndex : savedRowIndex, lastFocusedCellinfo?.colIndex !== -1 && endAction === 'Click' ?
                         lastFocusedCellinfo?.colIndex : endAction === 'Key' ? escEnterIndex.current : 0);
                 });
             };
@@ -728,7 +752,7 @@ export const useEdit: <T>(
 
         setTimeout(() => {
             if (isCommandAdd) { return; }
-            const rowIndexToSelect: number = isCommandEdit ? rowObj.index : editState.editRowIndex;
+            const rowIndexToSelect: number = isCommandEdit ? rowObj.rowIndex : editState.editRowIndex;
             if (selectionModule?.selectedRowIndexes.indexOf(rowIndexToSelect) === -1) {
                 selectionModule?.selectRow(rowIndexToSelect);
             } else {
@@ -802,6 +826,7 @@ export const useEdit: <T>(
                 delete commandAddInlineFormRef.current[`${commandID}`];
             } else {
                 delete commandEditRef.current[`${commandID}`];
+                delete commandEditStateRef.current[`${commandID}`];
                 delete commandEditInlineFormRef.current[`${commandID}`];
             }
         }
@@ -916,13 +941,13 @@ export const useEdit: <T>(
             if (commandEdit.current) {
                 const index: number = (commandAddRef.current.length ?
                     commandAddRef.current.reduce((max: IRow<ColumnProps>, obj: IRow<ColumnProps>) => {
-                        return obj.index > max.index ? obj : max;
-                    }, commandAddRef.current[0]).index : -1) + 1;
+                        return obj.rowIndex > max.rowIndex ? obj : max;
+                    }, commandAddRef.current[0]).rowIndex : -1) + 1;
                 commandAddUID = 'grid-add-row-command-' + index;
                 commandAddRef.current.push({
                     data: {},
                     uid: commandAddUID,
-                    index: index,
+                    rowIndex: index,
                     cells: [{}]
                 });
             }
@@ -957,7 +982,7 @@ export const useEdit: <T>(
                             ...(defaultEditSettings.mode === 'PopupTemplate' ? {} as FormRenderEvent
                                 : {
                                     formRef: defaultEditSettings.mode === 'Popup' ? popupEditFormRef.current?.formRef : commandEdit.current
-                                        ? commandAddInlineFormRef.current[`${commandAddUID}`].current.formRef
+                                        ? commandAddInlineFormRef.current[`${commandAddUID}`]?.current?.formRef
                                         : gridRef?.addInlineRowFormRef.current?.formRef as RefObject<IFormValidator>
                                 }),
                             data: actionCompleteArgs.rowData,
@@ -965,7 +990,8 @@ export const useEdit: <T>(
                         };
                         gridRef?.onFormRender?.(eventArgs);
                         gridRef?.focusModule?.removeFocusTabIndex();
-                        prevFocusedCell.current = { rowIndex: -1, colIndex: -1, isHeader: false };
+                        prevFocusedCell.current = { rowIndex: -1, colIndex: -1, virtualAriaColIndex: -1, virtualAriaRowIndex: -1,
+                            isHeader: false };
                     }, 0);
                 });
             } else {
@@ -997,10 +1023,12 @@ export const useEdit: <T>(
             if (!data) {
                 // Delete selected records using selection module (multiple row support)
                 const gridRef: GridRef | null = _gridRef?.current;
-                const selectedRecords: T[] | null = gridRef.selectionModule?.getSelectedRecords?.() as T[];
-                if (selectedRecords && selectedRecords.length > 0) {
+                const selectedRecords: unknown[] = gridRef?.selectionSettings.persistSelection ?
+                    Array.from(gridRef.getPersistSelectedData()) : gridRef.selectionModule?.getSelectedRecords() as T[];
+                if (selectedRecords?.length > 0 || gridRef.selectionModule?.isHeaderSelectAllMode) {
                     // Collect records to delete from all pages
                     recordsToDelete = [...(selectedRecords as T[])];
+                    deleteIndexes = [...gridRef.selectionModule?.getSelectedRowIndexes()];
                 } else {
                     // Show validation message if no records are selected
                     const message: string = localization?.getConstant('noRecordsDeleteMessage');
@@ -1069,12 +1097,52 @@ export const useEdit: <T>(
                 }
             }
 
-            if (recordsToDelete.length === 0) {
+            if (!_gridRef?.current?.selectionModule?.isHeaderSelectAllMode && recordsToDelete.length === 0) {
                 return;
             }
 
-            // Show delete confirmation if enabled
-            if (defaultEditSettings.confirmOnDelete) {
+            // Determine if there are selections across multiple pages
+            const hasPersistSelection: boolean = _gridRef?.current?.selectionSettings?.persistSelection;
+            const autoSelectMode: string = _gridRef?.current?.selectionSettings?.autoSelectMode ?? AutoSelectMode.Default;
+            const isRemote: boolean = dataOperations?.isRemote?.();
+
+            // Check if selections exist beyond the current page
+            let hasCrossPageSelection: boolean = false;
+            let currentPageSelectedRecords: T[] = [];
+
+            if (hasPersistSelection && recordsToDelete.length > 0) {
+                // Get both count and records in a single call to avoid duplicate iterations
+                const result: { records: T[]; count: number; } = getCurrentPageSelectedItems<T>(
+                    currentViewData,
+                    selectionModule?.selectedRowState,
+                    _gridRef?.current,
+                    true // Get records as well since we might need them for the dialog
+                );
+
+                currentPageSelectedRecords = result.records;
+                const currentPageSelectedCount: number = result.count;
+
+                // Cross-page detection logic based on AutoSelectMode
+                switch (autoSelectMode) {
+                case AutoSelectMode.Default:
+                    // Default mode: cross-page if header select-all was activated or if selections exceed current page
+                    hasCrossPageSelection = (_gridRef?.current?.selectionModule?.isHeaderSelectAllMode &&
+                        (_gridRef?.current?.getDataModule() as UseDataResult)?.isRemote()) ||
+                        (recordsToDelete.length > currentPageSelectedCount);
+                    break;
+
+                case AutoSelectMode.Intermediate:
+                    // Intermediate mode: only shows cross-page dialog if explicitly flagged
+                    hasCrossPageSelection = recordsToDelete.length > currentPageSelectedCount;
+                    break;
+                }
+            }
+
+            // Determine which dialog to show
+            const shouldShowSelectionDialog: boolean = hasPersistSelection && hasCrossPageSelection;
+
+            // Show delete confirmation dialog (ConfirmDialog) if enabled and NOT showing DeleteDialog
+            if (defaultEditSettings.confirmOnDelete && !shouldShowSelectionDialog) {
                 // Use React dialog component instead of window.confirm
                 // This provides a consistent UI experience and follows React patterns
                 const confirmResult: boolean = await confirmOnDelete();
@@ -1084,6 +1152,46 @@ export const useEdit: <T>(
                 }
             }
 
+            // Show DeleteDialog only when there are cross-page selections
+            if (shouldShowSelectionDialog) {
+                // Store pending delete data with cached current page records to avoid re-iteration
+                setPendingDeleteData({
+                    recordsToDelete,
+                    deleteIndexes,
+                    fieldName,
+                    data,
+                    currentPageSelectedRecords // Cache the records to avoid recalculating
+                });
+                setIsDeleteDialogOpen(true);
+                return; // Don't proceed with delete until dialog is confirmed
+            }
+
+            // Execute the actual delete operation (for non-dialog scenarios)
+            await executeDelete(recordsToDelete, deleteIndexes, isRemote, 'page');
+        }, [
+            _gridRef,
+            dataOperations,
+            getPrimaryKeyField,
+            setIsDeleteDialogOpen,
+            setPendingDeleteData,
+            defaultEditSettings.allowDelete,
+            defaultEditSettings.confirmOnDelete,
+            defaultEditSettings.mode,
+            viewData
+        ]);
+
+    /**
+     * Internal function to execute delete operation
+     *
+     * @param {T[]} recordsToDelete - Records to delete
+     * @param {number[]} deleteIndexes - Indexes of records to delete
+     * @param {boolean} useRemoteHeaderPayload - Whether to use remote header selection payload
+     * @param {string} deleteOption - The delete option ('page' or 'all')
+     */
+    const executeDelete: (recordsToDelete: T[], deleteIndexes: number[], isRemote: boolean, deleteOption?: 'page' | 'all') => Promise<void> =
+        useCallback(async ( recordsToDelete: T[], deleteIndexes: number[], isRemote: boolean, deleteOption?: 'page' | 'all'
+        ): Promise<void> => {
+            const eventTarget: HTMLElement = event?.target as HTMLElement;
             // This ensures consistent event handling pattern across all grid operations
             const actionBeginArgs: Record<string, ValueType | Object | null> = {
                 cancel: false,
@@ -1113,6 +1221,12 @@ export const useEdit: <T>(
             const lastDeletedIndex: number = deleteIndexes[deleteIndexes.length - 1];
             const customBinding: boolean = dataOperations.dataManager && 'result' in dataOperations.dataManager;
 
+            // Build remote delete payload for server-side processing (only when useRemoteHeaderPayload is true)
+            let payload: payload;
+            if (isRemote) {
+                payload = buildDeletepayload<T>(gridRef as GridRef<T>, deleteOption);
+            }
+
             // Single deletion: use dataManager.remove()
             // Multiple deletion: use dataManager.saveDataChanges() with deletedRecords
             try {
@@ -1127,7 +1241,8 @@ export const useEdit: <T>(
                 } else {
                     await dataOperations.getData(customBinding ? actionBeginArgs : {
                         requestType: ActionType.Delete,
-                        data: startArgs.data
+                        data: startArgs.data,
+                        ...(isRemote ? { payload } : {})
                     });
                 }
                 if (((len === 1 && (_gridRef.current?.currentViewData.length - len) <= 0) ||
@@ -1148,6 +1263,28 @@ export const useEdit: <T>(
                     action: ActionType.Delete
                 };
 
+                // Clear selections based on what was actually deleted
+                if (Array.isArray(startArgs.data) && startArgs.data.length > 0) {
+                    if (gridRef?.selectionSettings?.persistSelection) {
+                        if (gridRef?.selectionModule?.isHeaderSelectAllMode && isRemote) {
+                            // Header select-all delete: clear all selections since all were deleted
+                            gridRef?.selectionModule?.clearAllPersistedSelection();
+                            if (Array.isArray(gridRef?.selectionModule?.selectedRowIndexes)) {
+                                gridRef.selectionModule.selectedRowIndexes.length = 0;
+                            }
+                        } else {
+                            // Specific records deleted: remove only those from selection
+                            gridRef?.selectionModule?.clearDeletedSelections(startArgs.data as T[]);
+                        }
+                    } else {
+                        // Non-persistent selection: clear all selections (legacy behavior)
+                        gridRef?.selectionModule?.clearAllPersistedSelection();
+                        if (Array.isArray(gridRef?.selectionModule?.selectedRowIndexes)) {
+                            gridRef.selectionModule.selectedRowIndexes.length = 0;
+                        }
+                    }
+                }
+
                 const addDeleteActionComplete: () => void = () => {
                     requestAnimationFrame(() => {
                         gridRef?.focusModule?.setGridFocus(true);
@@ -1160,14 +1297,6 @@ export const useEdit: <T>(
                             gridRef.element.focus({ preventScroll: true });
                         }, 0);
                     });
-
-                    // Clears all persisted selections and resets selected row indexes
-                    if (Array.isArray(startArgs.data)) {
-                        gridRef?.selectionModule?.clearAllPersistedSelection();
-                        if (Array.isArray(gridRef?.selectionModule?.selectedRowIndexes)) {
-                            gridRef.selectionModule.selectedRowIndexes.length = 0;
-                        }
-                    }
 
                     eventTarget?.focus?.();
                     const eventArgs: DeleteEvent = {
@@ -1184,14 +1313,7 @@ export const useEdit: <T>(
                 gridRef?.onError(error as Error);
                 return;
             }
-        }, [
-            defaultEditSettings.allowDelete,
-            defaultEditSettings.confirmOnDelete,
-            defaultEditSettings.mode,
-            _gridRef,
-            viewData,
-            getPrimaryKeyField
-        ]);
+        }, [_gridRef, dataOperations, viewData, setGridAction, setCurrentPage]);
 
     /**
      * Updates a specific row with new data
@@ -1276,15 +1398,22 @@ export const useEdit: <T>(
     /**
      * Enhanced updateEditData function with proper data isolation and persistence
      */
-    const updateEditData: (field: string, value: string | number | boolean | Record<string, unknown> | Date) => void =
-        useCallback((field: string, value: string | number | boolean | Record<string, unknown> | Date) => {
+    const updateEditData: (field: string, value: ValueType, rowObject?: IRow<ColumnProps<T>>) => void =
+        useCallback((field: string, value: ValueType, rowObject?: IRow<ColumnProps<T>>) => {
             if (!editState.isEdit) {
                 return;
             }
 
+            const primaryKeyField: string = getPrimaryKeyField?.();
+            let isCommandEdit: boolean = false;
             // Initialize editDataRef if it's null
             if (!editDataRef.current) {
                 editDataRef.current = { ...editState.editData };
+            }
+            else if (!isNullOrUndefined(rowObject?.rowIndex) && rowObject.data?.[primaryKeyField as string] !==
+                editDataRef.current?.[primaryKeyField as string] && commandEditStateRef?.current?.[rowObject.uid as string]) {
+                editDataRef.current = commandEditStateRef?.current?.[rowObject.uid]?.editData;
+                isCommandEdit = true;
             }
 
             // Update ref immediately for instant access without triggering re-renders
@@ -1299,15 +1428,30 @@ export const useEdit: <T>(
 
             editDataRef.current = DataUtil.setValue(field, value, copiedComplexData) as T;
 
-            // Update the state editData to persist values
-            // This ensures that typed values are maintained even when focus moves out of grid
-            setEditState((prev: EditState<T>) => ({
-                ...prev,
-                editData: {
-                    ...editDataRef.current
+            requestAnimationFrame(() => { // onchange form validation time taken purpose small delay required
+                const errorsObj: Record<string, string> = !editState.originalData ?
+                    _gridRef.current?.addInlineRowFormRef.current?.formState.errors :
+                    _gridRef.current?.editInlineRowFormRef.current?.formState.errors;
+                // Update the state editData to persist values
+                // This ensures that typed values are maintained even when focus moves out of grid
+                setEditState((prev: EditState<T>) => ({
+                    ...prev,
+                    ...(isCommandEdit ? {...commandEditStateRef?.current?.[rowObject.uid as string]} : {}),
+                    editData: {
+                        ...editDataRef.current
+                    },
+                    ...(errorsObj && Object.keys(errorsObj).length && virtualSettings.enableRow ? {validationErrors: !prev.originalData ?
+                        _gridRef.current?.addInlineRowFormRef.current?.formState.errors :
+                        _gridRef.current?.editInlineRowFormRef.current?.formState.errors} : {})
+                }));
+                if ((isCommandEdit || commandEdit.current) && commandEditStateRef.current?.[rowObject.uid as string]) {
+                    if (virtualSettings.enableRow) {
+                        commandEditStateRef.current[rowObject.uid].validationErrors = (editState.originalData ?
+                            commandEditInlineFormRef : commandAddInlineFormRef).current?.[`${rowObject.uid}`]?.current?.formState?.errors;
+                    }
+                    commandEditStateRef.current[rowObject.uid as string].editData = { ...editDataRef.current };
                 }
-            }));
-
+            });
         }, [editState.isEdit, editState.editData, _gridRef.current]);
 
     /**
@@ -1378,7 +1522,7 @@ export const useEdit: <T>(
             const clickedRow: HTMLTableRowElement = clickedCell.closest('tr[role="row"]') as HTMLTableRowElement;
             const rowElement: HTMLTableRowElement = clickedRow;
             // Only proceed if we have a valid data row with proper attributes
-            if (!clickedRow || (!clickedRow.hasAttribute('aria-rowindex') && !clickedRow.hasAttribute('aria-rowindex'))) {
+            if (!clickedRow || (!clickedRow.hasAttribute('data-rowindex') && !clickedRow.hasAttribute('data-rowindex'))) {
                 return;
             }
 
@@ -1540,6 +1684,7 @@ export const useEdit: <T>(
         }));
         if (commandEditChanges) {
             commandEditRef.current = {};
+            commandEditStateRef.current = {};
             commandAddRef.current = [];
             commandEditInlineFormRef.current = {};
             commandAddInlineFormRef.current = {};
@@ -1556,6 +1701,23 @@ export const useEdit: <T>(
         // No unsaved changes, operation can proceed
         return true;
     }, [_gridRef.current, editState.isEdit, editState.originalData, editState.editData, localization, dialogHook]);
+
+    const onSelectionDeleteConfirm: (deleteOption: 'page' | 'all') => Promise<void> = async ( deleteOption: 'page' | 'all' ): Promise<void> => {
+        try {
+            const isRemoteData: boolean = dataOperations?.isRemote?.();
+            if (deleteOption === 'page') {
+                // Use cached current page selected records to avoid re-iteration
+                const currentPageSelectedRecords: T[] = pendingDeleteData?.currentPageSelectedRecords;
+                await executeDelete(currentPageSelectedRecords, pendingDeleteData?.deleteIndexes, isRemoteData, deleteOption);
+            } else {
+                // Delete all selected records
+                await executeDelete( pendingDeleteData?.recordsToDelete, pendingDeleteData?.deleteIndexes, isRemoteData, deleteOption);
+            }
+        } finally {
+            setPendingDeleteData(null);
+            setIsDeleteDialogOpen(false);
+        }
+    };
 
     return {
         // Edit state
@@ -1606,6 +1768,15 @@ export const useEdit: <T>(
         dialogConfig: dialogHook.dialogConfig,
         onDialogConfirm: dialogHook.onDialogConfirm,
         onDialogCancel: dialogHook.onDialogCancel,
+
+        // Selection delete dialog state and handlers
+        isDeleteDialogOpen,
+        onSelectionDeleteConfirm,
+        onSelectionDeleteCancel: () => {
+            // User canceled - abort operation without deleting
+            setPendingDeleteData(null);
+            setIsDeleteDialogOpen(false);
+        },
         nextPrevEditRowInfo,
         focusLastField,
         escEnterIndex

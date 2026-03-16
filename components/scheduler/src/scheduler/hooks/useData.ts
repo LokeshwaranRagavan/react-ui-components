@@ -5,6 +5,10 @@ import { EventModel, SchedulerDataChangeEvent, SchedulerDataRequestEvent  } from
 import { DateService } from '../services/DateService';
 import { EventService } from '../services/EventService';
 import { ActiveViewProps } from '../types/internal-interface';
+import { expandRecurringEvents, getRecurrenceMaxId, updateParentRecurrenceEvent } from '../utils/event-base';
+import { CrudAction } from '../types/enums';
+import { getRecurrenceStringFromDate } from '../../recurrence-editor';
+import { ConfirmationDialogState } from './useConfirmationDialog';
 
 interface CrudArgs extends SchedulerDataChangeEvent {
     promise?: Promise<any>;
@@ -20,6 +24,11 @@ interface SaveChanges {
 interface UseDataProps {
     activeViewProps: ActiveViewProps;
     renderDates: Date[];
+    confirmationDialog?: {
+        show: (config: Omit<ConfirmationDialogState, 'visible'>) => void;
+        hide: () => void;
+        setStateUpdater: (callback: (state: ConfirmationDialogState) => void) => void;
+    };
 }
 
 /** @private */
@@ -31,6 +40,11 @@ interface UseDataResult {
     eventsData: EventModel[];
 
     /**
+     * Processed events data before expansion.
+     */
+    eventsProcessed: EventModel[];
+
+    /**
      * Adds the newly created event into the Scheduler dataSource.
      */
     addEvent: (data: Record<string, any> | Record<string, any>[]) => void;
@@ -38,12 +52,12 @@ interface UseDataResult {
     /**
      * Deletes the events based on the provided ID or event collection in the argument list.
      */
-    deleteEvent?: (id: string | number | Record<string, any> | Record<string, any>[]) => void;
+    deleteEvent?: (id: string | number | Record<string, any> | Record<string, any>[], action?: CrudAction) => void;
 
     /**
      * Updates the changes made in the event object by passing it as an parameter into the dataSource.
      */
-    saveEvent?: (data: Record<string, any> | Record<string, any>[]) => void;
+    saveEvent?: (data: Record<string, any> | Record<string, any>[], action?: CrudAction) => void;
 }
 
 /**
@@ -55,8 +69,10 @@ interface UseDataResult {
  */
 export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataProps): UseDataResult => {
     const { activeViewProps, renderDates } = props;
-    const { eventSettings, readOnly, onDataChangeStart, onDataChangeComplete, onError, onDataRequest } = activeViewProps;
+    const { eventSettings, readOnly, onDataChangeStart, onDataChangeComplete, onError,
+        onDataRequest } = activeViewProps;
     const [eventsData, setEventsData] = useState<EventModel[]>();
+    const [eventsProcessed, setEventsProcessed] = useState<EventModel[]>();
 
     const dataManager: DataManager = useMemo(() => {
         if (eventSettings?.dataSource instanceof DataManager) {
@@ -114,7 +130,9 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
         }
         const originalData: Record<string, any>[] = event.result;
         const mappedEvents: EventModel[] = EventService.mapEventData(originalData, eventSettings.fields);
-        setEventsData(mappedEvents);
+        const expandedEvents: EventModel[] = expandRecurringEvents(mappedEvents, renderDates, activeViewProps.firstDayOfWeek);
+        setEventsProcessed(mappedEvents);
+        setEventsData(expandedEvents);
     };
 
     const dataManagerFailure: (error: Error) => void = (error: Error): void => {
@@ -173,18 +191,17 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
 
     const processAddEvent: (addArgs: SchedulerDataChangeEvent) => void = useCallback((addArgs: SchedulerDataChangeEvent): void => {
         const editParams: SaveChanges = { addedRecords: [], changedRecords: [], deletedRecords: [] };
-        let promise: Promise<any>;
+        let promise: Promise<EventModel>;
         if (addArgs.addedRecords instanceof Array) {
             for (let event of addArgs.addedRecords) {
                 event = updateEventDateTime(event);
-                const eventData: Record<string, any> = <Record<string, any>>extend({}, event, null, true);
+                if (event[eventSettings.fields.recurrenceRule]) {
+                    event[eventSettings.fields.id] = getRecurrenceMaxId(eventsData, eventSettings.fields) + 1;
+                }
+                const eventData: Record<string, EventModel> = <Record<string, EventModel>>extend({}, event, null, true);
                 editParams.addedRecords.push(eventData);
             }
-            promise = dataManager.saveChanges(editParams, eventSettings.fields.id, getTable(), generateQuery()) as Promise<any>;
-        } else {
-            const event: Record<string, any> = addArgs.addedRecords;
-            editParams.addedRecords.push(event);
-            promise = dataManager.insert(event, getTable(), generateQuery()) as Promise<any>;
+            promise = dataManager.saveChanges(editParams, eventSettings.fields.id, getTable(), generateQuery()) as Promise<EventModel>;
         }
         const crudArgs: CrudArgs = {
             cancel: false,
@@ -192,49 +209,183 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
             editParams: editParams
         };
         refreshData(crudArgs);
-    }, [dataManager, eventSettings, getTable, generateQuery, refreshData]);
+    }, [dataManager, eventSettings, getTable, generateQuery, refreshData, eventsData]);
 
-    const processDeleteEvent: (deleteArgs: SchedulerDataChangeEvent) => void = useCallback((deleteArgs: SchedulerDataChangeEvent): void => {
-        let promise: Promise<any>;
-        const editParams: SaveChanges = { addedRecords: [], changedRecords: [], deletedRecords: [] };
-        if (deleteArgs.deletedRecords.length > 1) {
-            editParams.deletedRecords = editParams.deletedRecords.concat(deleteArgs.deletedRecords);
-            promise = dataManager.saveChanges(editParams, eventSettings.fields.id, getTable(), generateQuery()) as Promise<any>;
-        } else {
-            editParams.deletedRecords.push(deleteArgs.deletedRecords[0]);
-            promise = dataManager.remove(eventSettings.fields.id, deleteArgs.deletedRecords[0],
-                                         getTable(), generateQuery()) as Promise<any>;
-        }
-        const crudArgs: CrudArgs = {
-            cancel: false,
-            promise: promise,
-            editParams: editParams
-        };
-        refreshData(crudArgs);
-    }, [dataManager, eventSettings, getTable, generateQuery, refreshData]);
-
-    const processSaveEvent: (saveArgs: SchedulerDataChangeEvent) => void = useCallback((saveArgs: SchedulerDataChangeEvent): void => {
-        let promise: Promise<any>;
-        const editParams: SaveChanges = { addedRecords: [], changedRecords: [], deletedRecords: [] };
-        if (saveArgs.changedRecords instanceof Array) {
-            for (let event of saveArgs.changedRecords) {
-                event = updateEventDateTime(event);
-                const eventData: Record<string, any> = <Record<string, any>>extend({}, event, null, true);
-                editParams.changedRecords.push(eventData);
+    const processDeleteEvent: (deleteArgs: SchedulerDataChangeEvent, action?: CrudAction) => SaveChanges =
+        useCallback((deleteArgs: SchedulerDataChangeEvent, action?: CrudAction): SaveChanges => {
+            const editParams: SaveChanges = { addedRecords: [], changedRecords: [], deletedRecords: [] };
+            if (action === 'DeleteOccurrence' || action === 'DeleteSeries') {
+                for (const event of deleteArgs.deletedRecords) {
+                    let clonedEvent: Record<string, any> = <Record<string, any>>extend({}, event, null, true);
+                    if (clonedEvent.recurrenceID || clonedEvent[eventSettings.fields.recurrenceID]) {
+                        if (action === 'DeleteOccurrence') {
+                            if (clonedEvent.recurrenceID !== clonedEvent.id ||
+                                clonedEvent[eventSettings.fields.recurrenceID] !== clonedEvent[eventSettings.fields.id]) {
+                                editParams.deletedRecords.push(clonedEvent);
+                            } else {
+                                if (clonedEvent.startTime) {
+                                    clonedEvent.recurrenceException = getRecurrenceStringFromDate(clonedEvent.startTime);
+                                } else {
+                                    clonedEvent[eventSettings.fields.recurrenceException] =
+                                        getRecurrenceStringFromDate(clonedEvent[eventSettings.fields.startTime]);
+                                }
+                                clonedEvent = updateParentRecurrenceEvent(clonedEvent, eventSettings.fields, eventsProcessed);
+                                editParams.changedRecords.push(clonedEvent);
+                            }
+                        } else if (action === 'DeleteSeries') {
+                            const deleteEvents: EventModel[] = (eventsProcessed || []).filter((e: EventModel) =>
+                                (e.recurrenceID || e.id) === (clonedEvent.recurrenceID || clonedEvent[eventSettings.fields.recurrenceID]));
+                            editParams.deletedRecords.push(...deleteEvents);
+                        }
+                    } else {
+                        editParams.deletedRecords.push(clonedEvent);
+                    }
+                }
+            } else {
+                editParams.deletedRecords = editParams.deletedRecords.concat(deleteArgs.deletedRecords);
             }
-            promise = dataManager.saveChanges(editParams, eventSettings.fields.id, getTable(), generateQuery()) as Promise<any>;
-        } else {
-            const event: Record<string, any> = saveArgs.changedRecords;
-            editParams.changedRecords.push(event);
-            promise = dataManager.update(eventSettings.fields.id, event, getTable(), generateQuery()) as Promise<any>;
+            return editParams;
+        }, [eventSettings, eventsProcessed]);
+
+    const performDeleteEvent: (editParams: SaveChanges) => void =
+        useCallback((editParams: SaveChanges): void => {
+            let promise: Promise<any>;
+            if (editParams.deletedRecords.length > 1 || editParams.changedRecords.length > 0) {
+                promise = dataManager.saveChanges(editParams, eventSettings.fields.id, getTable(), generateQuery()) as Promise<any>;
+            } else if (editParams.deletedRecords.length === 1) {
+                promise = dataManager.remove(eventSettings.fields.id, editParams.deletedRecords[0],
+                                             getTable(), generateQuery()) as Promise<any>;
+            } else {
+                promise = Promise.resolve();
+            }
+            const crudArgs: CrudArgs = {
+                cancel: false,
+                promise: promise,
+                editParams: editParams
+            };
+            refreshData(crudArgs);
+        }, [dataManager, eventSettings, getTable, generateQuery, refreshData]);
+
+    const handleEditOccurrence: (records: Record<string, any>[], editParams: SaveChanges) => void =
+    (records: Record<string, any>[], editParams: SaveChanges): void => {
+        for (const event of records) {
+            let clonedEvent: Record<string, any> = <Record<string, any>>extend({}, event, null, true);
+            if (!clonedEvent[eventSettings.fields.recurrenceID]) { continue; }
+            const isOccurrence: boolean = clonedEvent[eventSettings.fields.id] !== clonedEvent[eventSettings.fields.recurrenceID];
+            if (isOccurrence && !clonedEvent[eventSettings.fields.recurrenceRule]) {
+                clonedEvent = updateEventDateTime(clonedEvent);
+                editParams.changedRecords.push(clonedEvent);
+                continue;
+            }
+            clonedEvent = updateEventDateTime(clonedEvent);
+            if (!isOccurrence) {
+                const parentEvent: EventModel = updateParentRecurrenceEvent(clonedEvent, eventSettings.fields, eventsProcessed);
+                editParams.changedRecords.push(parentEvent);
+                clonedEvent[eventSettings.fields.id] = getRecurrenceMaxId(eventsData, eventSettings.fields) + 1;
+                editParams.addedRecords.push(updateEventDateTime(clonedEvent));
+            } else {
+                editParams.changedRecords.push(clonedEvent);
+            }
         }
-        const crudArgs: CrudArgs = {
-            cancel: false,
-            promise: promise,
-            editParams: editParams
-        };
-        refreshData(crudArgs);
-    }, [dataManager, eventSettings, getTable, generateQuery, refreshData, updateEventDateTime]);
+    };
+
+    const handleEditSeries: (records: Record<string, any>[], editParams: SaveChanges, action: string) => void =
+    (records: Record<string, any>[], editParams: SaveChanges, action: string): void => {
+        for (const event of records) {
+            let clonedEvent: Record<string, any> = <Record<string, any>>extend({}, event, null, true);
+            if (clonedEvent[eventSettings.fields.recurrenceID]) {
+                let parentEvent: EventModel = {};
+                let isSeriesEventChanged: boolean = false;
+                const filteredEvents: EventModel[] = (eventsProcessed || [])?.filter((e: EventModel) => {
+                    if ((e.recurrenceID && e.recurrenceID === clonedEvent[eventSettings.fields.recurrenceID] &&
+                        e.id !== clonedEvent[eventSettings.fields.recurrenceID]) || (!e.recurrenceID && e.recurrenceRule &&
+                            e.id === clonedEvent[eventSettings.fields.recurrenceID] && e.recurrenceException)) {
+                        isSeriesEventChanged = true;
+                    }
+                    if (e.id === clonedEvent[eventSettings.fields.recurrenceID]) {
+                        parentEvent = e;
+                    }
+                    return (e.recurrenceID || e.id) === clonedEvent[eventSettings.fields.recurrenceID];
+                });
+
+                clonedEvent[eventSettings.fields.id] = parentEvent.id;
+                if (!clonedEvent[eventSettings.fields.recurrenceRule] || action === 'EditCurrentSeries') {
+                    clonedEvent[eventSettings.fields.recurrenceRule] = parentEvent.recurrenceRule;
+                }
+                delete clonedEvent[eventSettings.fields.recurrenceID];
+
+                if (isSeriesEventChanged) {
+                    if (action === 'EditSeries') {
+                        delete clonedEvent[eventSettings.fields.recurrenceException];
+                        const deleteEvents: EventModel[] = filteredEvents;
+                        editParams.deletedRecords.push(...deleteEvents);
+                        editParams.addedRecords.push(updateEventDateTime(clonedEvent));
+                    } else if (action === 'EditCurrentSeries') {
+                        editParams.changedRecords.push(updateEventDateTime(clonedEvent));
+                    }
+                } else {
+                    clonedEvent = updateEventDateTime(clonedEvent);
+                    editParams.changedRecords.push(clonedEvent);
+                }
+            }
+        }
+    };
+
+    const handleDefaultEdit: (records: Record<string, EventModel>[] | Record<string, EventModel>, editParams: SaveChanges) => void =
+    (records: Record<string, EventModel>[] | Record<string, EventModel>, editParams: SaveChanges): void => {
+        if (records instanceof Array) {
+            for (let event of records) {
+                event = updateEventDateTime(event);
+                editParams.changedRecords.push(<Record<string, EventModel>>extend({}, event, null, true));
+            }
+        } else {
+            const event: Record<string, EventModel> = records;
+            editParams.changedRecords.push(event);
+        }
+    };
+
+    const processSaveEvent: (saveArgs: SchedulerDataChangeEvent, action?: CrudAction) => SaveChanges =
+        useCallback((saveArgs: SchedulerDataChangeEvent, action?: CrudAction): SaveChanges => {
+            const editParams: SaveChanges = { addedRecords: [], changedRecords: [], deletedRecords: [] };
+            switch (action) {
+            case 'EditOccurrence':
+                if (saveArgs.changedRecords instanceof Array && saveArgs.changedRecords.length > 0) {
+                    handleEditOccurrence(saveArgs.changedRecords, editParams);
+                }
+                break;
+
+            case 'EditCurrentSeries':
+            case 'EditSeries':
+                if (saveArgs.changedRecords instanceof Array && saveArgs.changedRecords.length > 0) {
+                    handleEditSeries(saveArgs.changedRecords, editParams, action);
+                }
+                break;
+
+            default:
+                handleDefaultEdit(saveArgs.changedRecords, editParams);
+                break;
+            }
+            return editParams;
+        }, [eventSettings, eventsData, eventsProcessed, updateEventDateTime]);
+
+    const performSaveEvent: (editParams: SaveChanges) => void =
+        useCallback((editParams: SaveChanges): void => {
+            let promise: Promise<any>;
+            if (editParams.changedRecords.length > 1 || editParams.addedRecords.length > 0 || editParams.deletedRecords.length > 0) {
+                promise = dataManager.saveChanges(editParams, eventSettings.fields.id, getTable(), generateQuery()) as Promise<any>;
+            } else if (editParams.changedRecords.length === 1) {
+                promise =
+                    dataManager.update(eventSettings.fields.id, editParams.changedRecords[0], getTable(), generateQuery()) as Promise<any>;
+            } else {
+                promise = Promise.resolve();
+            }
+            const crudArgs: CrudArgs = {
+                cancel: false,
+                promise: promise,
+                editParams: editParams
+            };
+            refreshData(crudArgs);
+        }, [dataManager, eventSettings, getTable, generateQuery, refreshData]);
 
     const addEvent: (eventData: Record<string, any> | Record<string, any>[]) => void =
     useCallback(async (eventData: Record<string, any> | Record<string, any>[]) => {
@@ -252,6 +403,9 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
             if (onDataChangeStart) {
                 onDataChangeStart(addArgs);
             }
+            if (addArgs.cancel) {
+                return;
+            }
             if (addArgs.promise) {
                 addArgs.promise.then((hasContinue: boolean) => {
                     if (hasContinue) {
@@ -268,10 +422,10 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
         }
     }, [eventSettings, readOnly, onDataChangeStart, onError, processAddEvent]);
 
-    const deleteEvent: (id: string | number | Record<string, any> | Record<string, any>[]) => void =
-    useCallback(async (id: string | number | Record<string, any> | Record<string, any>[]) => {
+    const deleteEvent: (id: string | number | Record<string, any> | Record<string, any>[], action?: CrudAction) => void =
+    useCallback(async (id: string | number | Record<string, any> | Record<string, any>[], action?: CrudAction) => {
         if (eventSettings.allowDeleting && !readOnly) {
-            const deleteEvents: Record<string, any>[] = (id instanceof Array ? id : [id]) as Record<string, any>[];
+            const deleteEvents: Record<string, any>[] = (id instanceof Array ? id : [id]) as Record<string, EventModel>[];
             if (deleteEvents.length === 0) {
                 return;
             }
@@ -279,13 +433,20 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
                 cancel: false,
                 addedRecords: [], changedRecords: [], deletedRecords: deleteEvents
             };
+            const editParams: SaveChanges = processDeleteEvent(deleteArgs, action);
+            deleteArgs.addedRecords = editParams.addedRecords;
+            deleteArgs.changedRecords = editParams.changedRecords;
+            deleteArgs.deletedRecords = editParams.deletedRecords;
             if (onDataChangeStart) {
                 onDataChangeStart(deleteArgs);
+            }
+            if (deleteArgs.cancel) {
+                return;
             }
             if (deleteArgs.promise) {
                 deleteArgs.promise.then((hasContinue: boolean) => {
                     if (hasContinue) {
-                        processDeleteEvent(deleteArgs);
+                        performDeleteEvent(editParams);
                     }
                 }).catch((error: Error) => {
                     if (onError) {
@@ -293,13 +454,13 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
                     }
                 });
             } else {
-                processDeleteEvent(deleteArgs);
+                performDeleteEvent(editParams);
             }
         }
     }, [eventSettings, readOnly, onDataChangeStart, onError, processDeleteEvent]);
 
-    const saveEvent: (data: Record<string, any> | Record<string, any>[]) => void =
-    useCallback(async (data: Record<string, any> | Record<string, any>[]) => {
+    const saveEvent: (data: Record<string, any> | Record<string, any>[], action?: CrudAction) => void =
+    useCallback(async (data: Record<string, any> | Record<string, any>[], action?: CrudAction) => {
         if (eventSettings.allowEditing && !readOnly) {
             const updateEvents: Record<string, any>[] = (data instanceof Array) ? data : [data];
             if (updateEvents.length === 0) {
@@ -309,13 +470,20 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
                 cancel: false,
                 addedRecords: [], changedRecords: updateEvents, deletedRecords: []
             };
+            const editParams: SaveChanges = processSaveEvent(saveArgs, action);
+            saveArgs.addedRecords = editParams.addedRecords;
+            saveArgs.changedRecords = editParams.changedRecords;
+            saveArgs.deletedRecords = editParams.deletedRecords;
             if (onDataChangeStart) {
                 onDataChangeStart(saveArgs);
+            }
+            if (saveArgs.cancel) {
+                return;
             }
             if (saveArgs.promise) {
                 saveArgs.promise.then((hasContinue: boolean) => {
                     if (hasContinue) {
-                        processSaveEvent(saveArgs);
+                        performSaveEvent(editParams);
                     }
                 }).catch((error: Error) => {
                     if (onError) {
@@ -323,7 +491,7 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
                     }
                 });
             } else {
-                processSaveEvent(saveArgs);
+                performSaveEvent(editParams);
             }
         }
     }, [eventSettings, readOnly, onDataChangeStart, onError, processSaveEvent]);
@@ -334,6 +502,7 @@ export const useData: (props: UseDataProps) => UseDataResult = (props: UseDataPr
 
     return {
         eventsData,
+        eventsProcessed,
         addEvent,
         deleteEvent,
         saveEvent

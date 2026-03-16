@@ -1,4 +1,4 @@
-import { PieChartTooltipProps, PieChartBorderProps, PieChartCenterLabelProps, PieChartMarginProps, PieChartTitleProps, PieChartDataLabelProps } from './interfaces';
+import { PieChartTooltipProps, PieChartBorderProps, PieChartCenterLabelProps, PieChartMarginProps, PieChartTitleProps, PieChartDataLabelProps, PieChartSelectionProps, PieChartHighlightProps } from './interfaces';
 import { BaseLegend, Chart, SeriesProperties } from './internal-interfaces';
 
 /**
@@ -18,6 +18,8 @@ interface ChartConfig {
     CenterLabel: PieChartCenterLabelProps;
     ChartTooltip: PieChartTooltipProps;
     ChartDataLabel: PieChartDataLabelProps;
+    ChartSelection: PieChartSelectionProps;
+    ChartHighlight: PieChartHighlightProps;
 }
 
 /**
@@ -169,12 +171,14 @@ export const defaultChartConfigs: ChartConfig = {
         border: { width: 1, color: '' },
         explodeOffset: '15%',
         showBorderOnHover: true,
+        applyPattern: false,
         accessibility: {
             ariaLabel: '',
             role: 'img',
             focusable: true,
             tabIndex: 0
-        }
+        },
+        name: ''
     },
     ChartDataLabel: {
         visible: false,
@@ -230,5 +234,16 @@ export const defaultChartConfigs: ChartConfig = {
         fadeOutMode: 'Move',
         textStyle: { color: '', fontFamily: '', fontSize: '', fontStyle: '' }
 
+    },
+    ChartSelection: {
+        mode: 'None',
+        allowMultiSelection: false,
+        selectedDataIndexes: [],
+        pattern: 'None'
+    },
+    ChartHighlight: {
+        mode: 'Point',
+        fill: '',
+        pattern: 'None'
     }
 };

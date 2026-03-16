@@ -22,6 +22,11 @@ interface PositionLocation {
     position: OffsetPosition;
 }
 
+interface PositionCombination {
+    posX: string;
+    posY: string;
+}
+
 let parentDocument: Document;
 let targetContainer: HTMLElement | null;
 
@@ -45,7 +50,7 @@ export const fit: (
         return { left: position?.left, top: position?.top } as OffsetPosition;
     }
 
-    const elemData: DOMRect = element.getBoundingClientRect();
+    const elemData: DOMRect = getElementReact(element) as DOMRect;
     targetContainer = viewPortElement;
     parentDocument = element.ownerDocument;
 
@@ -159,8 +164,6 @@ export const flip: (
     }
 
     const tEdge: EdgeOffset = { TL: null, TR: null, BL: null, BR: null };
-    const eEdge: EdgeOffset = { TL: null, TR: null, BL: null, BR: null };
-
     const elementRect: DOMRect = getElementReact(element) as DOMRect;
 
     const pos: PositionLocation = {
@@ -175,20 +178,54 @@ export const flip: (
     parentDocument = target.ownerDocument;
 
     updateElementData(target, tEdge, pos);
-    setPosition(eEdge, pos, elementRect);
 
-    if (axis.X) {
-        leftFlip(target, eEdge, tEdge, pos, elementRect, true);
-    }
-    if (axis.Y && (tEdge.TL as OffsetPosition).top > -1) {
-        topFlip(target, eEdge, tEdge, pos, elementRect, true);
+    const combinationPriority: PositionCombination[] = getPositionCombinationPriority(positionX, positionY, axis);
+    let selectedPosition: OffsetPosition | null = null;
+    let finalPosX: string = positionX;
+    let finalPosY: string = positionY;
+    const finalOffsetX: number = offsetX;
+    const finalOffsetY: number = offsetY;
+
+    for (const combination of combinationPriority) {
+        let adjustedOffsetX: number = offsetX;
+        let adjustedOffsetY: number = offsetY;
+
+        if (combination.posX !== positionX) {
+            adjustedOffsetX = -1 * (offsetX + elementRect.width);
+        }
+        if (combination.posY !== positionY) {
+            adjustedOffsetY = -1 * (offsetY + elementRect.height);
+        }
+
+        const evaluation: {canFit: boolean; position: OffsetPosition; eEdge: EdgeOffset; } =
+        evaluatePositionCombination(target, element, combination.posX, combination.posY, adjustedOffsetX, adjustedOffsetY, viewPortElement);
+        finalPosX = combination.posX;
+        finalPosY = combination.posY;
+        if (evaluation.canFit) {
+            selectedPosition = evaluation.position;
+            break;
+        }
     }
 
-    const cssPos: OffsetPosition = setPopup(element, pos);
-    return cssPos;
+    if (selectedPosition === null) {
+        const isTargetVisible: boolean = isTargetInViewport(target);
+        if (isTargetVisible) {
+            const basePosition: OffsetPosition = calculatePosition(target, finalPosX, finalPosY);
+            const positionWithOffset: OffsetPosition = { left: basePosition.left + finalOffsetX, top: basePosition.top + finalOffsetY };
+            selectedPosition = fit(element, viewPortElement, axis, positionWithOffset);
+        } else {
+            selectedPosition = calculatePosition(target, positionX, positionY);
+        }
+    }
+
+    const finalPosition: PositionLocation = {  posX: finalPosX,  posY: finalPosY, offsetX: finalOffsetX, offsetY: finalOffsetY,
+        position: selectedPosition };
+
+    const finalCssPosition: OffsetPosition = setPopup(element, finalPosition);
+    return finalCssPosition;
 };
 
-export const getElementReact: (element: HTMLElement) => DOMRect | null  = (element: HTMLElement): DOMRect | null => {
+export const getElementReact: (element: HTMLElement) => DOMRect | null = (element: HTMLElement): DOMRect | null => {
     if (!element) { return null; }
     let elementRect: DOMRect;
     if (window.getComputedStyle(element).display === 'none') {
@@ -203,6 +240,99 @@ export const getElementReact: (element: HTMLElement) => DOMRect | null  = (eleme
         elementRect = element.getBoundingClientRect();
     }
     return elementRect;
+};
+
+export const getOppositePosition: (position: string) => string = (position: string): string => {
+    switch (position.toLowerCase()) {
+    case 'left':
+        return 'right';
+    case 'right':
+        return 'left';
+    case 'top':
+        return 'bottom';
+    case 'bottom':
+        return 'top';
+    default:
+        return position;
+    }
+};
+
+export const getPositionCombinationPriority: (
+    initialPosX: string,
+    initialPosY: string,
+    axis: CollisionCoordinates
+) => PositionCombination[] = (
+    initialPosX: string,
+    initialPosY: string,
+    axis: CollisionCoordinates
+): PositionCombination[] => {
+    const combinations: PositionCombination[] = [];
+    if (axis.X && axis.Y) {
+        combinations.push({ posX: initialPosX, posY: initialPosY });
+        combinations.push({ posX: initialPosX, posY: getOppositePosition(initialPosY) });
+        combinations.push({ posX: getOppositePosition(initialPosX), posY: getOppositePosition(initialPosY) });
+        combinations.push({ posX: getOppositePosition(initialPosX), posY: initialPosY });
+    } else if (axis.X && !axis.Y) {
+        combinations.push({ posX: initialPosX, posY: initialPosY });
+        combinations.push({ posX: getOppositePosition(initialPosX), posY: initialPosY });
+    } else if (!axis.X && axis.Y) {
+        combinations.push({ posX: initialPosX, posY: initialPosY });
+        combinations.push({ posX: initialPosX, posY: getOppositePosition(initialPosY) });
+    } else {
+        combinations.push({ posX: initialPosX, posY: initialPosY });
+    }
+
+    return combinations;
+};
+
+export const evaluatePositionCombination: (
+    target: HTMLElement,
+    element: HTMLElement,
+    posX: string,
+    posY: string,
+    offsetX: number,
+    offsetY: number,
+    viewport: HTMLElement | null
+) => { canFit: boolean; position: OffsetPosition; eEdge: EdgeOffset } = (
+    target: HTMLElement,
+    element: HTMLElement,
+    posX: string,
+    posY: string,
+    offsetX: number,
+    offsetY: number,
+    viewport: HTMLElement | null = null
+): { canFit: boolean; position: OffsetPosition; eEdge: EdgeOffset } => {
+    targetContainer = viewport;
+    parentDocument = target.ownerDocument;
+    const basePosition: OffsetPosition = calculatePosition(target, posX, posY);
+
+    const positionWithOffset: OffsetPosition = {
+        left: basePosition.left + offsetX,
+        top: basePosition.top + offsetY
+    };
+    const elementRect: DOMRect | null = getElementReact(element);
+    if (!elementRect) {
+        return { canFit: false, position: positionWithOffset, eEdge: { TL: null, TR: null, BL: null, BR: null } };
+    }
+    const pos: PositionLocation = {
+        posX: posX,
+        posY: posY,
+        offsetX: offsetX,
+        offsetY: offsetY,
+        position: positionWithOffset
+    };
+    const eEdge: EdgeOffset = { TL: null, TR: null, BL: null, BR: null };
+    setPosition(eEdge, pos, elementRect);
+    const eLeft: number = (eEdge.TL as OffsetPosition).left;
+    const eRight: number = (eEdge.TR as OffsetPosition).left;
+    const eTop: number = (eEdge.TL as OffsetPosition).top;
+    const eBottom: number = (eEdge.BL as OffsetPosition).top;
+    const containerLeft: number = ContainerLeft();
+    const containerRight: number = ContainerRight();
+    const containerTop: number = ContainerTop();
+    const containerBottom: number = ContainerBottom();
+    const canFit: boolean =  eLeft >= containerLeft && eRight <= containerRight && eTop >= containerTop && eBottom <= containerBottom;
+    return {  canFit,  position: positionWithOffset,  eEdge: eEdge };
 };
 
 const setPopup: (element: HTMLElement, pos: PositionLocation) => OffsetPosition = (element: HTMLElement, pos: PositionLocation):
@@ -242,8 +372,8 @@ OffsetPosition => {
         }
     }
 
-    const topCss: number = pos.position.top / scaleY + pos.offsetY - top / scaleY;
-    const leftCss: number = pos.position.left / scaleX + pos.offsetX - left / scaleX;
+    const topCss: number = pos.position.top / scaleY - top / scaleY;
+    const leftCss: number = pos.position.left / scaleX - left / scaleX;
     (element as HTMLElement).style.top = topCss + 'px';
     (element as HTMLElement).style.left = leftCss + 'px';
 
@@ -260,8 +390,8 @@ void = ( target: HTMLElement, edge: EdgeOffset, pos: PositionLocation ): void =>
 };
 
 const setPosition: (eStatus: EdgeOffset, pos: PositionLocation, elementRect: DOMRect) =>
-void = ( eStatus: EdgeOffset, pos: PositionLocation, elementRect: DOMRect ): void => {
-    eStatus.TL = { top: pos.position.top + pos.offsetY, left: pos.position.left + pos.offsetX };
+void = (eStatus: EdgeOffset, pos: PositionLocation, elementRect: DOMRect): void => {
+    eStatus.TL = { top: pos.position.top, left: pos.position.left };
     eStatus.TR = { top: (eStatus.TL as OffsetPosition).top, left: (eStatus.TL as OffsetPosition).left + elementRect.width };
     eStatus.BL = { top: (eStatus.TL as OffsetPosition).top + elementRect.height, left: (eStatus.TL as OffsetPosition).left };
     eStatus.BR = { top: (eStatus.TL as OffsetPosition).top + elementRect.height, left: (eStatus.TL as OffsetPosition).left +
@@ -280,72 +410,6 @@ const leftCollideCheck: (left: number, right: number) => LeftCorners = ( left: n
     return { leftSide, rightSide };
 };
 
-const leftFlip: (
-    target: HTMLElement,
-    edge: EdgeOffset,
-    tEdge: EdgeOffset,
-    pos: PositionLocation,
-    elementRect: DOMRect,
-    deepCheck: boolean
-) => void = (
-    target: HTMLElement,
-    edge: EdgeOffset,
-    tEdge: EdgeOffset,
-    pos: PositionLocation,
-    elementRect: DOMRect,
-    deepCheck: boolean
-): void => {
-    const collideSide: LeftCorners = leftCollideCheck((edge.TL as OffsetPosition).left, (edge.TR as OffsetPosition).left);
-    if (((tEdge.TL as OffsetPosition).left - getBodyScrollLeft()) <= ContainerLeft()) {
-        collideSide.leftSide = false;
-    }
-    if ((tEdge.TR as OffsetPosition).left > ContainerRight()) {
-        collideSide.rightSide = false;
-    }
-    if ((collideSide.leftSide && !collideSide.rightSide) || (!collideSide.leftSide && collideSide.rightSide)) {
-        pos.posX = pos.posX === 'right' ? 'left' : 'right';
-        pos.offsetX = -1 * (pos.offsetX + elementRect.width);
-        pos.position = calculatePosition(target, pos.posX, pos.posY);
-        setPosition(edge, pos, elementRect);
-        if (deepCheck) {
-            leftFlip(target, edge, tEdge, pos, elementRect, false);
-        }
-    }
-};
-
-const topFlip: (
-    target: HTMLElement,
-    edge: EdgeOffset,
-    tEdge: EdgeOffset,
-    pos: PositionLocation,
-    elementRect: DOMRect,
-    deepCheck: boolean
-) => void = (
-    target: HTMLElement,
-    edge: EdgeOffset,
-    tEdge: EdgeOffset,
-    pos: PositionLocation,
-    elementRect: DOMRect,
-    deepCheck: boolean
-): void => {
-    const collideSide: TopCorners = topCollideCheck((edge.TL as OffsetPosition).top, (edge.BL as OffsetPosition).top);
-    if (((tEdge.TL as OffsetPosition).top - getBodyScrollTop()) <= ContainerTop()) {
-        collideSide.topSide = false;
-    }
-    if ((tEdge.BL as OffsetPosition).top >= ContainerBottom() && target.getBoundingClientRect().bottom < window.innerHeight) {
-        collideSide.bottomSide = false;
-    }
-    if ((collideSide.topSide && !collideSide.bottomSide) || (!collideSide.topSide && collideSide.bottomSide)) {
-        pos.posY = pos.posY === 'top' ? 'bottom' : 'top';
-        pos.offsetY = -1 * (pos.offsetY + elementRect.height);
-        pos.position = calculatePosition(target, pos.posX, pos.posY);
-        setPosition(edge, pos, elementRect);
-        if (deepCheck) {
-            topFlip(target, edge, tEdge, pos, elementRect, false);
-        }
-    }
-};
-
 const topCollideCheck: (top: number, bottom: number) => TopCorners = ( top: number, bottom: number ): TopCorners => {
     let topSide: boolean = false;
     let bottomSide: boolean = false;
@@ -356,6 +420,20 @@ const topCollideCheck: (top: number, bottom: number) => TopCorners = ( top: numb
         bottomSide = true;
     }
     return { topSide, bottomSide };
+};
+
+const isTargetInViewport: (target: HTMLElement) => boolean = (target: HTMLElement): boolean => {
+    const targetRect: DOMRect | null = getElementReact(target);
+    if (!targetRect) {
+        return false;
+    }
+    const containerLeft: number = ContainerLeft();
+    const containerRight: number = ContainerRight();
+    const containerTop: number = ContainerTop();
+    const containerBottom: number = ContainerBottom();
+    const isInHorizontal: boolean = targetRect.left < containerRight && targetRect.right > containerLeft;
+    const isInVertical: boolean = targetRect.top < containerBottom && targetRect.bottom > containerTop;
+    return isInHorizontal && isInVertical;
 };
 
 const getTargetContainerWidth: () => number = (): number => {

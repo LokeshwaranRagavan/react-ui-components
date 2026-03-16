@@ -2,8 +2,8 @@ import { TitlePosition, LegendPosition } from '../../common';
 import { TooltipRefHandle } from '@syncfusion/react-svg-tooltip';
 import { useData } from '../renderer/series-renderer/ProcessData';
 import { ThemeStyle } from '../utils/theme';
-import { PieLabelPosition, PieLegendShape } from './enum';
-import { PieChartFontProps, PieChartLocationProps, PieChartSizeProps, PieChartComponentProps, PieChartSeriesProps, PieChartLegendProps, PieChartBorderProps, PieChartTooltipFormatterProps } from './interfaces';
+import { PieLabelPosition, PieLegendShape, PieSelectionPattern } from './enum';
+import { PieChartFontProps, PieChartLocationProps, PieChartSizeProps, PieChartComponentProps, PieChartSeriesProps, PieChartLegendProps, PieChartBorderProps, PieChartTooltipFormatterProps, PieChartDataIndexProps, PieChartSelectionProps, PieChartHighlightProps } from './interfaces';
 import { PieChartTooltipProps } from './interfaces';
 
 /**
@@ -166,6 +166,16 @@ export interface Chart extends PieChartComponentProps {
      * Target width or dimension to which the chart should resize.
      */
     resizeTo: number;
+
+    /**
+     * Represents the configuration options for Pie chart selection behavior.
+     */
+    chartSelection: PieChartSelectionProps;
+
+    /**
+     * Represents the configuration options for Pie chart highlight behavior.
+     */
+    chartHighlight: PieChartHighlightProps;
 }
 
 /**
@@ -477,6 +487,11 @@ export interface Points {
     /** Specifies the final position of the label after layout adjustments. */
     labelPosition: PieLabelPosition;
 
+    /**
+     * Pattern supported by selection behavior.
+     *
+     */
+    pattern?: PieSelectionPattern;
 }
 
 /**
@@ -1123,3 +1138,44 @@ export interface TextRenderOptions {
  * @private
  */
 export type TooltipContentFunction = (data: PieChartTooltipFormatterProps) => string | string[] | boolean;
+
+/**
+ * Internal interface for managing pie chart selection state.
+ *
+ * @private
+ */
+export interface PieBaseSelection extends PieChartSelectionProps {
+
+    /** Chart instance associated with the selection. */
+    chart?: Chart;
+
+    /** True if the selection was triggered from the legend. */
+    isLegendSelection?: boolean;
+
+    /** True if the selection should be added to existing selections. */
+    isAdd?: boolean;
+
+    /** Indexes of currently selected data points in the chart. */
+    chartSelectedDataIndexes?: PieChartDataIndexProps[];
+
+    /** Elements that were previously selected. */
+    previousSelectedElements?: Element[];
+
+    /** Optional name identifier for the selection context. */
+    name?: string;
+
+    /** Color used to highlight selected elements. */
+    fill?: string;
+
+    /** True if the element is currently selected. */
+    isSelected?: boolean;
+
+    /** True if the highlight was triggered from the legend. */
+    isLegendHighlight?: boolean;
+
+    /** True if the highlight was triggered from the tooltip. */
+    isTooltipHighlight?: boolean;
+
+    /** True if legend toggling is enabled for selection. */
+    isLegendToggle?: boolean;
+}
